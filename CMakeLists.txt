@@ -99,22 +99,25 @@ if(WIN32)
     set(SSF2T_REXGLUE_CHECK "${CMAKE_COMMAND}" -E env --unset=PSModulePath
         "${SSF2T_WINDOWS_POWERSHELL}" -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/tools/build-patched-rexruntime.ps1" -Check -Config $<CONFIG>)
     set(SSF2T_REXGLUE_STAGED -Staged)
+else()
+    find_program(SSF2T_BASH bash REQUIRED)
+    set(SSF2T_REXGLUE_CHECK "${SSF2T_BASH}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/build-patched-rexruntime.sh"
+        --check "${SSF2T_SDK_DIR}" --config $<CONFIG>)
+    set(SSF2T_REXGLUE_STAGED --staged)
 endif()
 get_property(_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 if(NOT _multi_config AND NOT CMAKE_BUILD_TYPE MATCHES "^(Debug|RelWithDebInfo|Release)$")
     message(FATAL_ERROR "Set CMAKE_BUILD_TYPE to Debug, RelWithDebInfo or Release (tools/build.ps1 does)")
 endif()
-if(WIN32)
-    add_custom_target(ssf2t_rexglue_check COMMAND ${SSF2T_REXGLUE_CHECK} VERBATIM)
-    add_dependencies(ssf2t_hd_remix ssf2t_rexglue_check)
-    add_custom_target(ssf2t_rexglue_staging ALL
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rex::runtime>" "$<TARGET_FILE:rex::gpu-xenos>"
-            "$<TARGET_FILE_DIR:ssf2t_hd_remix>"
-        COMMAND ${SSF2T_REXGLUE_CHECK} ${SSF2T_REXGLUE_STAGED} "$<TARGET_FILE_DIR:ssf2t_hd_remix>"
-        VERBATIM
-    )
-    add_dependencies(ssf2t_rexglue_staging ssf2t_hd_remix)
-endif()
+add_custom_target(ssf2t_rexglue_check COMMAND ${SSF2T_REXGLUE_CHECK} VERBATIM)
+add_dependencies(ssf2t_hd_remix ssf2t_rexglue_check)
+add_custom_target(ssf2t_rexglue_staging ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rex::runtime>" "$<TARGET_FILE:rex::gpu-xenos>"
+        "$<TARGET_FILE_DIR:ssf2t_hd_remix>"
+    COMMAND ${SSF2T_REXGLUE_CHECK} ${SSF2T_REXGLUE_STAGED} "$<TARGET_FILE_DIR:ssf2t_hd_remix>"
+    VERBATIM
+)
+add_dependencies(ssf2t_rexglue_staging ssf2t_hd_remix)
 
 # ThinLTO in Release and RelWithDebInfo; Debug compiles at -O0, where LTO would optimize nothing.
 function(ssf2t_enable_thinlto target)
