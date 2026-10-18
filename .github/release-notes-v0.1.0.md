@@ -50,4 +50,4 @@ The ZIP's SHA-256 is published with the release as `SSF2THDRemix-v0.1.0-windows-
 
 | File | SHA-256 |
 | --- | --- |
-| `SSF2THDRemix-v0.1.0-windows-x64.zip` | `11bc222e7e75cac629f27b99eb0142153203b5aabfd2c10c35ab1d998e62dab1` |
+| `SSF2THDRemix-v0.1.0-windows-x64.zip` | `b93ba1e8df1526d61fc1b3f29313cc7096205f9d7a7ca07725472d84483b1338` |
