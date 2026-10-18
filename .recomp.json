@@ -1,0 +1,36 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Super Street Fighter II Turbo HD Remix",
+  "system": "Xbox 360",
+  "type": "recomp",
+  "original": {
+    "revision": "0.0.1.3"
+  },
+  "project": "Super Street Fighter II Turbo HD Remix PC Port",
+  "status": "released",
+  "targets": [
+    "Windows",
+    "Linux",
+    "Steam Deck"
+  ],
+  "toolchain": "Rexglue",
+  "approach": "Static recompilation of the Xbox 360 XBLA version to native PC code using ReXGlue",
+  "maintainers": [
+    {
+      "name": "saulob",
+      "link": "https://github.com/saulob"
+    }
+  ],
+  "links": [
+    {
+      "label": "Reddit announcement",
+      "url": "https://www.reddit.com/r/recomps/comments/1x9gbmt/super_street_fighter_ii_turbo_hd_remix_recompiled/"
+    }
+  ],
+  "tags": [
+    "XBLA",
+    "launcher",
+    "achievements"
+  ],
+  "notes": "Public native PC release with Windows and experimental Linux/Steam Deck builds, TRG launcher, rendering up to 4x resolution, local saves and achievements, Xbox controller and keyboard support, and the original 60 FPS gameplay"
+}
