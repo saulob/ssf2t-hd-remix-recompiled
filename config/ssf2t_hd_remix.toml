@@ -9,11 +9,11 @@ mnk_mode = true
 # Empty skips the optional gamecontrollerdb.txt load; SDL's built-in mappings still apply.
 hid_mappings_file = ""
 
-# Default game window: 1280x720 logical, centered on the primary display. Logical pixels are scaled by the display scale.
+# Default game window: 853x480 logical, centered on the primary display. Logical pixels are scaled by the display scale.
 fullscreen = false
 monitor = 1
-window_width = 1280
-window_height = 720
+window_width = 853
+window_height = 480
 # Guest video mode for 16:9 Original, assumed 720p until the first log confirms it.
 video_mode_width = 1280
 video_mode_height = 720

@@ -132,6 +132,27 @@ target_compile_definitions(ssf2t_hd_remix PRIVATE
     SSF2T_PORT_VERSION="${PROJECT_VERSION}"
     SSF2T_TRG_VERSION="${SSF2T_TRG_VERSION}")
 
+# Headless regression tests of the patched runtime, not part of the default build (tools/test.ps1):
+#   cmake --build <dir> --target ssf2t_runtime_tests
+add_custom_target(ssf2t_runtime_tests)
+foreach(_test physical_heap_stress title_thread_shutdown_tests)
+    set(_name ssf2t_${_test})
+    add_executable(${_name} EXCLUDE_FROM_ALL tests/${_test}.cpp)
+    target_link_libraries(${_name} PRIVATE rex::runtime)
+    add_custom_command(TARGET ${_name} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rex::runtime>" "$<TARGET_FILE_DIR:${_name}>"
+        VERBATIM
+    )
+    if(NOT WIN32)
+        set_target_properties(${_name} PROPERTIES BUILD_RPATH "$ORIGIN")
+    endif()
+    add_dependencies(ssf2t_runtime_tests ${_name})
+endforeach()
+
+add_executable(ssf2t_window_placement_tests EXCLUDE_FROM_ALL tests/window_placement_tests.cpp)
+target_include_directories(ssf2t_window_placement_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_window_placement_tests)
+
 # The runtime reads its cvars from <exe dir>/ssf2t_hd_remix.toml.
 add_custom_command(TARGET ssf2t_hd_remix POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

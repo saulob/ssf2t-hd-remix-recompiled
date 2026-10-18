@@ -13,10 +13,10 @@ $RuntimeBuildTargets = @('rexruntime', 'rexgpu-xenos')
 $RuntimeBuildConfigs = @('RelWithDebInfo', 'Release')
 
 function Get-VisualStudioRoot {
-    $vsRoot = $null
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-    if (Test-Path $vswhere) { $vsRoot = "$(& $vswhere -latest -products * -property installationPath)".Trim() }
-    if (-not $vsRoot) { $vsRoot = 'C:\Program Files\Microsoft Visual Studio\18\Community' }
+    if (-not (Test-Path $vswhere)) { throw 'Visual Studio Installer (vswhere.exe) not found' }
+    $vsRoot = "$(& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath)".Trim()
+    if (-not $vsRoot) { throw 'Visual Studio with the C++ x64 tools and C++ Clang tools is required' }
     return $vsRoot
 }
 

@@ -14,8 +14,8 @@
 namespace ssf2t {
 namespace {
 
-constexpr ImU32 kPanelColor = IM_COL32(7, 14, 10, 190);
-constexpr ImU32 kBorderColor = IM_COL32(92, 224, 112, 255);
+constexpr ImU32 kPanelColor = IM_COL32(12, 10, 8, 190);
+constexpr ImU32 kBorderColor = IM_COL32(255, 133, 20, 255);
 constexpr ImU32 kTextColor = IM_COL32(255, 255, 255, 255);
 
 class FrameCounterOverlay final : public rex::ui::ImGuiDialog {

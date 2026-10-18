@@ -35,7 +35,7 @@ $UserData = Join-Path $BuildDir 'user_data'
 $Exe = Join-Path $BuildDir 'ssf2t_hd_remix.exe'
 $XexSha256 = '6E1C2F9ED7D1102A311A5F5626563527EDA5F85B2FBE8DB8405B866DED3F31EE'
 
-$VsRoot = 'C:\Program Files\Microsoft Visual Studio\18\Community'
+$VsRoot = Get-VisualStudioRoot
 $VsDevCmd = Join-Path $VsRoot 'Common7\Tools\VsDevCmd.bat'
 $LlvmBin = Join-Path $VsRoot 'VC\Tools\Llvm\x64\bin'
 $ClangXX = Join-Path $LlvmBin 'clang++.exe'

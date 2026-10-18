@@ -1,13 +1,15 @@
-"""Finds code only reached through data pointers, vtables or lis/addi pairs that
-ReXGlue v0.10.0 did not register as functions, classifies each candidate and
-writes the HIGH-confidence ones to config/discovered-functions.toml.
+"""Finds code that is reached only through data pointers, vtables or lis/addi pairs and that
+ReXGlue v0.10.0 codegen did not register as a function. Classifies each candidate and writes
+the HIGH-confidence ones to config/discovered-functions.toml.
 
   python tools/find-missing-functions.py                report only
   python tools/find-missing-functions.py --apply-high   also rewrite the TOML
-  python tools/find-missing-functions.py --verify       check generated output
+  python tools/find-missing-functions.py --verify       check the generated output
+  python tools/find-missing-functions.py --self-test    check the decoder and address tracking
+  python tools/find-missing-functions.py --runtime-address 0xADDR   explain one address; edits nothing
 
-Adapted from tools/find-missing-functions.py of hard-corps-uprising-recompiled, which was adapted from
-outpost-kaloki-x-recompiled and earthworm-jim-hd-recompiled. Needs a codegen run (generated/default) and the
+Adapted from tools/find-missing-functions.py of hard-corps-uprising-recompiled and
+geometry-wars-retro-evolved-2-recompiled. Needs a codegen run (generated/default) and the
 decrypted image game/analysis/default.image.bin.
 """
 import bisect
@@ -23,14 +25,13 @@ from dataclasses import dataclass, field
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 IMAGE_PATH = os.path.join(ROOT, 'game', 'analysis', 'default.image.bin')
 IMAGE_SHA256 = '59bb31afe495df559a3523251541bf7080d6377b4b5568fe2145f8e328f7768d'
+IMAGE_SIZE = 0x2C10000
 GEN = os.path.join(ROOT, 'generated', 'default')
-REGISTER = os.path.join(GEN, 'ssf2t_hd_remix_register.cpp')
 OVERRIDES = os.path.join(ROOT, 'config', 'overrides.toml')
 DISCOVERED = os.path.join(ROOT, 'config', 'discovered-functions.toml')
 REPORT = os.path.join(ROOT, 'build', 'missing-functions-report.txt')
 
 BASE = 0x82000000
-IMAGE_SIZE = 0x2C10000
 RDATA = (0x82000400, 0x821574AC)
 PDATA = (0x82157600, 0x8216D190)
 TEXT = (0x82170000, 0x83A1C244)
@@ -156,6 +157,8 @@ class Known:
     pdata_begins: list
     config: dict                      # start -> end for [functions] entries (end resolved by walk when unsized)
     branch_sites: dict                # target -> [sites] for direct b/bl/bc in code
+    partition: dict                   # start -> partition index from codegen
+    discovered: int                   # entries in discovered-functions.toml, re-derived each run
 
 
 def parse_config_functions(path):
@@ -176,15 +179,24 @@ def parse_config_functions(path):
     return entries
 
 
+def register_path():
+    found = [f for f in os.listdir(GEN) if f.endswith('_register.cpp')]
+    if len(found) != 1:
+        sys.exit(f'expected one *_register.cpp in {GEN}, found {len(found)}')
+    return os.path.join(GEN, found[0])
+
+
 def load_known():
+    register = open(register_path()).read()
     starts, imports = set(), set()
-    for m in re.finditer(r'SetFunction\(0x([0-9A-F]{8}), (\w+)\)', open(REGISTER).read()):
+    for m in re.finditer(r'SetFunction\(0x([0-9A-F]{8}), (\w+)\)', register):
         a = int(m.group(1), 16)
         starts.add(a)
         if m.group(2).startswith('__imp__'):
             imports.add(a)
     partition = json.load(open(os.path.join(GEN, 'codegen.partition.json')))['assignments']
-    missing = {int(k, 16) for k in partition} - starts
+    partition = {int(k, 16): v for k, v in partition.items()}
+    missing = set(partition) - starts
     if missing:
         sys.exit(f'partition/register mismatch: {len(missing)} functions not registered')
 
@@ -201,7 +213,8 @@ def load_known():
         length = (data >> 8) & 0x3FFFFF
         pdata[begin] = (begin + max(length, 1) * 4, bool(data >> 31))
 
-    # Entries this tool generated earlier are re-derived from the image on every run.
+    # Entries this tool generated earlier are re-derived from the image on every
+    # run, so they are scanned as candidates again rather than taken as known.
     generated = parse_config_functions(DISCOVERED)
     starts -= set(generated)
     labels = {l for l in labels if not any(s <= l < e for s, e in generated.items() if e is not None)}
@@ -213,7 +226,8 @@ def load_known():
         if insn.kind in ('b', 'bl', 'bc', 'bcl'):
             sites[insn.target].append(a)
 
-    known = Known(sorted(starts), starts, imports, labels, pdata, sorted(pdata), config, sites)
+    known = Known(sorted(starts), starts, imports, labels, pdata, sorted(pdata), config, sites, partition,
+                   len(generated))
     resolve_unsized_config(known)
     return known
 
@@ -286,6 +300,29 @@ def pointer_run(a):
     return lo, hi
 
 
+def address_builds(word_at, start, end, block_starts=frozenset()):
+    """(site, value) for each lis+addi and lis+ori pair in [start, end). A branch target, a branch
+    or call, or a write to the register ends the pair."""
+    builds, high = [], {}
+    for a in range(start, end, 4):
+        if a in block_starts:
+            high.clear()
+        w = word_at(a)
+        op, rd, ra = w >> 26, (w >> 21) & 31, (w >> 16) & 31
+        if op == 15 and ra == 0:
+            high[rd] = (w & 0xFFFF) << 16
+            continue
+        if op == 14 and ra and ra in high:
+            builds.append((a, (high[ra] + sext(w & 0xFFFF, 16)) & 0xFFFFFFFF))
+        elif op == 24 and rd in high:
+            builds.append((a, high[rd] | (w & 0xFFFF)))
+        if op in (16, 18, 19):
+            high.clear()
+        for r in (rd, ra):
+            high.pop(r, None)
+    return builds
+
+
 def collect_refs(known, eh_words):
     refs = defaultdict(list)
     for lo, hi, section in ((RDATA[0], RDATA[1], '.rdata'), (DATA[0], DATA[1], '.data')):
@@ -306,22 +343,12 @@ def collect_refs(known, eh_words):
                     kind = 'dataptr'
             refs[t].append(Ref(a, kind, section))
 
-    lis = [None] * 32
-    for a in range(CODE[0], CODE[1], 4):
-        w = u32(a)
-        op, rd, ra = w >> 26, (w >> 21) & 31, (w >> 16) & 31
-        if op == 15 and ra == 0:
-            lis[rd] = (w & 0xFFFF) << 16
-            continue
-        if op in (14, 24) and lis[ra] is not None:
-            lo = w & 0xFFFF
-            t = (lis[ra] + sext(lo, 16)) & 0xFFFFFFFF if op == 14 else lis[ra] | lo
-            if in_code(t):
-                refs[t].append(Ref(a, 'lisaddi', '.text'))
-            elif RDATA[0] <= t < RDATA[1] or DATA[0] <= t < DATA[1]:
-                table_sites[t].append(a)
-        if is_terminator_word(a):
-            lis = [None] * 32
+    block_starts = set(known.branch_sites) | known.start_set
+    for a, t in address_builds(u32, CODE[0], CODE[1], block_starts):
+        if in_code(t):
+            refs[t].append(Ref(a, 'lisaddi', '.text'))
+        elif RDATA[0] <= t < RDATA[1] or DATA[0] <= t < DATA[1]:
+            table_sites[t].append(a)
     return refs
 
 
@@ -339,8 +366,12 @@ def switch_dispatch_follows(site):
     return False
 
 
+def dispatches_through_bctr(lo, hi):
+    return any(decode(a).kind == 'bctr' for a in range(lo, hi, 4))
+
+
 def jump_table_site(t, refs, known):
-    """Site in the preceding registered function that uses the referencing table as a switch table."""
+    """Site in the preceding registered function that builds the address of a switch table."""
     i = bisect.bisect_left(known.starts, t) - 1
     prev = known.starts[i] if i >= 0 else 0
     for r in refs:
@@ -349,7 +380,7 @@ def jump_table_site(t, refs, known):
         lo, hi = pointer_run(r.site)
         for table in range(lo, hi + 4, 4):
             for site in table_sites.get(table, ()):
-                if prev <= site < t and switch_dispatch_follows(site):
+                if prev <= site < t and (switch_dispatch_follows(site) or dispatches_through_bctr(prev, t)):
                     return site
     return 0
 
@@ -433,6 +464,9 @@ def walk(start, bound, known, extra_starts=frozenset(), own_labels=False):
                 elif not callable_(insn.target):
                     fail(f'bc to unknown {insn.target:08X}')
                     break
+            elif k == 'bcctr':
+                fail('conditional indirect branch')
+                break
             elif k in ('blr', 'bctr'):
                 w.terminators.append(insn)
                 break
@@ -461,6 +495,9 @@ class Candidate:
     final_term: str = ''
     shape: str = ''
     reasons: list = field(default_factory=list)
+    call_closed: bool = False
+    bound: int = 0
+    cfg_reasons: list = field(default_factory=list)
 
 
 def shape_of(w):
@@ -506,6 +543,19 @@ def pdata_extent_containing(t, known):
     return 0
 
 
+def containing_start(t, known):
+    """Start of the registered function whose .pdata extent or walked body contains t, else 0."""
+    begin = pdata_extent_containing(t, known)
+    if begin:
+        return begin
+    i = bisect.bisect_right(known.starts, t) - 1
+    if i < 0 or known.starts[i] in known.pdata:
+        return 0
+    start = known.starts[i]
+    bound = known.starts[i + 1] if i + 1 < len(known.starts) else CODE[1]
+    return start if t in walk(start, bound, known, own_labels=True).visited else 0
+
+
 def next_boundary(t, known, all_candidates):
     i = bisect.bisect_right(known.starts, t)
     bound = known.starts[i] if i < len(known.starts) else CODE[1]
@@ -516,6 +566,12 @@ def next_boundary(t, known, all_candidates):
         if s > t:
             bound = min(bound, s)
     return bound
+
+
+def closed_by_call(prev_insn, prev_kind, prev_end, t):
+    """True when the .pdata function before t ends at t with a direct call as its last word. The
+    compiler emits an epilogue after any call that returns, so that call cannot fall through to t."""
+    return prev_kind == 'pdata' and prev_end == t and prev_insn.kind == 'bl'
 
 
 def classify(t, refs, known, accepted, all_candidates):
@@ -531,15 +587,18 @@ def classify(t, refs, known, accepted, all_candidates):
     c.prev_term = prev_insn.kind
     prev, prev_kind, prev_end = previous_entity(t, known, accepted)
     c.prev = prev
+    c.call_closed = closed_by_call(prev_insn, prev_kind, prev_end, t)
 
     bound = next_boundary(t, known, all_candidates)
+    c.bound = bound
     w = walk(t, bound, known, frozenset(accepted))
+    c.cfg_reasons = list(w.reasons)
     c.end = w.end if w.visited else t + 4
     c.final_term = '/'.join(sorted({x.kind for x in w.terminators})) or '-'
     c.shape = shape_of(w) if w.ok else '-'
 
     hard, soft = [], []
-    if prev_insn.kind not in TERMINATORS:
+    if prev_insn.kind not in TERMINATORS and not c.call_closed:
         hard.append(f'previous word is {prev_insn.kind}')
     inside = pdata_extent_containing(t, known)
     if inside:
@@ -553,13 +612,21 @@ def classify(t, refs, known, accepted, all_candidates):
         hard.extend(w.reasons)
     if not useful:
         hard.append('eh-only' if kinds == {'eh'} else 'no usable reference')
+    elif 'eh' in kinds:
+        hard.append('also referenced from exception metadata')
+    if 'dataptr' in kinds and not kinds & {'vtable', 'lisaddi'}:
+        hard.append('single data pointer only')
 
     if w.ok:
+        gaps = sum(1 for a in range(t, w.end, 4) if a not in w.visited)
+        if gaps:
+            hard.append(f'{gaps} unvisited words in body')
         for a in range(t + 4, c.end, 4):
             outside = [s for s in known.branch_sites.get(a, ()) if not t <= s < c.end]
             if outside:
                 hard.append(f'branch from {outside[0]:08X} enters {a:08X}')
                 break
+        # Unreached words between the walked end and the next boundary.
         tail = []
         a = c.end
         while a < bound and u32(a) != 0:
@@ -594,7 +661,7 @@ def classify(t, refs, known, accepted, all_candidates):
             hard.append(f'overlaps configured {s:08X}')
 
     if hard:
-        c.confidence = 'EH' if 'eh-only' in hard else 'LOW'
+        c.confidence = 'EH' if 'eh' in kinds else 'LOW'
         c.reasons = hard
     elif soft:
         c.confidence = 'MEDIUM'
@@ -611,6 +678,7 @@ def classify(t, refs, known, accepted, all_candidates):
 def write_report(cands, calibration, stats):
     os.makedirs(os.path.dirname(REPORT), exist_ok=True)
     lines = ['# ' + ' '.join(f'{k}={v}' for k, v in stats.items()),
+             '# HIGH includes the discovered entries, which are re-derived on every run',
              '# START END CONFIDENCE REFERENCE REFTYPE PREV PREVTERM FINALTERM SHAPE REASON']
     for c in cands:
         lines.append(f'{c.start:08X} {c.end:08X} {c.confidence} {c.ref:08X} {c.ref_kind} {c.prev:08X} '
@@ -625,43 +693,160 @@ def write_report(cands, calibration, stats):
 
 def write_discovered(cands):
     lines = ['# Generated by tools/find-missing-functions.py --apply-high; do not edit by hand.',
+             '# Indirect-only functions that follow a bctr/b or a call that ends a .pdata function, with no null padding.',
              '[functions]']
     for c in sorted(cands, key=lambda c: c.start):
         lines.append(f'0x{c.start:08X} = {{ end = 0x{c.end:08X} }}  # {c.ref_kind} 0x{c.ref:08X} {c.shape}')
     open(DISCOVERED, 'w', newline='\n').write('\n'.join(lines) + '\n')
 
 
+def hexaddr(a):
+    return f'{a:08X}' if a else 'none'
+
+
+def explain(t, known, refs, cands):
+    print(f'address {t:08X}')
+    if t in known.start_set:
+        print('  registered function start: not a candidate')
+        return
+    if t in known.labels:
+        print('  loc_ label of a registered function: not a candidate')
+        return
+    c = next((x for x in cands if x.start == t), None)
+    if c is None:
+        print('  no code or data reference: not a candidate')
+        return
+    print(f'  classification: {c.confidence}')
+    for r in refs[t]:
+        print(f'  reference: {r.kind} at {r.site:08X} ({r.section}) in function {hexaddr(containing_start(r.site, known))}')
+    print(f'  range: {c.start:08X}-{c.end:08X} shape {c.shape} final {c.final_term} bound {c.bound:08X}')
+    print(f'  predecessor: {c.prev:08X} last word {c.prev_term}; call closes it: {c.call_closed}')
+    print(f'  CFG: {"; ".join(c.cfg_reasons) or "clean"}')
+    inside = pdata_extent_containing(t, known)
+    print(f'  .pdata: {"inside " + hexaddr(inside) if inside else "not inside any extent"}')
+    print(f'  containing registered function: {hexaddr(containing_start(t, known))}')
+    jt = jump_table_site(t, refs[t], known)
+    print(f'  jump table: {"table site " + hexaddr(jt) if jt else "no"}; '
+          f'jump-table reference: {any(r.kind == "jumptable" for r in refs[t])}')
+    print(f'  EH metadata: {any(r.kind == "eh" for r in refs[t])}')
+    print(f'  direct branch sites: {", ".join(f"{s:08X}" for s in known.branch_sites.get(t, [])) or "none"}')
+    print(f'  function-pointer references: {sum(1 for r in refs[t] if r.kind in ("vtable", "dataptr", "lisaddi"))}')
+    print(f'  blocking HIGH: {"; ".join(c.reasons) if c.confidence != "HIGH" else "none"}')
+
+
+def scan(known, refs):
+    configured = set(known.config)
+    targets = sorted(t for t in refs if t not in known.start_set and t not in known.labels and t not in configured)
+    accepted, cands = {}, []
+    for t in targets:
+        c = classify(t, refs[t], known, accepted, targets)
+        cands.append(c)
+        if c.confidence == 'HIGH':
+            accepted[t] = c.end
+    return targets, cands
+
+
 def verify():
+    known = load_known()
+    eh_words = eh_table_words(known)
+    refs = collect_refs(known, eh_words)
+    _, cands = scan(known, refs)
+    by_start = {c.start: c for c in cands}
     entries = parse_config_functions(DISCOVERED)
-    register = open(REGISTER).read()
-    registered = defaultdict(int)
-    for m in re.finditer(r'SetFunction\(0x([0-9A-F]{8}),', register):
-        registered[int(m.group(1), 16)] += 1
-    defined = defaultdict(int)
-    for f in os.listdir(GEN):
-        if '_recomp.' in f and f.endswith('.cpp'):
-            for m in re.finditer(r'^DEFINE_REX_FUNC\(sub_([0-9A-F]{8})\)', open(os.path.join(GEN, f)).read(), re.M):
-                defined[int(m.group(1), 16)] += 1
+    register = open(register_path()).read()
+    prefix = os.path.basename(register_path())[:-len('_register.cpp')]
+    names, registered = {}, defaultdict(int)
+    for m in re.finditer(r'SetFunction\(0x([0-9A-F]{8}), (\w+)\);', register):
+        a = int(m.group(1), 16)
+        registered[a] += 1
+        names[a] = m.group(2)
+    duplicates = sum(1 for n in registered.values() if n != 1)
     starts = sorted(registered)
+    defined = defaultdict(list)
+    for f in sorted(os.listdir(GEN)):
+        if '_recomp.' in f and f.endswith('.cpp'):
+            for m in re.finditer(r'^DEFINE_REX_FUNC\((\w+)\)', open(os.path.join(GEN, f)).read(), re.M):
+                defined[m.group(1)].append(f)
+    mismatches = [a for a, index in known.partition.items()
+                  if defined[names[a]] != [f'{prefix}_recomp.{index}.cpp']]
+    for a in mismatches[:5]:
+        print(f'PARTITION 0x{a:08X}: {names[a]} index {known.partition[a]}, defined in {defined[names[a]]}')
     failures = 0
     for s, e in sorted(entries.items()):
         problems = []
+        name = f'sub_{s:08X}'
+        kinds = {r.kind for r in refs.get(s, [])}
         if registered[s] != 1:
             problems.append(f'registered {registered[s]} times')
-        if defined[s] != 1 and not (s in starts and registered[s] and f'{s:08X}' in register):
-            problems.append(f'defined {defined[s]} times')
+        if names.get(s) != name:
+            problems.append(f'registered as {names.get(s)}')
+        if defined[name] != [f'{prefix}_recomp.{known.partition.get(s)}.cpp']:
+            problems.append(f'defined in {defined[name]}, partition {known.partition.get(s)}')
         i = bisect.bisect_right(starts, s)
-        if e is not None and i < len(starts) and starts[i] < e:
+        if i < len(starts) and starts[i] < e:
             problems.append(f'function {starts[i]:08X} starts inside')
+        if not in_code(s) or s in known.imports:
+            problems.append('not guest code or an import thunk')
+        if s in eh_words or 'eh' in kinds:
+            problems.append('exception metadata')
+        if 'jumptable' in kinds or jump_table_site(s, refs.get(s, []), known):
+            problems.append('jump table entry')
+        if pdata_extent_containing(s, known):
+            problems.append('inside .pdata extent')
+        c = by_start.get(s)
+        if c is None:
+            problems.append('no longer referenced by code or data')
+        elif c.confidence != 'HIGH':
+            problems.append(f're-scan is {c.confidence}: {"; ".join(c.reasons)}')
+        elif c.end != e:
+            problems.append(f're-scan end {c.end:08X} differs from configured end')
         if problems:
             failures += 1
-            print(f'FAIL 0x{s:08X}-0x{(e or 0):08X}: {"; ".join(problems)}')
-    print(f'verify: {len(entries)} entries, {failures} failures, {len(registered)} registered functions')
-    return failures == 0
+            print(f'FAIL 0x{s:08X}-0x{e:08X}: {"; ".join(problems)}')
+    print(f'verify: {len(entries)} entries, {failures} failures, {len(registered)} registered functions, '
+          f'{duplicates} duplicate registrations, {len(mismatches)} partition mismatches')
+    return failures == 0 and duplicates == 0 and not mismatches
+
+
+def self_test():
+    global IMG
+    checks = []
+    for word, kind in ((0x4E800020, 'blr'), (0x4E800420, 'bctr'), (0x4E800421, 'bctrl'), (0x48000000, 'b'),
+                       (0x48000001, 'bl'), (0x40820008, 'bc'), (0x7D6903A6, 'other')):
+        IMG = struct.pack('>I', word)
+        checks.append((f'decode {word:08X}', decode(BASE).kind == kind))
+
+    def builds(*words, block=frozenset()):
+        return address_builds(lambda a: words[(a - 0x1000) // 4], 0x1000, 0x1000 + 4 * len(words), block)
+
+    lis_r11, addi_r5 = 0x3D60820D, 0x38ABEF18
+    checks += [
+        ('lis+addi', builds(lis_r11, addi_r5) == [(0x1004, 0x820CEF18)]),
+        ('ori takes rs', builds(0x3C801234, 0x60835678) == [(0x1004, 0x12345678)]),
+        ('load ends pair', builds(lis_r11, 0x81630000, addi_r5) == []),
+        ('branch ends pair', builds(lis_r11, 0x40820008, addi_r5) == []),
+        ('call ends pair', builds(lis_r11, 0x48000001, addi_r5) == []),
+        ('block start ends pair', builds(lis_r11, addi_r5, block={0x1004}) == []),
+        ('li is not a pair', builds(0x38600010) == []),
+    ]
+    bl = Insn(0x1000, 0x48000001, 'bl', 0x2000)
+    checks += [
+        ('call closes pdata function', closed_by_call(bl, 'pdata', 0x1004, 0x1004)),
+        ('call before a gap does not close', not closed_by_call(bl, 'pdata', 0x1008, 0x1004)),
+        ('call without pdata does not close', not closed_by_call(bl, 'known', 0x1004, 0x1004)),
+        ('blr does not close', not closed_by_call(Insn(0x1000, 0x4E800020, 'blr'), 'pdata', 0x1004, 0x1004)),
+    ]
+    failed = [name for name, passed in checks if not passed]
+    for name in failed:
+        print(f'self-test FAIL: {name}')
+    print(f'self-test: {len(checks)} checks, {len(failed)} failures')
+    return not failed
 
 
 def main(argv):
     global IMG
+    if '--self-test' in argv:
+        return 0 if self_test() else 1
     apply_high = '--apply-high' in argv
     IMG = open(IMAGE_PATH, 'rb').read()
     if len(IMG) != IMAGE_SIZE:
@@ -672,18 +857,9 @@ def main(argv):
         return 0 if verify() else 1
 
     known = load_known()
-    eh_words = eh_table_words(known)
-    refs = collect_refs(known, eh_words)
-
-    configured = set(known.config)
-    targets = sorted(t for t in refs if t not in known.start_set and t not in known.labels and t not in configured)
-    accepted = {}
-    cands = []
-    for t in targets:
-        c = classify(t, refs[t], known, accepted, targets)
-        cands.append(c)
-        if c.confidence == 'HIGH':
-            accepted[t] = c.end
+    refs = collect_refs(known, eh_table_words(known))
+    targets, cands = scan(known, refs)
+    disc = parse_config_functions(DISCOVERED)
 
     calibration = []
     saved_config, saved_labels = dict(known.config), set(known.labels)
@@ -698,11 +874,24 @@ def main(argv):
     for c in cands:
         counts[c.confidence] += 1
     stats = {'references': sum(len(v) for v in refs.values()), 'targets': len(refs),
-             'unregistered': len(targets), 'HIGH': counts['HIGH'], 'MEDIUM': counts['MEDIUM'],
-             'LOW': counts['LOW'], 'EH': counts['EH'], 'configured': len(saved_config)}
+             'registered': len(known.start_set) + known.discovered, 'discovered': known.discovered,
+             'unregistered': sum(1 for t in targets if t not in disc),
+             'HIGH': counts['HIGH'], 'MEDIUM': counts['MEDIUM'], 'LOW': counts['LOW'], 'EH': counts['EH'],
+             'jump-table': sum(1 for c in cands if any('switch table' in r or 'jump table' in r for r in c.reasons)),
+             'inside-function': sum(1 for c in cands if any('walked body' in r or 'reaches label' in r for r in c.reasons)),
+             'pdata-rejected': sum(1 for c in cands if any('.pdata extent' in r for r in c.reasons)),
+             'prev-bl-rejected': sum(1 for c in cands if 'previous word is bl' in c.reasons),
+             'call-closed': sum(1 for c in cands if c.call_closed),
+             'newly-promoted': sum(1 for c in cands if c.call_closed and c.confidence == 'HIGH'),
+             'import-thunk': sum(1 for t in refs if t in known.imports), 'overrides': len(saved_config)}
     write_report(cands, calibration, stats)
     print(' '.join(f'{k}={v}' for k, v in stats.items()))
     print(f'report: {REPORT}')
+    if '--runtime-address' in argv:
+        i = argv.index('--runtime-address')
+        if i + 1 >= len(argv):
+            sys.exit('--runtime-address needs an address')
+        explain(int(argv[i + 1], 16), known, refs, cands)
 
     high = [c for c in cands if c.confidence == 'HIGH']
     confirmed = [c for c, configured_end in calibration if c.confidence == 'HIGH' and c.end == configured_end]

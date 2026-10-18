@@ -11,7 +11,7 @@
   tools\rexglue\win-amd64\rexruntime-patch.txt, which build.ps1 and package-release.ps1 check.
   tools\build.ps1 runs this script by itself when that check fails, so it is only needed by hand for the options
   below. Run tools\codegen.ps1 first so the SDK is in tools\rexglue.
-  See docs\rexglue-runtime-patch.md. Nothing is committed, tagged or published.
+  Nothing is committed, tagged or published.
 
 .EXAMPLE
   .\tools\build-patched-rexruntime.ps1                  # build and install the patched runtime and GPU plugin
