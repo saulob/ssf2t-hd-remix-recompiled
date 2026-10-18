@@ -1,15 +1,5 @@
 # First boot
 
-## Status
-
-| # | Milestone | Status |
-|---|---|---|
-| 1 | Package identified and documented | Done: [game-info.md](game-info.md) |
-| 2 | ReXGlue codegen completes | Done (exit 0) |
-| 3 | Native build succeeds, no warnings | Done: `build\ssf2t_hd_remix.exe` |
-| 4 | Guest entry reached | Reached in the first manual test |
-| 5 | Runtime init past the first unregistered call | Pending the second manual test |
-
 ## Build and codegen
 
     powershell -NoProfile -ExecutionPolicy Bypass -File tools\build.ps1
@@ -42,21 +32,11 @@ It scans the decrypted image (`game\analysis\default.image.bin`) for code addres
 
 ## Assets
 
-The package's file table lists 27 files. The complete content lives in `game:\flog_x360.fpg`, which the executable opens by name. The runtime's loose-path probes (`game:\particles\…`, `game:\textures\…`, `game:\fonts\…`) fail as expected. The archive's internal index format is not yet identified, so the asset archive reader is the next open item.
-
-## Second manual test (you run this)
-
-    .\build\ssf2t_hd_remix.exe --game_data_root="S:\VisualStudio\repos\ssf2t-hd-remix-recompiled\game\extracted" --user_data_root="S:\VisualStudio\repos\ssf2t-hd-remix-recompiled\build\user_data" --log_file="S:\VisualStudio\repos\ssf2t-hd-remix-recompiled\build\logs\ssf2t_second_boot.log"
-
-1. The launcher opens. Press Play.
-2. Wait about 30 seconds, then close the window.
-3. Send `build\logs\ssf2t_second_boot.log`.
-
-Expect the 0x839CDE90 call to proceed. The next failure (if any) is either a new unregistered address or an asset error.
+The package's file table lists 27 files. The complete content lives in `game:\flog_x360.fpg`, which the executable opens by name. The runtime's loose-path probes (`game:\particles\...`, `game:\textures\...`, `game:\fonts\...`) fail as expected and are logged once each.
 
 ## Open items
 
-- FPG asset archive reader: identify the `flog_x360.fpg` index and map `game:\…` paths to it.
 - Guest resolution is assumed 1280x720; confirm from `VdSetDisplayMode`.
 - Not ported: cheats, skip intro, Live services. Saves, profile and achievements: [save-and-achievements.md](save-and-achievements.md).
-- `third_party\trg-launcher` is a copy, not a git submodule.
+- `third_party	rg-launcher` is a copy of TRG Launcher 1.1.0 (revision b384a28), not a git submodule.
+- Release packaging: [release.md](release.md).

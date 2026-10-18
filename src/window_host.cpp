@@ -47,16 +47,16 @@ uint64_t g_total_frames = 0;
 GuestFrameStats g_stats;
 
 std::optional<std::string> ShownRenderResolution() {
-  if (!REXCVAR_GET(hcu_show_render_resolution)) {
+  if (!REXCVAR_GET(ssf2t_show_render_resolution)) {
     return std::nullopt;
   }
   const int scale = std::max(1, std::atoi(rex::cvar::GetFlagByName("resolution_scale").c_str()));
-  return ssf2t::RenderResolutionText(scale, ssf2t::ParseAspectRatio(rex::cvar::GetFlagByName("hcu_aspect_ratio")));
+  return ssf2t::RenderResolutionText(scale, ssf2t::ParseAspectRatio(rex::cvar::GetFlagByName("ssf2t_aspect_ratio")));
 }
 
 // Composes all title parts together, so one update never drops another.
 void RefreshTitle() {
-  const std::optional<double> fps = REXCVAR_GET(hcu_show_fps) ? g_title_fps : std::nullopt;
+  const std::optional<double> fps = REXCVAR_GET(ssf2t_show_fps) ? g_title_fps : std::nullopt;
   std::string title = ssf2t::WindowTitleText(ShownRenderResolution(), fps);
   if (title != g_shown_title) {
     g_shown_title = title;

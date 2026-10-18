@@ -6,7 +6,7 @@ index 2cf24c4..0f12f19 100644
  REXCVAR_DECLARE(int32_t, resolution_scale);
  REXCVAR_DECLARE(int32_t, draw_resolution_scale_x);
  REXCVAR_DECLARE(int32_t, draw_resolution_scale_y);
-+REXCVAR_DECLARE(int32_t, hcu_internal_render_scale);
++REXCVAR_DECLARE(int32_t, ssf2t_internal_render_scale);
  REXCVAR_DECLARE(bool, resolve_resolution_scale_fill_half_pixel_offset);
  REXCVAR_DECLARE(bool, draw_resolution_scaled_texture_offsets);
  REXCVAR_DECLARE(std::string, readback_resolve);
@@ -369,7 +369,7 @@ index fa451ca..6e79652 100644
      .range(1, 8)
      .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
  
-+REXCVAR_DEFINE_INT32(hcu_internal_render_scale, 100, "GPU",
++REXCVAR_DEFINE_INT32(ssf2t_internal_render_scale, 100, "GPU",
 +                     "Percent of the draw resolution the host render targets are drawn at "
 +                     "(100, 75 or 50)")
 +    .range(50, 100)
@@ -385,7 +385,7 @@ index fa451ca..6e79652 100644
 +void TextureCache::GetConfigInternalRenderScale(uint32_t& scale_x_inout, uint32_t& scale_y_inout,
 +                                                uint32_t& host_quarters_x_out,
 +                                                uint32_t& host_quarters_y_out) {
-+  int32_t percent = REXCVAR_GET(hcu_internal_render_scale);
++  int32_t percent = REXCVAR_GET(ssf2t_internal_render_scale);
 +  uint32_t quarters_per_scale = percent == 75 ? 3 : (percent == 50 ? 2 : 4);
 +  host_quarters_x_out = scale_x_inout * quarters_per_scale;
 +  host_quarters_y_out = scale_y_inout * quarters_per_scale;

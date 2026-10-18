@@ -39,7 +39,7 @@ void TestPresentationSegments() {
 
 void TestLanguageTable() {
   CHECK(std::size(kGameLanguages) == 5);
-  CHECK(std::string_view(kLanguageSetting) == "hcu_language");
+  CHECK(std::string_view(kLanguageSetting) == "ssf2t_language");
   CHECK(std::string_view(kGameLanguages[0].key) == kDefaultLanguage);
   std::set<std::string_view> keys;
   std::set<uint32_t> xconfig;

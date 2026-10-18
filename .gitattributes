@@ -1,3 +1,12 @@
 # rexglue codegen rewrites the manifest with LF endings on every run.
 ssf2t_hd_remix_manifest.toml text eol=lf
 *.sh text eol=lf
+
+# The runtime patches are applied with git apply, and their hashes are part of the runtime fingerprint.
+patches/rexglue-sdk/* text eol=lf
+
+# Files that go into the release package byte for byte.
+LICENSE text eol=lf
+config/ssf2t_hd_remix.toml text eol=lf
+packaging/README.txt text eol=lf
+packaging/licenses/* text eol=lf

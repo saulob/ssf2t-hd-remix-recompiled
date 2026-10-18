@@ -24,55 +24,55 @@
 
 #include "platform.h"
 
-REXCVAR_DEFINE_BOOL(hcu_launcher, true, "SSF2T",
+REXCVAR_DEFINE_BOOL(ssf2t_launcher, true, "SSF2T",
                     "Show the launcher before the game starts (hold Shift at start to force it)");
-REXCVAR_DEFINE_BOOL(hcu_skip_launcher, false, "SSF2T",
+REXCVAR_DEFINE_BOOL(ssf2t_skip_launcher, false, "SSF2T",
                     "Skip the launcher once (set when the launcher restarts the game)");
-REXCVAR_DEFINE_BOOL(hcu_show_fps, true, "SSF2T", "Show the frame rate in the window title");
-REXCVAR_DEFINE_BOOL(hcu_show_render_resolution, false, "SSF2T",
+REXCVAR_DEFINE_BOOL(ssf2t_show_fps, true, "SSF2T", "Show the frame rate in the window title");
+REXCVAR_DEFINE_BOOL(ssf2t_show_render_resolution, false, "SSF2T",
                     "Show the render resolution in the window title");
-REXCVAR_DEFINE_BOOL(hcu_show_frame_counter, false, "SSF2T",
+REXCVAR_DEFINE_BOOL(ssf2t_show_frame_counter, false, "SSF2T",
                     "Show the frame counter in the corner (F2 toggles it)");
-REXCVAR_DEFINE_BOOL(hcu_msaa_compatibility, false, "SSF2T",
+REXCVAR_DEFINE_BOOL(ssf2t_msaa_compatibility, false, "SSF2T",
                     "Draw the game's 2x MSAA render targets with 4x MSAA, for GPUs or drivers whose "
                     "native 2x MSAA misrenders (sets native_2x_msaa)");
-REXCVAR_DEFINE_STRING(hcu_aspect_ratio, "16:9", "SSF2T",
+REXCVAR_DEFINE_STRING(ssf2t_aspect_ratio, "16:9", "SSF2T",
                       "Aspect ratio chosen in the launcher: 16:9, 16:10, 21:9, 32:9, 4:3 or 5:4");
-REXCVAR_DEFINE_STRING(hcu_graphics_adapter, "auto", "SSF2T",
+REXCVAR_DEFINE_STRING(ssf2t_graphics_adapter, "auto", "SSF2T",
                       "Graphics card: auto, or the index d3d12_adapter takes (applied at start)");
-REXCVAR_DEFINE_STRING(hcu_language, "en-US", "SSF2T",
+REXCVAR_DEFINE_STRING(ssf2t_language, "en-US", "SSF2T",
                       "Game language: en-US, fr-FR, de-DE, it-IT or es-ES (sets user_language at start)");
-REXCVAR_DEFINE_INT32(hcu_launcher_x, 0, "SSF2T", "Launcher window left edge, written by the launcher");
-REXCVAR_DEFINE_INT32(hcu_launcher_y, 0, "SSF2T", "Launcher window top edge, written by the launcher");
-REXCVAR_DEFINE_INT32(hcu_launcher_width, 0, "SSF2T", "Launcher window restored width, written by the launcher");
-REXCVAR_DEFINE_INT32(hcu_launcher_height, 0, "SSF2T",
+REXCVAR_DEFINE_INT32(ssf2t_launcher_x, 0, "SSF2T", "Launcher window left edge, written by the launcher");
+REXCVAR_DEFINE_INT32(ssf2t_launcher_y, 0, "SSF2T", "Launcher window top edge, written by the launcher");
+REXCVAR_DEFINE_INT32(ssf2t_launcher_width, 0, "SSF2T", "Launcher window restored width, written by the launcher");
+REXCVAR_DEFINE_INT32(ssf2t_launcher_height, 0, "SSF2T",
                      "Launcher window restored height, written by the launcher");
-REXCVAR_DEFINE_BOOL(hcu_launcher_maximized, false, "SSF2T", "Launcher window was maximized when closed");
-REXCVAR_DEFINE_BOOL(hcu_launcher_fullscreen, false, "SSF2T",
+REXCVAR_DEFINE_BOOL(ssf2t_launcher_maximized, false, "SSF2T", "Launcher window was maximized when closed");
+REXCVAR_DEFINE_BOOL(ssf2t_launcher_fullscreen, false, "SSF2T",
                     "Launcher was left in its own F11 fullscreen, written by the launcher");
 
 namespace ssf2t {
 namespace {
 
 const std::vector<std::string> kGameSettingKeys = {
-    "hcu_launcher",
+    "ssf2t_launcher",
     "fullscreen",
     "window_width",
     "window_height",
     "monitor",
     kTearingSetting,
-    "hcu_graphics_adapter",
-    "hcu_aspect_ratio",
+    "ssf2t_graphics_adapter",
+    "ssf2t_aspect_ratio",
     kLetterboxSetting,
     "resolution_scale",
-    "hcu_internal_render_scale",
+    "ssf2t_internal_render_scale",
     "swap_post_effect",
-    "hcu_msaa_compatibility",
+    "ssf2t_msaa_compatibility",
     "anisotropic_override",
     kLanguageSetting,
-    "hcu_show_fps",
-    "hcu_show_render_resolution",
-    "hcu_show_frame_counter",
+    "ssf2t_show_fps",
+    "ssf2t_show_render_resolution",
+    "ssf2t_show_frame_counter",
     "mnk_mode",
 };
 
@@ -81,7 +81,7 @@ const std::vector<std::string> kWindowKeys = {
     "window_height",
     "monitor",
     kTearingSetting,
-    "hcu_graphics_adapter",
+    "ssf2t_graphics_adapter",
 };
 
 bool IsWindowKey(std::string_view key) {
@@ -158,7 +158,7 @@ WindowPlacement SavedLauncherPlacement() {
 }
 
 bool SavedLauncherFullscreen() {
-  return REXCVAR_GET(hcu_launcher_fullscreen);
+  return REXCVAR_GET(ssf2t_launcher_fullscreen);
 }
 
 void GameSettings::Capture(const std::filesystem::path& player_file, const std::filesystem::path& shipped_config) {
@@ -267,7 +267,7 @@ void GameSettings::Apply() const {
 }
 
 void ApplyLanguage() {
-  const GameLanguage& language = LanguageFor(REXCVAR_GET(hcu_language));
+  const GameLanguage& language = LanguageFor(REXCVAR_GET(ssf2t_language));
   rex::cvar::SetFlagByName("user_language", std::to_string(language.xconfig_language));
   REXLOG_INFO("Language: {} (user_language {})", language.label, language.xconfig_language);
 }
@@ -275,13 +275,13 @@ void ApplyLanguage() {
 // Also replaces a native_2x_msaa = false written by launchers that labelled it Off.
 void ApplyMultisampling() {
   rex::cvar::SetFlagByName("native_2x_msaa",
-                           Native2xMsaaFor(REXCVAR_GET(hcu_msaa_compatibility)) ? "true" : "false");
+                           Native2xMsaaFor(REXCVAR_GET(ssf2t_msaa_compatibility)) ? "true" : "false");
 }
 
 void ApplyInternalRenderPath() {
 #if defined(_WIN32)
   const std::optional<std::string_view> path = RequiredRenderTargetPath(
-      std::atoi(rex::cvar::GetFlagByName("hcu_internal_render_scale").c_str()),
+      std::atoi(rex::cvar::GetFlagByName("ssf2t_internal_render_scale").c_str()),
       rex::cvar::GetFlagByName("render_target_path_d3d12"));
   if (path && rex::cvar::SetFlagByName("render_target_path_d3d12", *path)) {
     REXLOG_INFO("Internal render resolution: using D3D12 host render targets");
@@ -291,7 +291,7 @@ void ApplyInternalRenderPath() {
 
 void ApplyGraphicsAdapter() {
 #if defined(_WIN32)
-  const std::string setting = REXCVAR_GET(hcu_graphics_adapter);
+  const std::string setting = REXCVAR_GET(ssf2t_graphics_adapter);
   if (!ParseGraphicsAdapter(setting)) {
     REXLOG_INFO("Graphics card: Automatic");
     return;

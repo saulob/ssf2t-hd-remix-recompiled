@@ -5,7 +5,7 @@
 
 namespace ssf2t {
 
-inline constexpr char kLanguageSetting[] = "hcu_language";
+inline constexpr char kLanguageSetting[] = "ssf2t_language";
 inline constexpr char kDefaultLanguage[] = "en-US";
 inline constexpr char kLanguageLabel[] = "Language";
 inline constexpr char kLanguageHelp[] =

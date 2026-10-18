@@ -3,7 +3,6 @@
 #include <utility>
 
 #include <rex/hook.h>
-#include <rex/logging.h>
 
 namespace {
 
@@ -27,7 +26,6 @@ REX_HOOK_RAW(sub_839C3D20) {
     __imp__sub_839C3D20(ctx, base);
     return;
   }
-  REXLOG_INFO("DEBUG_SAULO: game Achievements menu item opens the overlay");
   g_open();
   ctx.r3.u64 = 0;
 }

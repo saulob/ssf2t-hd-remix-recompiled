@@ -9,12 +9,12 @@
 
 namespace ssf2t {
 
-inline constexpr char kLauncherXKey[] = "hcu_launcher_x";
-inline constexpr char kLauncherYKey[] = "hcu_launcher_y";
-inline constexpr char kLauncherWidthKey[] = "hcu_launcher_width";
-inline constexpr char kLauncherHeightKey[] = "hcu_launcher_height";
-inline constexpr char kLauncherMaximizedKey[] = "hcu_launcher_maximized";
-inline constexpr char kLauncherFullscreenKey[] = "hcu_launcher_fullscreen";
+inline constexpr char kLauncherXKey[] = "ssf2t_launcher_x";
+inline constexpr char kLauncherYKey[] = "ssf2t_launcher_y";
+inline constexpr char kLauncherWidthKey[] = "ssf2t_launcher_width";
+inline constexpr char kLauncherHeightKey[] = "ssf2t_launcher_height";
+inline constexpr char kLauncherMaximizedKey[] = "ssf2t_launcher_maximized";
+inline constexpr char kLauncherFullscreenKey[] = "ssf2t_launcher_fullscreen";
 
 using SettingValues = std::map<std::string, std::string, std::less<>>;
 

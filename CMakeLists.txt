@@ -62,7 +62,8 @@ set(SSF2T_SOURCES
 if(WIN32)
     # Resource 1 is the first icon in the executable: Explorer, and SDL's window class, use it.
     enable_language(RC)
-    set(SSF2T_APP_RC "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/ssf2t_hd_remix.rc")
+    set(SSF2T_APP_RC "${CMAKE_CURRENT_BINARY_DIR}/ssf2t_hd_remix.rc")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/ssf2t_hd_remix.rc.in" "${SSF2T_APP_RC}" @ONLY)
     set_source_files_properties("${SSF2T_APP_RC}" PROPERTIES
         OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons/app-icon.ico")
     list(APPEND SSF2T_SOURCES "${SSF2T_APP_RC}")

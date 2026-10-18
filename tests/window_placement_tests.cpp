@@ -58,11 +58,11 @@ void TestValues() {
   std::printf("stored values\n");
   const FakeSettings settings = Stored({kNormal, true});
   CHECK(settings.values.size() == 5);
-  CHECK(settings.values.at("hcu_launcher_x") == "200");
-  CHECK(settings.values.at("hcu_launcher_y") == "100");
-  CHECK(settings.values.at("hcu_launcher_width") == "1280");
-  CHECK(settings.values.at("hcu_launcher_height") == "720");
-  CHECK(settings.values.at("hcu_launcher_maximized") == "true");
+  CHECK(settings.values.at("ssf2t_launcher_x") == "200");
+  CHECK(settings.values.at("ssf2t_launcher_y") == "100");
+  CHECK(settings.values.at("ssf2t_launcher_width") == "1280");
+  CHECK(settings.values.at("ssf2t_launcher_height") == "720");
+  CHECK(settings.values.at("ssf2t_launcher_maximized") == "true");
   const WindowPlacement read = ReadPlacement(settings);
   CHECK(read.normal == kNormal && read.maximized);
   CHECK(!PlacementIsSet(ReadPlacement(FakeSettings{})));
@@ -72,10 +72,10 @@ void TestValues() {
   CHECK(round_trip.normal == left && !round_trip.maximized);
 
   FakeSettings corrupt;
-  corrupt.values = {{"hcu_launcher_x", "10"},
-                    {"hcu_launcher_y", "10"},
-                    {"hcu_launcher_width", "-5"},
-                    {"hcu_launcher_height", "0"}};
+  corrupt.values = {{"ssf2t_launcher_x", "10"},
+                    {"ssf2t_launcher_y", "10"},
+                    {"ssf2t_launcher_width", "-5"},
+                    {"ssf2t_launcher_height", "0"}};
   CHECK(!PlacementIsSet(ReadPlacement(corrupt)));
 }
 
@@ -237,7 +237,7 @@ void TestLauncherFullscreenIsSessionOnly() {
 void TestGameSettingsStayApart() {
   std::printf("game settings\n");
   for (const auto& [key, value] : PlacementValues({kNormal, true})) {
-    CHECK(key.starts_with("hcu_launcher_"));
+    CHECK(key.starts_with("ssf2t_launcher_"));
     CHECK(key != "fullscreen" && key != "monitor" && key != "window_width" && key != "window_height");
   }
 
@@ -263,7 +263,7 @@ void TestLauncherFullscreenPreference() {
   };
 
   CHECK(!ReadLauncherFullscreen(FakeSettings{}));
-  CHECK(LauncherFullscreenValues(true).begin()->first == "hcu_launcher_fullscreen");
+  CHECK(LauncherFullscreenValues(true).begin()->first == "ssf2t_launcher_fullscreen");
 
   // Normal and maximized, closed without F11: the next start is not fullscreen.
   CHECK(!ReadLauncherFullscreen(stored({kNormal, false}, false)));
@@ -298,7 +298,7 @@ void TestLauncherFullscreenPreference() {
 
   // Game settings never reach the launcher key, and the launcher key is not a game key.
   for (const auto& [key, value] : LauncherFullscreenValues(true)) {
-    CHECK(key.starts_with("hcu_launcher_"));
+    CHECK(key.starts_with("ssf2t_launcher_"));
     CHECK(key != "fullscreen" && key != "monitor" && key != "window_width" && key != "window_height");
   }
   FakeSettings game;

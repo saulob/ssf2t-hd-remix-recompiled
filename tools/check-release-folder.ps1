@@ -12,15 +12,14 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path $PSScriptRoot -Parent
-$RequiredFiles = @('ssf2t_hd_remix.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'ssf2t_hd_remix.toml')
-$OptionalFiles = @('README.txt', 'LICENSE')
+$RequiredFiles = @('ssf2t_hd_remix.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'ssf2t_hd_remix.toml', 'README.txt', 'LICENSE')
 $LicenseFiles = @('ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt')
 # Names that mean game data, a package, saves, settings, caches or logs.
 $ForbiddenNames = @('default.xex', 'game', 'game-install-temp', 'game-install-backup', 'user_data', 'user_data.migrating',
     'content', 'cache', 'logs', 'settings.toml', 'settings.toml.bak', 'flog_x360.fpg', '584108A4', 'renderdoc', 'renderdoc.dll',
     'vulkan-1.dll')
 $ForbiddenPatterns = @('*.xex', '*.fpg', '*.log', '*.dmp', '*.pdb', '*.xsh', '*.xpso', '*.bak', '*.tmp', '*.sav', 'VkLayer_*', 'renderdoc*',
-    'TracyClient*')
+    'TracyClient*', '*.pyc', '*.obj', '*.lib', '*.ilk', '*.orig', '*.rej', '*.rdc', 'Thumbs.db', 'desktop.ini', '.git*')
 $PackageMagic = @('LIVE', 'PIRS', 'CON ', 'XEX2')
 $Markers = @('DEBUG_SAULO')
 
@@ -34,6 +33,13 @@ function Get-Needles([string[]]$Text) {
 # The repository and profile folders in either slash style, as text or UTF-16.
 $LocalPaths = @(Get-Needles @($Root, $Root.Replace('\', '/'), $env:USERPROFILE, $env:USERPROFILE.Replace('\', '/')) | Where-Object { $_ })
 $MarkerNeedles = @(Get-Needles $Markers)
+# Any user profile folder or Visual Studio repository folder; matched against the file text with the NUL bytes
+# removed, so UTF-16 text is found too.
+$LocalPathRegexes = @(
+    '[A-Za-z]:[\\/]Users[\\/][^\\/\x00-\x1f"<>|*?]+',
+    '[\\/]VisualStudio[\\/]repos[\\/]',
+    '[A-Za-z]:[\\/]msys64'
+) | ForEach-Object { [regex]::new($_, 'IgnoreCase') }
 
 function Test-ReleaseFolder([string]$Dir) {
     $problems = New-Object System.Collections.Generic.List[string]
@@ -55,6 +61,10 @@ function Test-ReleaseFolder([string]$Dir) {
             foreach ($path in $LocalPaths) {
                 if ($text.IndexOf($path, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $problems.Add("local path in file: $relative"); break }
             }
+            $stripped = $text.Replace([string][char]0, '')
+            foreach ($regex in $LocalPathRegexes) {
+                if ($regex.IsMatch($stripped)) { $problems.Add("user or repository path in file: $relative"); break }
+            }
             foreach ($marker in $MarkerNeedles) {
                 if ($text.IndexOf($marker, [StringComparison]::Ordinal) -ge 0) { $problems.Add("debug marker in file: $relative"); break }
             }
@@ -62,13 +72,16 @@ function Test-ReleaseFolder([string]$Dir) {
         $parts = $relative -split '\\'
         if ($parts.Count -eq 1) {
             if ($item.PSIsContainer) { if ($item.Name -ne 'licenses') { $problems.Add("unexpected folder: $relative") } }
-            elseif (($RequiredFiles + $OptionalFiles) -notcontains $item.Name) { $problems.Add("unexpected file: $relative") }
+            elseif ($RequiredFiles -notcontains $item.Name) { $problems.Add("unexpected file: $relative") }
         } elseif ($parts[0] -ne 'licenses' -or $parts.Count -gt 2 -or $item.PSIsContainer -or $LicenseFiles -notcontains $item.Name) {
             $problems.Add("unexpected item: $relative")
         }
     }
     foreach ($leaf in $RequiredFiles) {
         if (-not (Test-Path -LiteralPath (Join-Path $base $leaf) -PathType Leaf)) { $problems.Add("missing: $leaf") }
+    }
+    foreach ($leaf in $LicenseFiles) {
+        if (-not (Test-Path -LiteralPath (Join-Path $base "licenses\$leaf") -PathType Leaf)) { $problems.Add("missing: licenses\$leaf") }
     }
     return $problems
 }

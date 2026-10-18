@@ -26,7 +26,7 @@ class FrameCounterOverlay final : public rex::ui::ImGuiDialog {
   // Drawn on the foreground list, so it stays above the cheat menu in the same corner.
   void OnDraw(ImGuiIO& io) override {
     const GuestFrameStats stats = GetGuestFrameStats();
-    if (!FrameCounterVisible(REXCVAR_GET(hcu_show_frame_counter), stats)) {
+    if (!FrameCounterVisible(REXCVAR_GET(ssf2t_show_frame_counter), stats)) {
       return;
     }
     const std::string text = FrameCounterText(stats);
@@ -47,8 +47,8 @@ class FrameCounterOverlay final : public rex::ui::ImGuiDialog {
 
 void CreateFrameCounter(rex::ui::ImGuiDrawer* drawer) {
   new FrameCounterOverlay(drawer);  // retained by the drawer for the session
-  rex::ui::RegisterBind("bind_hcu_frame_counter", "F2", "Toggle frame counter", [] {
-    rex::cvar::SetFlagByName("hcu_show_frame_counter", REXCVAR_GET(hcu_show_frame_counter) ? "false" : "true");
+  rex::ui::RegisterBind("bind_ssf2t_frame_counter", "F2", "Toggle frame counter", [] {
+    rex::cvar::SetFlagByName("ssf2t_show_frame_counter", REXCVAR_GET(ssf2t_show_frame_counter) ? "false" : "true");
   });
 }
 

@@ -416,7 +416,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         }
       }
     }
-    ui.LauncherVisibilityRow("hcu_launcher");
+    ui.LauncherVisibilityRow("ssf2t_launcher");
     ui.EndRows();
   }
 
@@ -504,7 +504,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     MonitorCombo();
     if (ui.Combo("Aspect Ratio",
                  "Sets the game's target rendering format and the Window size choices.",
-                 "hcu_aspect_ratio", "16:9", AspectRatioOptions())) {
+                 "ssf2t_aspect_ratio", "16:9", AspectRatioOptions())) {
       SelectWindowSizeForAspect();
     }
     ui.Row("VSync", "On prevents tearing. Off allows it, for the lowest latency and G-Sync/FreeSync.");
@@ -537,7 +537,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   }
 
   AspectRatio SelectedAspectRatio() const {
-    return ParseAspectRatio(settings_.Get("hcu_aspect_ratio", "16:9"));
+    return ParseAspectRatio(settings_.Get("ssf2t_aspect_ratio", "16:9"));
   }
 
   static bool WindowSizeFits(int width, int height, const MonitorInfo* monitor) {
@@ -636,13 +636,13 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     if (!graphics_adapters_.empty()) {
       std::vector<trg::Option> adapters;
       for (const auto& [value, label] :
-           GraphicsAdapterOptions(graphics_adapters_, settings_.Get("hcu_graphics_adapter", kGraphicsAdapterAuto))) {
+           GraphicsAdapterOptions(graphics_adapters_, settings_.Get("ssf2t_graphics_adapter", kGraphicsAdapterAuto))) {
         adapters.push_back({value, label});
       }
       ui.Combo("Graphics card",
                "Selects which GPU renders the game. Automatic uses the recommended high-performance GPU. "
                "A GPU chosen here overrides automatic selection and restarts the game window.",
-               "hcu_graphics_adapter", kGraphicsAdapterAuto, adapters);
+               "ssf2t_graphics_adapter", kGraphicsAdapterAuto, adapters);
     }
     ui.Combo("Render resolution",
              "Draws the game at a multiple of its own picture, then scales it to the window. Higher is sharper and "
@@ -651,14 +651,14 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     ui.Combo("Internal render resolution",
              "Renders the game internally at a lower resolution, then scales it to the selected render resolution. "
              "Lower values improve GPU performance but reduce image sharpness.",
-             "hcu_internal_render_scale", "100",
+             "ssf2t_internal_render_scale", "100",
              {{"100", "100% Native"}, {"75", "75% Performance"}, {"50", "50% Low-end"}});
     ui.Choice("Anti-aliasing", "Smooths jagged edges after the frame is drawn. Extreme is softer but cleaner.",
               "swap_post_effect", "none", {{"none", "Off"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA Extreme"}});
     ui.Toggle("Multisampling",
               "Any parts of the scene the game draws with multisampling cannot be turned off. 2\xC3\x97 MSAA is "
               "fastest; try 4\xC3\x97 only if the 2\xC3\x97 parts show graphics problems.",
-              "hcu_msaa_compatibility", false, "2\xC3\x97 MSAA", "4\xC3\x97 MSAA (Compatibility)");
+              "ssf2t_msaa_compatibility", false, "2\xC3\x97 MSAA", "4\xC3\x97 MSAA (Compatibility)");
     ui.Choice("Texture filtering", "Anisotropic filtering keeps textures sharp at oblique angles. Game leaves it to the game.",
               "anisotropic_override", "3",
               {{"-1", "Game"},
@@ -677,11 +677,11 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     }
     ui.Combo(kLanguageLabel, kLanguageHelp, kLanguageSetting, kDefaultLanguage, languages);
     ui.Toggle("Frame rate in title", "Shows the game's frame rate in the window title: Super Street Fighter II Turbo HD Remix | FPS: 60.00",
-              "hcu_show_fps", true, "Off", "On");
+              "ssf2t_show_fps", true, "Off", "On");
     ui.Toggle("Render resolution in title", "Shows the game's render resolution in the window title",
-              "hcu_show_render_resolution", false, "Off", "On");
+              "ssf2t_show_render_resolution", false, "Off", "On");
     ui.Toggle("Frame counter", "Shows the game's frame rate in the corner. F2 toggles it while playing.",
-              "hcu_show_frame_counter", false, "Hidden", "Shown");
+              "ssf2t_show_frame_counter", false, "Hidden", "Shown");
   }
 
   void PageAchievements(trg::Ui& ui) {
@@ -830,10 +830,10 @@ bool g_skipped_once = false;
 }  // namespace
 
 bool ShouldShowLauncher(const std::filesystem::path& game_dir) {
-  g_skipped_once = REXCVAR_GET(hcu_skip_launcher);
-  rex::cvar::ResetToDefault("hcu_skip_launcher");
+  g_skipped_once = REXCVAR_GET(ssf2t_skip_launcher);
+  rex::cvar::ResetToDefault("ssf2t_skip_launcher");
   return LauncherWanted(CheckAndLogGameFiles(game_dir) == GameFiles::kReady, g_skipped_once, ShiftHeld(),
-                        REXCVAR_GET(hcu_launcher));
+                        REXCVAR_GET(ssf2t_launcher));
 }
 
 bool ShiftHeldAfterWindowOpened() {

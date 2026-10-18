@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Extracts an Xbox 360 STFS (LIVE, PIRS or CON) package into an empty folder.
-  The package must carry the Geometry Wars: Retro Evolved 2 title ID.
+  The package must carry the Super Street Fighter II Turbo HD Remix title ID (0x584108A4).
 
 .EXAMPLE
   .\tools\extract_stfs.ps1 -Package 'C:\path\to\package' -OutDir game\extracted
@@ -9,7 +9,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$Package,
     [Parameter(Mandatory = $true)][string]$OutDir,
-    [uint32]$TitleId = 0x584108FF
+    [uint32]$TitleId = 0x584108A4
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -Path (Join-Path $PSScriptRoot 'StfsExtract.cs')

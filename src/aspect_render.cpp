@@ -8,7 +8,7 @@
 namespace ssf2t {
 
 void ApplyAspectRatio() {
-  const AspectRatio aspect = ParseAspectRatio(rex::cvar::GetFlagByName("hcu_aspect_ratio"));
+  const AspectRatio aspect = ParseAspectRatio(rex::cvar::GetFlagByName("ssf2t_aspect_ratio"));
   rex::cvar::SetFlagByName("video_mode_width", std::to_string(VideoModeWidth(aspect)));
   rex::cvar::SetFlagByName("video_mode_height", std::to_string(kVideoModeHeight));
 }

@@ -4,7 +4,7 @@
 
 namespace ssf2t {
 
-// The launcher's Multisampling choice: native 2x MSAA, or 4x compatibility (hcu_msaa_compatibility).
+// The launcher's Multisampling choice: native 2x MSAA, or 4x compatibility (ssf2t_msaa_compatibility).
 // Neither can turn off multisampling the game itself asks for.
 inline bool Native2xMsaaFor(bool compatibility) {
   return !compatibility;

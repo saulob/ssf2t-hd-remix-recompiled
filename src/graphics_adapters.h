@@ -20,7 +20,7 @@ std::vector<GraphicsAdapter> ListGraphicsAdapters();
 
 inline constexpr char kGraphicsAdapterAuto[] = "auto";
 
-// The adapter index a hcu_graphics_adapter value names; empty for Automatic and for anything that is not an index.
+// The adapter index a ssf2t_graphics_adapter value names; empty for Automatic and for anything that is not an index.
 inline std::optional<int> ParseGraphicsAdapter(std::string_view setting) {
   int index = 0;
   const char* end = setting.data() + setting.size();

@@ -25,6 +25,18 @@ $Cases = [ordered]@{
     'renderdoc'          = @{ Path = 'renderdoc.dll' }
     'vulkan layer'       = @{ Path = 'VkLayer_test.json' }
     'unexpected file'    = @{ Path = 'notes.txt' }
+    'nested xex'         = @{ Path = 'licenses\Default.Xex' }
+    'any xex'            = @{ Path = 'other.xex' }
+    'crash dump'         = @{ Path = 'crash.dmp' }
+    'backup'             = @{ Path = 'ssf2t_hd_remix.toml.bak' }
+    'temp file'          = @{ Path = 'x.tmp' }
+    'save file'          = @{ Path = 'slot.sav' }
+    'user profile data'  = @{ Path = 'achievements\584108A4.toml' }
+    'missing license'    = @{ Path = 'licenses\ReXGlue-LICENSE.txt'; Delete = $true }
+    'missing readme'     = @{ Path = 'README.txt'; Delete = $true }
+    'user profile path'  = @{ Path = 'rexruntime.dll'; Bytes = [Text.Encoding]::ASCII.GetBytes('x C:\Users\someone\source\a.cpp') }
+    'user path 16'       = @{ Path = 'rexgpu-xenos.dll'; Bytes = [Text.Encoding]::Unicode.GetBytes('x D:\Users\someone\a.cpp') }
+    'repos path'         = @{ Path = 'ssf2t_hd_remix.exe'; Bytes = [Text.Encoding]::ASCII.GetBytes('x:/VisualStudio/repos/y/a.cpp') }
     'xex magic'          = @{ Path = 'rexruntime.dll'; Bytes = [Text.Encoding]::ASCII.GetBytes('XEX2....') }
     'package magic'      = @{ Path = 'rexruntime.dll'; Bytes = [Text.Encoding]::ASCII.GetBytes('LIVE....') }
     'debug marker'       = @{ Path = 'ssf2t_hd_remix.toml'; Bytes = [Text.Encoding]::ASCII.GetBytes('DEBUG_SAULO: x') }
@@ -39,10 +51,16 @@ try {
         foreach ($leaf in 'ssf2t_hd_remix.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'ssf2t_hd_remix.toml', 'README.txt', 'LICENSE') {
             Set-Content -LiteralPath (Join-Path $stage $leaf) -Value 'placeholder'
         }
+        New-Item -ItemType Directory -Force (Join-Path $stage 'licenses') | Out-Null
+        foreach ($leaf in 'ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt') {
+            Set-Content -LiteralPath (Join-Path $stage "licenses\$leaf") -Value 'placeholder'
+        }
         $extra = $Cases[$case]
         if ($extra) {
             $target = Join-Path $stage $extra.Path
-            if ($extra.Path.EndsWith('\')) {
+            if ($extra.Delete) {
+                Remove-Item -LiteralPath $target
+            } elseif ($extra.Path.EndsWith('\')) {
                 New-Item -ItemType Directory -Force $target | Out-Null
             } else {
                 New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null

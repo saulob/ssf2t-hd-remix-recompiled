@@ -12,20 +12,20 @@
 
 #include "window_placement.h"
 
-REXCVAR_DECLARE(bool, hcu_launcher);
-REXCVAR_DECLARE(bool, hcu_skip_launcher);
-REXCVAR_DECLARE(bool, hcu_show_fps);
-REXCVAR_DECLARE(bool, hcu_show_render_resolution);
-REXCVAR_DECLARE(bool, hcu_show_frame_counter);
-REXCVAR_DECLARE(bool, hcu_msaa_compatibility);
-REXCVAR_DECLARE(std::string, hcu_graphics_adapter);
-REXCVAR_DECLARE(std::string, hcu_language);
-REXCVAR_DECLARE(int32_t, hcu_launcher_x);
-REXCVAR_DECLARE(int32_t, hcu_launcher_y);
-REXCVAR_DECLARE(int32_t, hcu_launcher_width);
-REXCVAR_DECLARE(int32_t, hcu_launcher_height);
-REXCVAR_DECLARE(bool, hcu_launcher_maximized);
-REXCVAR_DECLARE(bool, hcu_launcher_fullscreen);
+REXCVAR_DECLARE(bool, ssf2t_launcher);
+REXCVAR_DECLARE(bool, ssf2t_skip_launcher);
+REXCVAR_DECLARE(bool, ssf2t_show_fps);
+REXCVAR_DECLARE(bool, ssf2t_show_render_resolution);
+REXCVAR_DECLARE(bool, ssf2t_show_frame_counter);
+REXCVAR_DECLARE(bool, ssf2t_msaa_compatibility);
+REXCVAR_DECLARE(std::string, ssf2t_graphics_adapter);
+REXCVAR_DECLARE(std::string, ssf2t_language);
+REXCVAR_DECLARE(int32_t, ssf2t_launcher_x);
+REXCVAR_DECLARE(int32_t, ssf2t_launcher_y);
+REXCVAR_DECLARE(int32_t, ssf2t_launcher_width);
+REXCVAR_DECLARE(int32_t, ssf2t_launcher_height);
+REXCVAR_DECLARE(bool, ssf2t_launcher_maximized);
+REXCVAR_DECLARE(bool, ssf2t_launcher_fullscreen);
 
 namespace ssf2t {
 
@@ -46,10 +46,10 @@ void LoadPlayerSettings(const std::filesystem::path& path);
 // has registered its cvars and before emulation starts.
 void ApplyMultisampling();
 
-// Sets the guest video mode for hcu_aspect_ratio. Call with ApplyMultisampling.
+// Sets the guest video mode for ssf2t_aspect_ratio. Call with ApplyMultisampling.
 void ApplyAspectRatio();
 
-// Sets the SDK's user_language, which the title reads once at startup, from hcu_language.
+// Sets the SDK's user_language, which the title reads once at startup, from ssf2t_language.
 void ApplyLanguage();
 
 // Windows: makes the D3D12 render target path the host one when Internal render resolution is below 100%. Call

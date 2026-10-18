@@ -14,7 +14,7 @@ constexpr int kInternalRenderScaleNative = 100;
 constexpr int kInternalRenderScalePerformance = 75;
 constexpr int kInternalRenderScaleLowEnd = 50;
 
-// The launcher's Internal render resolution (hcu_internal_render_scale), in percent of the render resolution.
+// The launcher's Internal render resolution (ssf2t_internal_render_scale), in percent of the render resolution.
 // Anything but the two reduced choices draws at 100%.
 inline int NormalizeInternalRenderScale(int percent) {
   return percent == kInternalRenderScalePerformance || percent == kInternalRenderScaleLowEnd

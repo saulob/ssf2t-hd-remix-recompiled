@@ -92,7 +92,6 @@ class SuperStreetFighterApp : public rex::ReXApp {
   }
 
   void OnPreSetup(rex::RuntimeConfig&) override {
-    REXLOG_INFO("DEBUG_SAULO: runtime initialization started");
     game_settings_.Capture(PlayerSettingsPath(user_data_root()), shipped_config_);
     show_launcher_ = ShouldShowLauncher(game_data_root());
     if (show_launcher_) {
@@ -132,7 +131,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
     };
     callbacks.window_changed = [this] { return game_settings_.WindowChanged(); };
     callbacks.restart = [this] {
-      if (!RelaunchSelf(L"--hcu_skip_launcher=true")) {
+      if (!RelaunchSelf(L"--ssf2t_skip_launcher=true")) {
         return false;
       }
       app_context().CallInUIThreadDeferred([this] { app_context().QuitFromUIThread(); });
@@ -154,11 +153,10 @@ class SuperStreetFighterApp : public rex::ReXApp {
   }
 
   void OnPostSetup() override {
-    REXLOG_INFO("DEBUG_SAULO: setup complete, next is guest entry 0x839C45E8");
     REXLOG_INFO("{}", DescribeInternalRenderResolution(
                           std::max(1, std::atoi(rex::cvar::GetFlagByName("resolution_scale").c_str())),
-                          std::atoi(rex::cvar::GetFlagByName("hcu_internal_render_scale").c_str()),
-                          GuestWidth(ParseAspectRatio(rex::cvar::GetFlagByName("hcu_aspect_ratio")))));
+                          std::atoi(rex::cvar::GetFlagByName("ssf2t_internal_render_scale").c_str()),
+                          GuestWidth(ParseAspectRatio(rex::cvar::GetFlagByName("ssf2t_aspect_ratio")))));
 #if defined(_WIN32)
     REXLOG_INFO("Scheduling: {}", trg::TuneProcessScheduling());
 #endif
@@ -233,10 +231,8 @@ class SuperStreetFighterApp : public rex::ReXApp {
         !immediate_drawer()) {
       return;
     }
-    REXLOG_INFO("DEBUG_SAULO: achievements overlay opened");
     achievements_ = new AchievementsOverlay(imgui_drawer(), immediate_drawer(), runtime(), &achievements(), [this] {
       achievements_ = nullptr;
-      REXLOG_INFO("DEBUG_SAULO: achievements overlay closed");
     });
   }
 

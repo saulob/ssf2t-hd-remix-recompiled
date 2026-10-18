@@ -222,7 +222,7 @@ constexpr FontFamily kFontFamilies[] = {
 };
 
 
-constexpr char kApplicationId[] = "io.github.saulob.hard-corps-uprising";
+constexpr char kApplicationId[] = "io.github.saulob.ssf2t-hd-remix";
 
 // ReXGlue's native window handle is empty here, and the launcher is its only window.
 SDL_Window* LauncherWindow() {
