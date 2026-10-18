@@ -153,6 +153,10 @@ add_executable(ssf2t_window_placement_tests EXCLUDE_FROM_ALL tests/window_placem
 target_include_directories(ssf2t_window_placement_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_window_placement_tests)
 
+add_executable(ssf2t_launcher_settings_tests EXCLUDE_FROM_ALL tests/launcher_settings_tests.cpp)
+target_include_directories(ssf2t_launcher_settings_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_launcher_settings_tests)
+
 # The runtime reads its cvars from <exe dir>/ssf2t_hd_remix.toml.
 add_custom_command(TARGET ssf2t_hd_remix POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

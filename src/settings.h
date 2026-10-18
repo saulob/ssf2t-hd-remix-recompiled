@@ -19,6 +19,7 @@ REXCVAR_DECLARE(bool, hcu_show_render_resolution);
 REXCVAR_DECLARE(bool, hcu_show_frame_counter);
 REXCVAR_DECLARE(bool, hcu_msaa_compatibility);
 REXCVAR_DECLARE(std::string, hcu_graphics_adapter);
+REXCVAR_DECLARE(std::string, hcu_language);
 REXCVAR_DECLARE(int32_t, hcu_launcher_x);
 REXCVAR_DECLARE(int32_t, hcu_launcher_y);
 REXCVAR_DECLARE(int32_t, hcu_launcher_width);
@@ -45,8 +46,11 @@ void LoadPlayerSettings(const std::filesystem::path& path);
 // has registered its cvars and before emulation starts.
 void ApplyMultisampling();
 
-// Sets the guest video mode and the presenter letterbox for hcu_aspect_ratio. Call with ApplyMultisampling.
+// Sets the guest video mode for hcu_aspect_ratio. Call with ApplyMultisampling.
 void ApplyAspectRatio();
+
+// Sets the SDK's user_language, which the title reads once at startup, from hcu_language.
+void ApplyLanguage();
 
 // Windows: makes the D3D12 render target path the host one when Internal render resolution is below 100%. Call
 // once the launcher choices are applied and before the command processor is created.

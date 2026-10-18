@@ -90,6 +90,7 @@ $suffix = @{ RelWithDebInfo = 'rd'; Release = '' }[$Config]
 $dll = Join-Path $BuildDir "rexruntime$suffix.dll"
 if ((Get-FileSha256 $dll) -ne (Get-FileSha256 (Join-Path $SdkRoot "bin\rexruntime$suffix.dll"))) { throw "$dll is not the patched runtime" }
 Invoke-Step 'window placement' { & (Join-Path $BuildDir 'ssf2t_window_placement_tests.exe') }
+Invoke-Step 'launcher settings' { & (Join-Path $BuildDir 'ssf2t_launcher_settings_tests.exe') }
 Invoke-Step 'physical heap stress' { & (Join-Path $BuildDir 'ssf2t_physical_heap_stress.exe') }
 Invoke-Step 'title thread shutdown' { & (Join-Path $BuildDir 'ssf2t_title_thread_shutdown_tests.exe') }
 Write-Host 'All headless checks passed.'

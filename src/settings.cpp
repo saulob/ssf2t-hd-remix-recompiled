@@ -18,7 +18,9 @@
 
 #include "graphics_adapters.h"
 #include "internal_render_scale.h"
+#include "language_setting.h"
 #include "multisampling.h"
+#include "presentation_setting.h"
 
 #include "platform.h"
 
@@ -38,6 +40,8 @@ REXCVAR_DEFINE_STRING(hcu_aspect_ratio, "16:9", "SSF2T",
                       "Aspect ratio chosen in the launcher: 16:9, 16:10, 21:9, 32:9, 4:3 or 5:4");
 REXCVAR_DEFINE_STRING(hcu_graphics_adapter, "auto", "SSF2T",
                       "Graphics card: auto, or the index d3d12_adapter takes (applied at start)");
+REXCVAR_DEFINE_STRING(hcu_language, "en-US", "SSF2T",
+                      "Game language: en-US, fr-FR, de-DE, it-IT or es-ES (sets user_language at start)");
 REXCVAR_DEFINE_INT32(hcu_launcher_x, 0, "SSF2T", "Launcher window left edge, written by the launcher");
 REXCVAR_DEFINE_INT32(hcu_launcher_y, 0, "SSF2T", "Launcher window top edge, written by the launcher");
 REXCVAR_DEFINE_INT32(hcu_launcher_width, 0, "SSF2T", "Launcher window restored width, written by the launcher");
@@ -59,11 +63,13 @@ const std::vector<std::string> kGameSettingKeys = {
     kTearingSetting,
     "hcu_graphics_adapter",
     "hcu_aspect_ratio",
+    kLetterboxSetting,
     "resolution_scale",
     "hcu_internal_render_scale",
     "swap_post_effect",
     "hcu_msaa_compatibility",
     "anisotropic_override",
+    kLanguageSetting,
     "hcu_show_fps",
     "hcu_show_render_resolution",
     "hcu_show_frame_counter",
@@ -257,6 +263,13 @@ void GameSettings::Apply() const {
   ApplyAspectRatio();
   ApplyInternalRenderPath();
   ApplyMultisampling();
+  ApplyLanguage();
+}
+
+void ApplyLanguage() {
+  const GameLanguage& language = LanguageFor(REXCVAR_GET(hcu_language));
+  rex::cvar::SetFlagByName("user_language", std::to_string(language.xconfig_language));
+  REXLOG_INFO("Language: {} (user_language {})", language.label, language.xconfig_language);
 }
 
 // Also replaces a native_2x_msaa = false written by launchers that labelled it Off.

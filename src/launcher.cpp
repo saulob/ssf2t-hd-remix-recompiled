@@ -25,7 +25,9 @@
 #include "game_files.h"
 #include "graphics_adapters.h"
 #include "internal_render_scale.h"
+#include "language_setting.h"
 #include "platform.h"
+#include "presentation_setting.h"
 #include "settings.h"
 
 namespace ssf2t {
@@ -354,9 +356,9 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
          [this] { return game_files_ != GameFiles::kReady; }},
         {"Display", "Window, monitor and how the picture fits your screen.",
          [this](trg::Ui& ui) { PageDisplay(ui); }},
-        {"Graphics", "Render resolution, anti-aliasing and texture filtering.",
+        {"Graphics", "Graphics card, render resolution, anti-aliasing and texture filtering.",
          [this](trg::Ui& ui) { PageGraphics(ui); }},
-        {"Gameplay", "What the window shows while you play.", [](trg::Ui& ui) { PageGameplay(ui); }},
+        {"Gameplay", "Language, and what the window shows while you play.", [](trg::Ui& ui) { PageGameplay(ui); }},
         {"Controls", "Controller and keyboard.", [](trg::Ui& ui) { PageControls(ui); }},
         {"About", "About this port, and where your files and settings live.",
          [this](trg::Ui& ui) { PageAbout(ui); }},
@@ -507,6 +509,13 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         settings_.SetBool(kTearingSetting, i == 0);
       }
     }
+    ui.Row(kPresentationLabel, kPresentationHelp);
+    {
+      const bool letterbox = settings_.GetBool(kLetterboxSetting, true);
+      if (int i = ui.Segmented("presentation", {"Letterbox", "Stretch"}, LetterboxSegment(letterbox)); i >= 0) {
+        settings_.SetBool(kLetterboxSetting, LetterboxFromSegment(i));
+      }
+    }
   }
 
   const MonitorInfo* SelectedMonitor() const {
@@ -642,7 +651,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     ui.Choice("Anti-aliasing", "Smooths jagged edges after the frame is drawn. Extreme is softer but cleaner.",
               "swap_post_effect", "none", {{"none", "Off"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA Extreme"}});
     ui.Toggle("Multisampling",
-              "Use 2\xC3\x97 MSAA for best performance. Try 4\xC3\x97 only if you see graphics problems with 2\xC3\x97.",
+              "Any parts of the scene the game draws with multisampling cannot be turned off. 2\xC3\x97 MSAA is "
+              "fastest; try 4\xC3\x97 only if the 2\xC3\x97 parts show graphics problems.",
               "hcu_msaa_compatibility", false, "2\xC3\x97 MSAA", "4\xC3\x97 MSAA (Compatibility)");
     ui.Choice("Texture filtering", "Anisotropic filtering keeps textures sharp at oblique angles. Game leaves it to the game.",
               "anisotropic_override", "3",
@@ -656,6 +666,11 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   }
 
   static void PageGameplay(trg::Ui& ui) {
+    std::vector<trg::Option> languages;
+    for (const GameLanguage& language : kGameLanguages) {
+      languages.push_back({language.key, language.label});
+    }
+    ui.Combo(kLanguageLabel, kLanguageHelp, kLanguageSetting, kDefaultLanguage, languages);
     ui.Toggle("Frame rate in title", "Shows the game's frame rate in the window title: Super Street Fighter II Turbo HD Remix | FPS: 60.00",
               "hcu_show_fps", true, "Off", "On");
     ui.Toggle("Render resolution in title", "Shows the game's render resolution in the window title",

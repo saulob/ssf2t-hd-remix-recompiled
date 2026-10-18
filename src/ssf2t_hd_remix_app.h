@@ -108,6 +108,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
       ApplyMultisampling();
       ApplyAspectRatio();
       ApplyInternalRenderPath();
+      ApplyLanguage();
       return defaults;
     }
     if (!imgui_drawer()) {
