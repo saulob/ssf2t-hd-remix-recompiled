@@ -2,11 +2,11 @@
 
 # Super Street Fighter II Turbo HD Remix - PC Port
 
-### Super Street Fighter II Turbo HD Remix for Xbox Live Arcade, running natively on Windows and Linux through static recompilation, with the TRG launcher and modern PC options
+### Super Street Fighter II Turbo HD Remix for Xbox Live Arcade, running natively on Windows, and experimentally on Linux and Steam Deck, through static recompilation, with the TRG launcher and modern PC options
 
 [![Latest release](https://img.shields.io/github/v/release/saulob/ssf2t-hd-remix-recompiled?style=for-the-badge&label=release&color=1990a7&labelColor=07101f&include_prereleases)](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/saulob/ssf2t-hd-remix-recompiled/total?style=for-the-badge&color=2e7d32&labelColor=07101f)](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases)
-![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20(experimental)-00acc1?style=for-the-badge&labelColor=07101f)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20experimental%20%7C%20Steam%20Deck%20experimental-00acc1?style=for-the-badge&labelColor=07101f)
 
 <sub>The original Xbox 360 game code, statically recompiled to native PC code with the <a href="https://github.com/rexglue/rexglue-sdk">ReXGlue SDK</a>. <b>No game files included</b>: bring your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade package.</sub>
 
