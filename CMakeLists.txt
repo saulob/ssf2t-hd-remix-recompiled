@@ -50,6 +50,7 @@ set(SSF2T_SOURCES
     src/frame_counter.cpp
     src/game_files.cpp
     src/graphics_adapters.cpp
+    src/menu_text_hook.cpp
     src/launcher.cpp
     src/launcher_achievements.cpp
     src/modal_dialog.cpp
@@ -160,6 +161,11 @@ endforeach()
 add_executable(ssf2t_window_placement_tests EXCLUDE_FROM_ALL tests/window_placement_tests.cpp)
 target_include_directories(ssf2t_window_placement_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_window_placement_tests)
+
+add_executable(ssf2t_menu_text_tests EXCLUDE_FROM_ALL tests/menu_text_tests.cpp)
+target_include_directories(ssf2t_menu_text_tests PRIVATE src)
+target_compile_definitions(ssf2t_menu_text_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_menu_text_tests)
 
 add_executable(ssf2t_launcher_settings_tests EXCLUDE_FROM_ALL tests/launcher_settings_tests.cpp)
 target_include_directories(ssf2t_launcher_settings_tests PRIVATE src)

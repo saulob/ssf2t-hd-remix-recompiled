@@ -90,6 +90,7 @@ $suffix = @{ RelWithDebInfo = 'rd'; Release = '' }[$Config]
 $dll = Join-Path $BuildDir "rexruntime$suffix.dll"
 if ((Get-FileSha256 $dll) -ne (Get-FileSha256 (Join-Path $SdkRoot "bin\rexruntime$suffix.dll"))) { throw "$dll is not the patched runtime" }
 Invoke-Step 'window placement' { & (Join-Path $BuildDir 'ssf2t_window_placement_tests.exe') }
+Invoke-Step 'menu text' { & (Join-Path $BuildDir 'ssf2t_menu_text_tests.exe') }
 Invoke-Step 'launcher settings' { & (Join-Path $BuildDir 'ssf2t_launcher_settings_tests.exe') }
 Invoke-Step 'game files' { & (Join-Path $BuildDir 'ssf2t_game_files_tests.exe') }
 Invoke-Step 'achievements' { & (Join-Path $BuildDir 'ssf2t_achievement_tests.exe') }
