@@ -188,6 +188,13 @@ class SuperStreetFighterApp : public rex::ReXApp {
     DetachWindowHost();
   }
 
+  // Window close ends the process without teardown: the guest main thread may be inside D3D code that never waits.
+  void OnClosing(rex::ui::UIEvent&) override {
+    REXLOG_INFO("Window closing, hard-exiting process.");
+    rex::FlushLogging();
+    std::_Exit(0);
+  }
+
   // F7 toggles the overlay. The overlay is owned here, not by ReXApp.
   std::unique_ptr<rex::ui::ImGuiDialog> CreateAchievementsOverlay() override {
     switch (ToggleOverlay(achievements_ != nullptr, ModalDialog::AnyOpen())) {

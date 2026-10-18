@@ -266,6 +266,19 @@ void TestAppWiresF7AndControllerGate() {
   CHECK(Has(app, "delete achievements_;"));
 }
 
+void TestWindowCloseHardExits() {
+  const std::string app = ReadSource("ssf2t_hd_remix_app.h");
+  const size_t start = app.find("void OnClosing(");
+  CHECK(start != std::string::npos);
+  const std::string body = app.substr(start, app.find("\n  }\n", start) - start);
+  CHECK(Has(body, "rex::FlushLogging();"));
+  CHECK(Has(body, "std::_Exit(0);"));
+  CHECK(!Has(body, "TerminateTitle"));
+  CHECK(!Has(body, "OnShutdown"));
+  CHECK(!Has(body, "Shutdown("));
+  CHECK(Has(app, "void OnShutdown() override"));
+}
+
 // SDK notifications stay the SDK's, and nothing here unlocks, signs in or opens the network.
 void TestAchievementCodeStaysOffline() {
   const char* files[] = {"achievements_overlay.cpp", "achievements_overlay.h", "achievement_list.h",
@@ -319,6 +332,7 @@ int main() {
       {"launcher page is read-only", TestLauncherPageIsReadOnly},
       {"overlay closes on B and Escape", TestOverlayClosesOnBackAndEscape},
       {"app wires F7 and controller gate", TestAppWiresF7AndControllerGate},
+      {"window close hard-exits", TestWindowCloseHardExits},
       {"achievement code stays offline", TestAchievementCodeStaysOffline},
       {"F7 not taken elsewhere", TestF7IsNotTakenElsewhere},
   };
