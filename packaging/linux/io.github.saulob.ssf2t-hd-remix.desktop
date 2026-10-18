@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Super Street Fighter II Turbo HD Remix
+Comment=Super Street Fighter II Turbo HD Remix for Xbox 360, native PC port
+Exec=ssf2t_hd_remix
+Icon=ssf2t_hd_remix
+Categories=Game;
+Terminal=false
+StartupWMClass=io.github.saulob.ssf2t-hd-remix

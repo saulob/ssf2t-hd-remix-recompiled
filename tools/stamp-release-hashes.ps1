@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-  Writes the SHA-256 of the built release artifact into the Checksums table of the release notes.
+  Writes the SHA-256 of the built release artifacts (Windows ZIP and Linux AppImage) into the Checksums table of the release notes.
   Local only: nothing is committed, tagged or published.
 
 .DESCRIPTION
-  Run it after tools\package-release.ps1 has built the artifact. It recomputes the hash of the ZIP in dist\, checks it
+  Run it after tools\package-release.ps1 and tools/package-linux.sh have built the artifacts. It recomputes their hashes in dist\, checks them
   against the .sha256 file, and fills the Checksums table of .github\release-notes-v<version>.md. The notes are not an
   input of the build, so committing them afterwards does not change the artifact. It stops when any other file has
   uncommitted changes: the artifact would then not match the commit it is published for.
@@ -23,7 +23,7 @@ $cmake = Get-Content (Join-Path $Root 'CMakeLists.txt') -Raw
 if ($cmake -notmatch '(?m)^\s*project\(\s*ssf2t_hd_remix\s+VERSION\s+(\d+\.\d+\.\d+)') { throw 'Project VERSION not found in CMakeLists.txt' }
 $Version = $Matches[1]
 $Dist = Join-Path $Root 'dist'
-$Artifacts = @("SSF2THDRemix-v$Version-windows-x64.zip")
+$Artifacts = @("SSF2THDRemix-v$Version-windows-x64.zip", "SSF2THDRemix-v$Version-x86_64.AppImage")
 $Notes = @(Join-Path $Root ".github\release-notes-v$Version.md")
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 
@@ -40,7 +40,7 @@ if (-not $AllowOtherChanges) {
 $hashes = @{}
 foreach ($name in $Artifacts) {
     $file = Join-Path $Dist $name
-    $shaFile = Join-Path $Dist ($name -replace '\.zip$', '.sha256')
+    $shaFile = Join-Path $Dist ($name -replace '\.(zip|AppImage)$', '.sha256')
     foreach ($path in @($file, $shaFile)) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing $path (build the artifact first)" }
     }

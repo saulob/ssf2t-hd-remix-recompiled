@@ -10,3 +10,7 @@ LICENSE text eol=lf
 config/ssf2t_hd_remix.toml text eol=lf
 packaging/README.txt text eol=lf
 packaging/licenses/* text eol=lf
+
+# Linux packaging runs on Linux; line endings must stay LF.
+packaging/linux/* text eol=lf
+patches/appimage-runtime/* text eol=lf

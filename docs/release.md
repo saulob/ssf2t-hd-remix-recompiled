@@ -18,6 +18,11 @@ The ZIP holds `ssf2t_hd_remix.exe`, `rexruntime.dll`, `rexgpu-xenos.dll`, `ssf2t
 
 `.github\release-notes-v<version>.md`. The checksum is filled from the generated ZIP.
 
-## Linux
+## Linux AppImage (experimental)
 
-Not a release target. `patches\rexglue-sdk\*.linux.patch` and `tools\build-patched-rexruntime.sh` exist, but there is no Linux build script, application packaging or AppImage.
+    tools/package-linux.sh            # on Ubuntu 20.04 or WSL; incremental Release build, then package
+    tools/package-linux.sh --verify-only dist/SSF2THDRemix-v<version>-x86_64.AppImage
+
+It builds the patched ReXGlue Linux runtime when the patches changed, builds the `linux-amd64-release` preset, stages an allow-listed AppDir, checks RPATH, unresolved libraries, the glibc 2.31 baseline, local paths and forbidden files, builds the AppImage with the pinned runtime (`patches/appimage-runtime`), extracts it again and checks it, and writes `dist/SSF2THDRemix-v<version>-x86_64.AppImage` and `.sha256`. See [linux.md](linux.md).
+
+`tools\stamp-release-hashes.ps1` fills the Checksums table of the release notes with both artifacts' hashes.

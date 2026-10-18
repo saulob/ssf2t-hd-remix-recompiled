@@ -2,11 +2,11 @@
 
 # Super Street Fighter II Turbo HD Remix - PC Port
 
-### Super Street Fighter II Turbo HD Remix for Xbox Live Arcade, running natively on Windows through static recompilation, with the TRG launcher and modern PC options
+### Super Street Fighter II Turbo HD Remix for Xbox Live Arcade, running natively on Windows and Linux through static recompilation, with the TRG launcher and modern PC options
 
 [![Latest release](https://img.shields.io/github/v/release/saulob/ssf2t-hd-remix-recompiled?style=for-the-badge&label=release&color=1990a7&labelColor=07101f&include_prereleases)](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/saulob/ssf2t-hd-remix-recompiled/total?style=for-the-badge&color=2e7d32&labelColor=07101f)](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases)
-![Platforms](https://img.shields.io/badge/platforms-Windows-00acc1?style=for-the-badge&labelColor=07101f)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20(experimental)-00acc1?style=for-the-badge&labelColor=07101f)
 
 <sub>The original Xbox 360 game code, statically recompiled to native PC code with the <a href="https://github.com/rexglue/rexglue-sdk">ReXGlue SDK</a>. <b>No game files included</b>: bring your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade package.</sub>
 
@@ -14,7 +14,7 @@
 
 ## Features
 
-- **Native static recompilation**: the game's own code, not an emulator. Windows only.
+- **Native static recompilation**: the game's own code, not an emulator. Windows, plus an experimental Linux AppImage.
 - **TRG launcher** with a game package installer, display and graphics options, and an Achievements page.
 - **Display**: Windowed or Borderless Fullscreen (**F11**), window size, monitor and VSync. Per-monitor high-DPI support, and the game window opens where and how large you chose.
 - **Presentation**: Letterbox keeps the picture's proportions, Stretch fills the window. Aspect ratios 16:9, 16:10, 21:9, 32:9, 4:3 and 5:4.
@@ -32,8 +32,8 @@ The game runs at its original speed of 60 updates per second. Online play is not
 
 ## What you need
 
-- Windows 10 or 11, 64-bit, and a DirectX 12 graphics card
-- The latest Microsoft Visual C++ 2015-2022 Redistributable (x64). Most PCs have it.
+- **Windows:** Windows 10 or 11, 64-bit, and a DirectX 12 graphics card, with the latest Microsoft Visual C++ 2015-2022 Redistributable (x64). Most PCs have it.
+- **Linux (experimental):** 64-bit x86 with glibc 2.31 or newer and a Vulkan driver. See [docs/linux.md](docs/linux.md).
 - **Your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade package**, this exact game version:
 
 | | |
@@ -56,6 +56,10 @@ The launcher checks the Title ID when you pick the package and checks `default.x
 5. Press **PLAY**.
 
 **No game files are included** in the release. **Reinstall from package...** repairs the game files and keeps your settings and saves.
+
+### Linux AppImage (experimental)
+
+Download **SSF2THDRemix-v0.1.0-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
 
 ### Windows SmartScreen
 

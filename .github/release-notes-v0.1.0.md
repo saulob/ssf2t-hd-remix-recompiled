@@ -16,6 +16,9 @@ Play the Xbox 360 edition of Super Street Fighter II Turbo HD Remix natively on 
 
 The launcher checks the Title ID when you pick the package and checks `default.xex` after extracting it. It explains if your package is a different version.
 
+### Linux AppImage (experimental)
+Download **SSF2THDRemix-v0.1.0-x86_64.AppImage**, run `chmod +x` on it and start it from a folder you can write to. The launcher and the **Install from package...** flow are the same as on Windows; `game`, `logs` and `user_data` are kept next to the AppImage. It needs glibc 2.31 or newer and a Vulkan driver (see `docs/linux.md`). It has been built and checked by script only: it has not been tested on real Linux or Steam Deck hardware yet, so please report what you find.
+
 ### What's in it
 - Native Windows static recompilation with ReXGlue SDK 0.10.0 and a patched Release runtime
 - The TRG launcher, with Play, Display, Graphics, Gameplay, Achievements, Controls and About pages
@@ -33,7 +36,7 @@ The launcher checks the Title ID when you pick the package and checks `default.x
 - Clean exit when the window is closed and when the game ends normally
 
 ### Known limitations
-- Windows only. There is no Linux build yet.
+- Windows is the supported platform. The Linux AppImage is experimental and untested on real hardware; the **Graphics card** selector is Windows-only.
 - Offline only: there is no Xbox Live connection or online play, so the four achievements that need online ranked matches cannot be earned.
 - The game runs at its original speed of 60 updates per second; there is no frame rate selector.
 - Only game version 0.0.1.3 is supported.
@@ -46,8 +49,9 @@ If the game does not start or crashes, please open an issue and attach the newes
 Windows 10 or 11 (64-bit), a DirectX 12 graphics card, and the latest Microsoft Visual C++ 2015-2022 Redistributable (x64).
 
 ### Checksums
-The ZIP's SHA-256 is published with the release as `SSF2THDRemix-v0.1.0-windows-x64.sha256`.
+The SHA-256 of each file is published with the release as `SSF2THDRemix-v0.1.0-windows-x64.sha256` and `SSF2THDRemix-v0.1.0-x86_64.sha256`.
 
 | File | SHA-256 |
 | --- | --- |
-| `SSF2THDRemix-v0.1.0-windows-x64.zip` | `b93ba1e8df1526d61fc1b3f29313cc7096205f9d7a7ca07725472d84483b1338` |
+| `SSF2THDRemix-v0.1.0-windows-x64.zip` | `102d2e693ab27caa646ed1d18644e1927bfc3584e420efbf0bdfa60667c8005a` |
+| `SSF2THDRemix-v0.1.0-x86_64.AppImage` | `94ca26d99066113fc1a92a4b7a26ef7fc97dd14924ebd314aa0175d8ba4e3dff` |
