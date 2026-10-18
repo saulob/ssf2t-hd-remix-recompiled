@@ -18,6 +18,8 @@ $Cases = [ordered]@{
     'migration leftover' = @{ Path = 'user_data.migrating\' }
     'log'                = @{ Path = 'logs\ssf2t_hd_remix_001.log' }
     'game file'          = @{ Path = 'game\default.xex' }
+    'game file mixed'    = @{ Path = 'game\Default.xex' }
+    'game file upper'    = @{ Path = 'DEFAULT.XEX' }
     'asset archive'      = @{ Path = 'flog_x360.fpg' }
     'pdb'                = @{ Path = 'ssf2t_hd_remix.pdb' }
     'renderdoc'          = @{ Path = 'renderdoc.dll' }

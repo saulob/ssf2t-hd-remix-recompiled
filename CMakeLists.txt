@@ -165,6 +165,11 @@ target_include_directories(ssf2t_achievement_tests PRIVATE src "${SSF2T_SDK_DIR}
 target_compile_definitions(ssf2t_achievement_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_dependencies(ssf2t_runtime_tests ssf2t_achievement_tests)
 
+add_executable(ssf2t_game_files_tests EXCLUDE_FROM_ALL tests/game_files_tests.cpp src/game_files.cpp src/stfs.cpp)
+target_include_directories(ssf2t_game_files_tests PRIVATE src)
+target_compile_definitions(ssf2t_game_files_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_game_files_tests)
+
 # Reads the game's achievements through a runtime without graphics; skips without game\extracted.
 add_executable(ssf2t_achievement_metadata_tests EXCLUDE_FROM_ALL tests/achievement_metadata_tests.cpp src/launcher_achievements.cpp)
 target_include_directories(ssf2t_achievement_metadata_tests PRIVATE src)

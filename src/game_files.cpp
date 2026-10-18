@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -20,6 +21,7 @@ constexpr const char* kStagingFolder = "game-install-temp";
 constexpr const char* kBackupFolder = "game-install-backup";
 constexpr uint64_t kSpaceMargin = 64ull << 20;
 constexpr int kRenameAttempts = 10;
+constexpr const char* kXexName = "default.xex";
 
 uint32_t Crc32(std::istream& in) {
   static const auto table = [] {
@@ -63,8 +65,46 @@ bool IsReplaceable(const std::filesystem::path& dir) {
   if (!std::filesystem::is_directory(dir, ec)) {
     return false;
   }
-  return std::filesystem::is_empty(dir, ec) || std::filesystem::exists(dir / "default.xex", ec) ||
+  return std::filesystem::is_empty(dir, ec) || std::filesystem::exists(dir / kXexName, ec) ||
          std::filesystem::exists(dir / kAssetArchive, ec);
+}
+
+bool EqualsIgnoreAsciiCase(const std::string& a, const char* b) {
+  const size_t n = std::strlen(b);
+  if (a.size() != n) {
+    return false;
+  }
+  for (size_t i = 0; i < n; ++i) {
+    if (std::tolower(uint8_t(a[i])) != std::tolower(uint8_t(b[i]))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Renames a case-variant such as Default.xex to default.xex; false when several variants exist.
+bool NormalizeXexName(const std::filesystem::path& dir) {
+  std::error_code ec;
+  std::filesystem::path variant;
+  int found = 0;
+  for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+    if (EqualsIgnoreAsciiCase(entry.path().filename().string(), kXexName)) {
+      variant = entry.path();
+      ++found;
+    }
+  }
+  if (found != 1) {
+    return found == 0;
+  }
+  if (variant.filename() == kXexName) {
+    return true;
+  }
+  const auto temp = dir / "default.xex.rename";
+  std::filesystem::rename(variant, temp, ec);
+  if (!ec) {
+    std::filesystem::rename(temp, dir / kXexName, ec);
+  }
+  return !ec;
 }
 
 class StagingGuard {
@@ -114,8 +154,12 @@ InstallStatus FromStfs(stfs::Status status) {
 
 GameCheck CheckGameFiles(const std::filesystem::path& game_dir) {
   GameCheck check;
-  const auto xex = game_dir / "default.xex";
+  const auto xex = game_dir / kXexName;
   std::error_code ec;
+  if (!game_dir.empty() && std::filesystem::is_directory(game_dir, ec) && !NormalizeXexName(game_dir)) {
+    check.state = GameFiles::kUnsupported;
+    return check;
+  }
   if (game_dir.empty() || !std::filesystem::is_regular_file(xex, ec)) {
     return check;
   }
