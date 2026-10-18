@@ -33,7 +33,7 @@ The game runs at its original speed of 60 updates per second. Online play is not
 ## What you need
 
 - **Windows:** Windows 10 or 11, 64-bit, and a DirectX 12 graphics card, with the latest Microsoft Visual C++ 2015-2022 Redistributable (x64). Most PCs have it.
-- **Linux (experimental):** 64-bit x86 with glibc 2.31 or newer and a Vulkan driver. See [docs/linux.md](docs/linux.md).
+- **Linux / Steam Deck (experimental):** 64-bit x86 with glibc 2.31 or newer and a Vulkan driver. Steam Deck support is experimental and has not yet been validated on hardware. See [docs/linux.md](docs/linux.md).
 - **Your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade package**, this exact game version:
 
 | | |
