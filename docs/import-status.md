@@ -6,13 +6,13 @@
 |---|---:|---|
 | SDK | 150 | Implemented by ReXGlue |
 | SDK-STUB | 40 | Registered by ReXGlue as a stub or no-op |
-| Project hook | 4 | Stub or unverified in the SDK; Hard Corps and Geometry Wars replace the game-side call path |
+| Project hook | 4 | Stub or unverified in the SDK; Hard Corps and Geometry Wars replace the game-side call path (SSF2T hooks one: the achievements UI) |
 | Unresolved | 0 | Every import was found in the SDK |
 
 ## Imports needing project attention
 
 - `XGetVideoMode`: Geometry Wars forces the non-HD video mode in `aspect_render.cpp`. Not yet ported; decide after the first log.
-- `XamShowAchievementsUI`, `XamShowMarketplaceUI`, `XamUserCreateStatsEnumerator`: SDK stubs. Hard Corps hooks the game's own wrapper functions to show its overlays and serve stats. SSF2T's wrapper addresses are unknown yet, so these stay SDK stubs for the first boot.
+- `XamShowAchievementsUI`: SDK stub, replaced by a hook on the game's wrapper `sub_839C3D20` that opens the Achievements overlay (see [save-and-achievements.md](save-and-achievements.md)). `XamShowMarketplaceUI` and `XamUserCreateStatsEnumerator` stay SDK stubs.
 - `XamContentInstall`, `XamShowGameInviteUI`, `XamShowGamerCardUIForXUID`, `XamShowPlayerReviewUI`, `XamShowPlayersUI`, `XamVoiceSubmitPacket`, `NetDll_XNetGetConnectStatus`, `NetDll_XNetQosLookup`: SDK stubs; these are online or UI calls and are not needed for offline startup.
 - `VdInitializeEngines`, `VdSetSystemCommandBufferGpuIdentifierAddress`, `VdShutdownEngines`: SDK stubs in the graphics path. Watch the first log for their effect on Xenos init; the Geometry Wars and Hard Corps Xenos patches do not change them.
 - `XAudioGetVoiceCategoryVolume`: returns a fixed 1.0.

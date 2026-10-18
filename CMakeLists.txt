@@ -44,11 +44,14 @@ get_directory_property(SSF2T_TRG_VERSION DIRECTORY "${_trg_dir}" DEFINITION PROJ
 
 set(SSF2T_SOURCES
     src/main.cpp
+    src/achievement_ui_hook.cpp
+    src/achievements_overlay.cpp
     src/aspect_render.cpp
     src/frame_counter.cpp
     src/game_files.cpp
     src/graphics_adapters.cpp
     src/launcher.cpp
+    src/launcher_achievements.cpp
     src/modal_dialog.cpp
     src/platform.cpp
     src/settings.cpp
@@ -156,6 +159,25 @@ add_dependencies(ssf2t_runtime_tests ssf2t_window_placement_tests)
 add_executable(ssf2t_launcher_settings_tests EXCLUDE_FROM_ALL tests/launcher_settings_tests.cpp)
 target_include_directories(ssf2t_launcher_settings_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_launcher_settings_tests)
+
+add_executable(ssf2t_achievement_tests EXCLUDE_FROM_ALL tests/achievement_tests.cpp)
+target_include_directories(ssf2t_achievement_tests PRIVATE src "${SSF2T_SDK_DIR}/include")
+target_compile_definitions(ssf2t_achievement_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_achievement_tests)
+
+# Reads the game's achievements through a runtime without graphics; skips without game\extracted.
+add_executable(ssf2t_achievement_metadata_tests EXCLUDE_FROM_ALL tests/achievement_metadata_tests.cpp src/launcher_achievements.cpp)
+target_include_directories(ssf2t_achievement_metadata_tests PRIVATE src)
+target_compile_definitions(ssf2t_achievement_metadata_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(ssf2t_achievement_metadata_tests PRIVATE rex::runtime)
+add_custom_command(TARGET ssf2t_achievement_metadata_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rex::runtime>" "$<TARGET_FILE_DIR:ssf2t_achievement_metadata_tests>"
+    VERBATIM
+)
+if(NOT WIN32)
+    set_target_properties(ssf2t_achievement_metadata_tests PROPERTIES BUILD_RPATH "$ORIGIN")
+endif()
+add_dependencies(ssf2t_runtime_tests ssf2t_achievement_metadata_tests)
 
 # The runtime reads its cvars from <exe dir>/ssf2t_hd_remix.toml.
 add_custom_command(TARGET ssf2t_hd_remix POST_BUILD

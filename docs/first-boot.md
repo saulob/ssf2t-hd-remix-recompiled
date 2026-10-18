@@ -58,5 +58,5 @@ Expect the 0x839CDE90 call to proceed. The next failure (if any) is either a new
 
 - FPG asset archive reader: identify the `flog_x360.fpg` index and map `game:\…` paths to it.
 - Guest resolution is assumed 1280x720; confirm from `VdSetDisplayMode`.
-- Not ported: cheats, achievements, skip intro, Live services.
+- Not ported: cheats, skip intro, Live services. Saves, profile and achievements: [save-and-achievements.md](save-and-achievements.md).
 - `third_party\trg-launcher` is a copy, not a git submodule.

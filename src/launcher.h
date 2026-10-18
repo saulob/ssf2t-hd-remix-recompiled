@@ -7,6 +7,7 @@
 
 struct ImFont;
 struct ImFontAtlas;
+struct ImVec4;
 
 namespace rex::ui {
 class ImGuiDrawer;
@@ -38,9 +39,12 @@ struct LauncherCallbacks {
 // `density` is the window's display scale, so text is rasterized for its real pixel size.
 void LoadLauncherFonts(ImFontAtlas* atlas, float density);
 
-// The launcher's UI fonts, also used by the in-game cheat menu. Null when the system has none.
+// The launcher's UI fonts, also used by the in-game overlays. Null when the system has none.
 ImFont* LauncherRegularFont();
 ImFont* LauncherSemiboldFont();
+
+// The launcher's accent colour, used by the in-game overlays too.
+ImVec4 LauncherAccent();
 
 // Game files that are not ready always show the launcher: it is the only way to install them, so neither
 // the player's "off" choice nor the relaunch flag can hide it.

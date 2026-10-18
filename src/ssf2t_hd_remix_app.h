@@ -17,12 +17,15 @@
 #include <rex/ui/flags.h>
 #include <rex/ui/windowed_app_context.h>
 
+#include "achievement_ui.h"
+#include "achievements_overlay.h"
 #include "aspect_ratio.h"
 #include "frame_counter.h"
 #include "game_files.h"
 #include "internal_render_scale.h"
 #include "launcher.h"
 #include "modal_dialog.h"
+#include "overlay_rules.h"
 #include "platform.h"
 #include "settings.h"
 #include "trg/game_helpers.h"
@@ -82,6 +85,10 @@ class SuperStreetFighterApp : public rex::ReXApp {
 
   void OnConfigureFonts(ImFontAtlas* atlas) override {
     LoadLauncherFonts(atlas, window() ? float(window()->GetDpi()) / float(window()->GetMediumDpi()) : 1.0f);
+  }
+
+  void OnConfigureStyle(ImGuiStyle&, rex::ui::Style& ui_style) override {
+    ApplyAchievementsStyle(ui_style.achievements);
   }
 
   void OnPreSetup(rex::RuntimeConfig&) override {
@@ -163,6 +170,11 @@ class SuperStreetFighterApp : public rex::ReXApp {
       CreateFrameCounter(imgui_drawer());
       CreateCursorTick(imgui_drawer());
       ModalDialog::AttachEscapeKey(window());
+      // Replaces ReXApp's own callback, which would let the controller through while the overlay is open.
+      if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system())) {
+        input->SetActiveCallback([this] { return GameInputActive(); });
+      }
+      SetAchievementsOpener([this] { app_context().CallInUIThreadDeferred([this] { OpenAchievements(); }); });
     }
   }
 
@@ -172,7 +184,23 @@ class SuperStreetFighterApp : public rex::ReXApp {
       input->Shutdown();
     }
     ModalDialog::DetachEscapeKey();
+    delete achievements_;
     DetachWindowHost();
+  }
+
+  // F7 toggles the overlay. The overlay is owned here, not by ReXApp.
+  std::unique_ptr<rex::ui::ImGuiDialog> CreateAchievementsOverlay() override {
+    switch (ToggleOverlay(achievements_ != nullptr, ModalDialog::AnyOpen())) {
+      case OverlayToggle::kClose:
+        achievements_->RequestClose();
+        break;
+      case OverlayToggle::kOpen:
+        OpenAchievements();
+        break;
+      case OverlayToggle::kNone:
+        break;
+    }
+    return nullptr;
   }
 
  private:
@@ -185,6 +213,24 @@ class SuperStreetFighterApp : public rex::ReXApp {
       default:
         return {Utf8(game_data_root()), "Setup required", false};
     }
+  }
+
+  bool GameInputActive() const {
+    rex::ui::ImGuiDrawer* drawer = imgui_drawer();
+    return ssf2t::GameInputActive(ModalDialog::AnyOpen(), drawer && drawer->HasDialogs(),
+                                  drawer && drawer->GetIO().WantCaptureMouse);
+  }
+
+  void OpenAchievements() {
+    if (achievements_ || ModalDialog::AnyOpen() || !runtime() || !runtime()->kernel_state() || !imgui_drawer() ||
+        !immediate_drawer()) {
+      return;
+    }
+    REXLOG_INFO("DEBUG_SAULO: achievements overlay opened");
+    achievements_ = new AchievementsOverlay(imgui_drawer(), immediate_drawer(), runtime(), &achievements(), [this] {
+      achievements_ = nullptr;
+      REXLOG_INFO("DEBUG_SAULO: achievements overlay closed");
+    });
   }
 
   // The cache folder ReXGlue derived from the system root follows the user data root unless it was set explicitly.
@@ -202,6 +248,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
   std::filesystem::path shipped_config_;
   GameSettings game_settings_;
   UserDataSelection user_data_;
+  AchievementsOverlay* achievements_ = nullptr;
   bool show_launcher_ = false;
 };
 
