@@ -1,0 +1,3 @@
+# rexglue codegen rewrites the manifest with LF endings on every run.
+ssf2t_hd_remix_manifest.toml text eol=lf
+*.sh text eol=lf

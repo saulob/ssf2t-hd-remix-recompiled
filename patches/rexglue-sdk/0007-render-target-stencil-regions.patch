@@ -1,0 +1,258 @@
+diff --git a/include/rex/graphics/pipeline/render_target/cache.h b/include/rex/graphics/pipeline/render_target/cache.h
+index ff1fbc6..8c32007 100644
+--- a/include/rex/graphics/pipeline/render_target/cache.h
++++ b/include/rex/graphics/pipeline/render_target/cache.h
+@@ -497,6 +497,19 @@ class RenderTargetCache {
+     assert_true(GetPath() == Path::kHostRenderTargets);
+     return last_update_transfers_;
+   }
++  // The EDRAM tiles [start, start + length), wrapping around the EDRAM, that the render target
++  // in the slot may be drawn to: what the last update claimed, or all of them if the slot has
++  // a render target the update didn't use.
++  void GetLastUpdateUsedTiles(uint32_t slot, uint32_t& start_tiles_out,
++                              uint32_t& length_tiles_out) const {
++    if (last_update_used_render_targets_[slot] != last_update_accumulated_render_targets_[slot]) {
++      start_tiles_out = 0;
++      length_tiles_out = xenos::kEdramTileCount;
++      return;
++    }
++    start_tiles_out = last_update_used_start_tiles_[slot];
++    length_tiles_out = last_update_used_length_tiles_[slot];
++  }
+ 
+   HostDepthStoreRenderTargetConstant GetHostDepthStoreRenderTargetConstant(
+       uint32_t pitch_tiles, bool msaa_2x_supported) const {
+@@ -677,6 +690,9 @@ class RenderTargetCache {
+   // update. 0 is depth, color starting from 1, nullptr if not bound.
+   // Only valid for non-pixel-shader-interlock paths.
+   RenderTarget* last_update_used_render_targets_[1 + xenos::kMaxColorRenderTargets];
++  // The EDRAM tiles they were given ownership of.
++  uint32_t last_update_used_start_tiles_[1 + xenos::kMaxColorRenderTargets];
++  uint32_t last_update_used_length_tiles_[1 + xenos::kMaxColorRenderTargets];
+   // Render targets used by the draw call with the last successful update or
+   // previous updates, unless a different or a totally new one was bound (or
+   // surface info was changed), to avoid unneeded render target switching (which
+diff --git a/include/rex/graphics/util/draw_extent_estimator.h b/include/rex/graphics/util/draw_extent_estimator.h
+index 1e99f36..cc80912 100644
+--- a/include/rex/graphics/util/draw_extent_estimator.h
++++ b/include/rex/graphics/util/draw_extent_estimator.h
+@@ -28,8 +28,11 @@ class DrawExtentEstimator {
+         shader_interpreter_(register_file, memory) {}
+ 
+   // The shader must have its ucode analyzed.
+-  uint32_t EstimateVertexMaxY(const Shader& vertex_shader);
+-  uint32_t EstimateMaxY(bool try_to_estimate_vertex_max_y, const Shader& vertex_shader);
++  // min_y_out, if given, receives a row no lower than the first one the draw can touch (0 if
++  // that isn't known).
++  uint32_t EstimateVertexMaxY(const Shader& vertex_shader, uint32_t* min_y_out = nullptr);
++  uint32_t EstimateMaxY(bool try_to_estimate_vertex_max_y, const Shader& vertex_shader,
++                        uint32_t* min_y_out = nullptr);
+ 
+   // The positions (x, y, z, w) exported for vertices 0... of an auto-indexed draw, by running the
+   // vertex shader on the CPU. False if they can't be known exactly: the shader can't be
+diff --git a/src/graphics/pipeline/render_target/cache.cpp b/src/graphics/pipeline/render_target/cache.cpp
+index 996c0dd..e2b738d 100644
+--- a/src/graphics/pipeline/render_target/cache.cpp
++++ b/src/graphics/pipeline/render_target/cache.cpp
+@@ -543,6 +543,8 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
+     // Nothing to bind, don't waste time on things like memexport-only draws -
+     // just check if old bindings can still be used.
+     std::memset(last_update_used_render_targets_, 0, sizeof(last_update_used_render_targets_));
++    std::memset(last_update_used_start_tiles_, 0, sizeof(last_update_used_start_tiles_));
++    std::memset(last_update_used_length_tiles_, 0, sizeof(last_update_used_length_tiles_));
+     if (are_accumulated_render_targets_valid_) {
+       for (size_t i = 0; i < rex::countof(last_update_accumulated_render_targets_); ++i) {
+         const RenderTarget* render_target = last_update_accumulated_render_targets_[i];
+@@ -566,13 +568,20 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
+ 
+   // Estimate height used by render targets (for color for writes, for depth /
+   // stencil for both reads and writes) from various sources.
++  uint32_t first_row_used = 0;
+   uint32_t height_used =
+       std::min(GetRenderTargetHeight(pitch_tiles_at_32bpp, msaa_samples),
+                draw_extent_estimator_.EstimateMaxY(
+                    interlock_barrier_only
+                        ? REXCVAR_GET(execute_unclipped_draw_vs_on_cpu_for_psi_render_backend)
+                        : true,
+-                   vertex_shader));
++                   vertex_shader, interlock_barrier_only ? nullptr : &first_row_used));
++  // The tile rows above the first one the draw can touch are left to their current owners.
++  uint32_t rows_skipped_tiles = interlock_barrier_only
++                                    ? 0
++                                    : (std::min(first_row_used, height_used)
++                                       << uint32_t(msaa_samples >= xenos::MsaaSamples::k2X)) /
++                                          xenos::kEdramTileHeightSamples;
+ 
+   // Sorted by EDRAM base and then by index in the pipeline - for simplicity,
+   // treat render targets placed closer to the end of the EDRAM as truncating
+@@ -625,6 +634,7 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
+   RenderTargetKey rt_keys[1 + xenos::kMaxColorRenderTargets];
+   RenderTarget* rts[1 + xenos::kMaxColorRenderTargets];
+   uint32_t rt_lengths_tiles[1 + xenos::kMaxColorRenderTargets];
++  uint32_t rt_skipped_tiles[1 + xenos::kMaxColorRenderTargets] = {};
+   uint32_t length_used_tiles_at_32bpp =
+       ((height_used << uint32_t(msaa_samples >= xenos::MsaaSamples::k2X)) +
+        (xenos::kEdramTileHeightSamples - 1)) /
+@@ -656,6 +666,8 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
+                                         ? edram_bases_sorted[i + 1].first
+                                         : (xenos::kEdramTileCount + edram_bases_sorted[0].first)) -
+                                        rt_base);
++    rt_skipped_tiles[i] = std::min(rows_skipped_tiles * (pitch_tiles_at_32bpp << rt_is_64bpp),
++                                   rt_lengths_tiles[i]);
+   }
+ 
+   if (interlock_barrier_only) {
+@@ -686,8 +698,12 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
+   for (uint32_t i = 0; i < edram_bases_sorted_count; ++i) {
+     const std::pair<uint32_t, uint32_t>& rt_base_index = edram_bases_sorted[i];
+     uint32_t rt_bit_index = rt_base_index.second;
+-    ChangeOwnership(rt_keys[rt_bit_index], 0, rt_lengths_tiles[i],
++    ChangeOwnership(rt_keys[rt_bit_index], rt_skipped_tiles[i],
++                    rt_lengths_tiles[i] - rt_skipped_tiles[i],
+                     interlock_barrier_only ? nullptr : &last_update_transfers_[rt_bit_index]);
++    last_update_used_start_tiles_[rt_bit_index] =
++        (rt_keys[rt_bit_index].base_tiles + rt_skipped_tiles[i]) & (xenos::kEdramTileCount - 1);
++    last_update_used_length_tiles_[rt_bit_index] = rt_lengths_tiles[i] - rt_skipped_tiles[i];
+   }
+ 
+   if (interlock_barrier_only) {
+diff --git a/src/graphics/util/draw_extent_estimator.cpp b/src/graphics/util/draw_extent_estimator.cpp
+index fc6b8b3..4187835 100644
+--- a/src/graphics/util/draw_extent_estimator.cpp
++++ b/src/graphics/util/draw_extent_estimator.cpp
+@@ -11,6 +11,7 @@
+ 
+ #include <algorithm>
+ #include <cfloat>
++#include <cmath>
+ #include <cstdint>
+ 
+ #include <rex/assert.h>
+@@ -144,9 +145,14 @@ bool DrawExtentEstimator::GetAutoIndexedVertexPositions(const Shader& vertex_sha
+   return complete;
+ }
+ 
+-uint32_t DrawExtentEstimator::EstimateVertexMaxY(const Shader& vertex_shader) {
++uint32_t DrawExtentEstimator::EstimateVertexMaxY(const Shader& vertex_shader,
++                                                   uint32_t* min_y_out) {
+   SCOPE_profile_cpu_f("gpu");
+ 
++  if (min_y_out) {
++    *min_y_out = 0;
++  }
++
+   const RegisterFile& regs = register_file_;
+ 
+   auto vgt_draw_initiator = regs.Get<reg::VGT_DRAW_INITIATOR>();
+@@ -221,6 +227,7 @@ uint32_t DrawExtentEstimator::EstimateVertexMaxY(const Shader& vertex_shader) {
+   }
+ 
+   float max_y = -FLT_MAX;
++  float min_y = FLT_MAX;
+ 
+   shader_interpreter_.SetShader(vertex_shader);
+ 
+@@ -271,6 +278,7 @@ uint32_t DrawExtentEstimator::EstimateVertexMaxY(const Shader& vertex_shader) {
+     }
+ 
+     vertex_y = vertex_y * viewport_y_scale + viewport_y_offset;
++    float vertex_min_y = vertex_y;
+ 
+     if (vgt_draw_initiator.prim_type == xenos::PrimitiveType::kPointList) {
+       float point_radius_y;
+@@ -288,14 +296,29 @@ uint32_t DrawExtentEstimator::EstimateVertexMaxY(const Shader& vertex_shader) {
+         point_radius_y = point_constant_radius_y;
+       }
+       vertex_y += point_radius_y;
++      vertex_min_y -= point_radius_y;
+     }
+ 
+     // std::max is `a < b ? b : a`, thus in case of NaN, the first argument is
+     // always returned - max_y, which is initialized to a normalized value.
+     max_y = std::max(max_y, vertex_y);
++    min_y = std::min(min_y, vertex_min_y);
+   }
+   shader_interpreter_.SetExportSink(nullptr);
+ 
++  // Lines are widened by their width, which isn't accounted for.
++  if (min_y_out && min_y != FLT_MAX &&
++      vgt_draw_initiator.prim_type != xenos::PrimitiveType::kLineList &&
++      vgt_draw_initiator.prim_type != xenos::PrimitiveType::kLineStrip &&
++      vgt_draw_initiator.prim_type != xenos::PrimitiveType::kLineLoop) {
++    // The half-pixel offset only moves the draw down, ignoring it keeps the bound low.
++    int32_t min_row = int32_t(std::floor(std::min(std::max(min_y, -16384.0f), 16384.0f))) - 1;
++    if (pa_su_sc_mode_cntl.vtx_window_offset_enable) {
++      min_row += regs.Get<reg::PA_SC_WINDOW_OFFSET>().window_y_offset;
++    }
++    *min_y_out = uint32_t(std::max(min_row, int32_t(0)));
++  }
++
+   int32_t max_y_24p8 = ui::FloatToD3D11Fixed16p8(max_y);
+   // 16p8 range is -32768 to 32767+255/256, but it's stored as uint32_t here,
+   // as 24p8, so overflowing up to -8388608 to 8388608+255/256 is safe. The
+@@ -317,7 +340,7 @@ uint32_t DrawExtentEstimator::EstimateVertexMaxY(const Shader& vertex_shader) {
+ }
+ 
+ uint32_t DrawExtentEstimator::EstimateMaxY(bool try_to_estimate_vertex_max_y,
+-                                           const Shader& vertex_shader) {
++                                           const Shader& vertex_shader, uint32_t* min_y_out) {
+   SCOPE_profile_cpu_f("gpu");
+ 
+   const RegisterFile& regs = register_file_;
+@@ -336,6 +359,17 @@ uint32_t DrawExtentEstimator::EstimateMaxY(bool try_to_estimate_vertex_max_y,
+   scissor_bottom = std::min(scissor_bottom, int32_t(pa_sc_screen_scissor_br.br_y));
+   uint32_t max_y = uint32_t(std::max(scissor_bottom, int32_t(0)));
+ 
++  uint32_t min_y = 0;
++  if (min_y_out) {
++    auto pa_sc_window_scissor_tl = regs.Get<reg::PA_SC_WINDOW_SCISSOR_TL>();
++    int32_t scissor_top = int32_t(pa_sc_window_scissor_tl.tl_y);
++    if (!pa_sc_window_scissor_tl.window_offset_disable) {
++      scissor_top += window_y_offset;
++    }
++    scissor_top = std::max(scissor_top, int32_t(regs.Get<reg::PA_SC_SCREEN_SCISSOR_TL>().tl_y));
++    min_y = uint32_t(std::max(scissor_top, int32_t(0)));
++  }
++
+   if (regs.Get<reg::PA_CL_CLIP_CNTL>().clip_disable) {
+     // Actual extent from the vertices.
+     if (try_to_estimate_vertex_max_y && REXCVAR_GET(execute_unclipped_draw_vs_on_cpu)) {
+@@ -360,7 +394,9 @@ uint32_t DrawExtentEstimator::EstimateMaxY(bool try_to_estimate_vertex_max_y,
+         }
+       }
+       if (estimate_vertex_max_y) {
+-        max_y = std::min(max_y, EstimateVertexMaxY(vertex_shader));
++        uint32_t vertex_min_y = 0;
++        max_y = std::min(max_y, EstimateVertexMaxY(vertex_shader, min_y_out ? &vertex_min_y : nullptr));
++        min_y = std::max(min_y, vertex_min_y);
+       }
+     }
+   } else {
+@@ -392,8 +428,27 @@ uint32_t DrawExtentEstimator::EstimateMaxY(bool try_to_estimate_vertex_max_y,
+     // argument in the !(a < b) case (always for NaN), min as float (max_y is
+     // well below 2^24) to safely drop very large values.
+     max_y = uint32_t(std::min(float(max_y), std::max(0.0f, viewport_bottom)));
++    if (min_y_out) {
++      // The same bounds from the top; a row of slack covers the half-pixel offset.
++      float viewport_top = 0.0f;
++      if (regs.Get<reg::PA_SU_SC_MODE_CNTL>().vtx_window_offset_enable) {
++        viewport_top += float(window_y_offset);
++      }
++      if (pa_cl_vte_cntl.vport_y_offset_ena) {
++        viewport_top += regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YOFFSET);
++      }
++      viewport_top -= pa_cl_vte_cntl.vport_y_scale_ena
++                          ? std::abs(regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YSCALE))
++                          : 1.0f;
++      // The clamp also drops NaN.
++      viewport_top = std::min(std::max(0.0f, viewport_top), 16384.0f);
++      min_y = std::max(min_y, uint32_t(std::max(int32_t(std::floor(viewport_top)) - 1, int32_t(0))));
++    }
+   }
+ 
++  if (min_y_out) {
++    *min_y_out = std::min(min_y, max_y);
++  }
+   return max_y;
+ }
+ 

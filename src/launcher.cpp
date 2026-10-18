@@ -1,0 +1,809 @@
+#include "launcher.h"
+
+#include <algorithm>
+#include <cfloat>
+#include <cmath>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <imgui.h>
+
+#include <rex/cvar.h>
+#include <rex/logging.h>
+#include <rex/ui/imgui_dialog.h>
+#include <rex/version.h>
+
+#include "trg/headers.h"
+#include "trg/launcher.h"
+#include "trg/platform.h"
+
+#include "aspect_ratio.h"
+#include "game_files.h"
+#include "graphics_adapters.h"
+#include "internal_render_scale.h"
+#include "platform.h"
+#include "settings.h"
+
+namespace ssf2t {
+namespace {
+
+// Logical pixels.
+constexpr std::pair<int, int> kLauncherWindowSize = {1280, 720};
+// Share of the primary display's work area the launcher may take.
+constexpr double kLauncherMaxShare = 0.9;
+// How long the saved message stays on screen before the game starts.
+constexpr double kPlayFeedbackSeconds = 0.4;
+
+constexpr ImGuiConfigFlags kNavFlags = ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
+
+// Street Fighter orange over a dark ember background.
+const ImVec4 kAccent = ImVec4(1.00f, 0.52f, 0.08f, 1.0f);
+const ImVec4 kEmber = ImVec4(0.42f, 0.18f, 0.04f, 1.0f);
+
+trg::Theme LauncherTheme() {
+  trg::Theme theme = trg::Theme::Midnight().WithAccent(kAccent);
+  theme.good = kEmber;
+  theme.good_dot = kAccent;
+  return theme;
+}
+
+trg::HeaderPainter LauncherHeader() {
+  return trg::headers::Gradient(IM_COL32(24, 14, 10, 255), IM_COL32(96, 40, 8, 255), IM_COL32(44, 20, 8, 255),
+                                IM_COL32(10, 8, 12, 255));
+}
+
+trg::Fonts g_fonts;
+
+GameFiles CheckAndLogGameFiles(const std::filesystem::path& game_dir) {
+  const GameCheck check = CheckGameFiles(game_dir);
+  if (check.state == GameFiles::kUnsupported && check.xex_crc32 != 0) {
+    REXLOG_WARN("default.xex is not the supported version (CRC32 {:08X})", check.xex_crc32);
+  }
+  return check.state;
+}
+
+// Written by the install job, read once the Task has finished.
+struct InstallOutcome {
+  InstallResult result;
+  GameFiles files = GameFiles::kMissing;
+};
+
+// The theme's only alert colours; destructive actions use them instead of the accent.
+void PushDangerButton(const trg::Theme& t) {
+  ImGui::PushStyleColor(ImGuiCol_Button, t.warn);
+  ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(t.warn.x + 0.12f, t.warn.y + 0.10f, t.warn.z + 0.05f, 1.0f));
+  ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(t.warn.x - 0.05f, t.warn.y - 0.04f, t.warn.z - 0.02f, 1.0f));
+  ImGui::PushStyleColor(ImGuiCol_Text, t.text);
+}
+
+std::string Size(int width, int height) {
+  return std::to_string(width) + " \xC3\x97 " + std::to_string(height);
+}
+
+std::vector<trg::Option> RenderResolutionOptions(AspectRatio aspect) {
+  std::vector<trg::Option> options;
+  for (int scale = 1; scale <= 4; ++scale) {
+    std::string label = scale == 1 ? "Original" : std::to_string(scale) + "x";
+    label += " \xE2\x80\x94 " + std::to_string(GuestWidth(aspect) * scale) + "x" + std::to_string(kGuestHeight * scale);
+    if (scale == 2) {
+      label += " \xE2\x80\x94 Recommended for 1440p";
+    }
+    options.push_back({std::to_string(scale), label});
+  }
+  return options;
+}
+
+std::vector<trg::Option> AspectRatioOptions() {
+  std::vector<trg::Option> options;
+  for (const AspectRatioInfo& info : kAspectRatios) {
+    options.push_back({info.key, info.label});
+  }
+  return options;
+}
+
+std::string KeyList(std::string keys) {
+  if (keys.empty()) {
+    return "None";
+  }
+  for (size_t i = keys.find(','); i != std::string::npos; i = keys.find(',', i)) {
+    keys.replace(i, 1, " or ");
+  }
+  return keys;
+}
+
+class LauncherDialog final : public rex::ui::ImGuiDialog {
+ public:
+  LauncherDialog(rex::ui::ImGuiDrawer* drawer, LauncherPaths paths, GameSettings& settings,
+                 LauncherCallbacks callbacks)
+      : ImGuiDialog(drawer),
+        paths_(std::move(paths)),
+        cb_(std::move(callbacks)),
+        settings_(settings),
+        game_files_(CheckAndLogGameFiles(paths_.game_dir)),
+        monitors_(ListMonitors()),
+        graphics_adapters_(ListGraphicsAdapters()) {
+    launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
+    if (WindowFullscreen()) {
+      restore_when_windowed_ = true;
+      RequestFullscreen(false);
+    } else {
+      StartInSavedState();
+    }
+  }
+
+ protected:
+  void OnDraw(ImGuiIO& io) override {
+    if (done_) {
+      return;
+    }
+    PollInstall();
+    TrackPlacement();
+    if (!nav_taken_) {
+      saved_nav_flags_ = io.ConfigFlags & kNavFlags;
+      saved_has_gamepad_ = io.BackendFlags & ImGuiBackendFlags_HasGamepad;
+      io.ConfigFlags |= kNavFlags;
+      nav_taken_ = true;
+    }
+    gamepad_.Update(io);
+    if (!starting_ && ImGui::IsKeyPressed(ImGuiKey_F11, false) && !fullscreen_gate_.Pending()) {
+      ToggleLauncherFullscreen();
+    }
+    if (starting_ && ImGui::GetTime() - play_started_ >= kPlayFeedbackSeconds && !LeavingFullscreen()) {
+      StartGame();
+      return;
+    }
+    if (starting_) {
+      // TRG's hotkeys read the same key state, so release it before Frame() runs.
+      io.ClearInputKeys();
+      io.ClearInputMouse();
+    }
+    ImGui::BeginDisabled(starting_);
+    const trg::Result result = launcher_->Frame();
+    ImGui::EndDisabled();
+    if (starting_) {
+      DrawStartingMessage();
+    }
+    switch (result) {
+      case trg::Result::kPlay:
+        RequestPlay();
+        break;
+      case trg::Result::kQuit:
+        if (!starting_) {
+          Finish(cb_.quit);
+        }
+        break;
+      case trg::Result::kNone:
+        break;
+    }
+  }
+
+  // Every PLAY (mouse, Enter, Xbox Start) ends here. The one save happens here; StartGame never saves.
+  void RequestPlay() {
+    if (starting_ || install_.running() || game_files_ != GameFiles::kReady) {
+      return;
+    }
+    if (!launcher_->Save()) {
+      return;
+    }
+    starting_ = true;
+    play_started_ = ImGui::GetTime();
+    launcher_->SetStatus("", 0.0);
+  }
+
+  void StartGame() {
+    if (cb_.window_changed && cb_.window_changed()) {
+      if (cb_.restart && cb_.restart()) {
+        Finish(nullptr);
+        return;
+      }
+      starting_ = false;
+      launcher_->SetStatus("Could not start the game in a new window. Press Play to try again.", 8);
+      return;
+    }
+    RestoreStartupWindow();
+    Finish(cb_.play);
+  }
+
+  // Drawn outside the disabled frame so the message keeps full brightness.
+  void DrawStartingMessage() {
+    constexpr const char* kText = "Settings saved. Starting game...";
+    ImFont* font = g_fonts.semibold ? g_fonts.semibold : ImGui::GetFont();
+    const float size = g_fonts.size * 1.25f;
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const ImVec2 text_size = font->CalcTextSizeA(size, FLT_MAX, 0.0f, kText);
+    const ImVec2 pos(vp->Pos.x + (vp->Size.x - text_size.x) * 0.5f,
+                     vp->Pos.y + (vp->Size.y - text_size.y) * 0.5f);
+    ImGui::GetForegroundDrawList()->AddText(font, size, pos, ImGui::GetColorU32(kAccent), kText);
+  }
+
+  // Runs inside the last frame; the in-game overlays share this ImGui context.
+  void OnClose() override {
+    ImGuiIO& io = GetIO();
+    gamepad_.Release(io);
+    io.ConfigFlags = (io.ConfigFlags & ~kNavFlags) | saved_nav_flags_;
+    io.BackendFlags = (io.BackendFlags & ~ImGuiBackendFlags_HasGamepad) | saved_has_gamepad_;
+  }
+
+ private:
+  void Finish(std::function<void()> action) {
+    done_ = true;
+    SavePlacement(placement_.Flush());
+    Close();
+    if (action) {
+      action();
+    }
+  }
+
+  void* WindowHandle() const { return cb_.window_handle ? cb_.window_handle() : nullptr; }
+
+  bool WindowFullscreen() const { return cb_.window_fullscreen && cb_.window_fullscreen(); }
+
+  void StartInSavedState() {
+    RestorePlacement();
+    if (fullscreen_pref_.wanted()) {
+      RequestFullscreen(true);
+    }
+  }
+
+  void ToggleLauncherFullscreen() {
+    const bool fullscreen = !WindowFullscreen();
+    RequestFullscreen(fullscreen);
+    fullscreen_pref_.UserSet(fullscreen);
+    if (!settings_.SaveNow(LauncherFullscreenValues(fullscreen))) {
+      REXLOG_WARN("Could not save the launcher fullscreen state");
+    }
+  }
+
+  void RequestFullscreen(bool fullscreen) {
+    fullscreen_gate_.Request(fullscreen);
+    if (cb_.set_window_fullscreen) {
+      cb_.set_window_fullscreen(fullscreen);
+    }
+  }
+
+  // The game gets the window out of the launcher's temporary fullscreen.
+  bool LeavingFullscreen() {
+    if (!WindowFullscreen() || leave_gave_up_) {
+      return false;
+    }
+    if (!leave_requested_) {
+      leave_requested_ = true;
+      leave_started_ = ImGui::GetTime();
+      RequestFullscreen(false);
+    }
+    leave_gave_up_ = ImGui::GetTime() - leave_started_ >= FullscreenGate::kTimeoutSeconds;
+    return !leave_gave_up_;
+  }
+
+  void RestorePlacement() {
+    if (const auto placed = TakePreShowResult()) {
+      startup_ = placed->startup;
+      placement_ = PlacementTracker(placed->applied);
+      return;
+    }
+    void* window = WindowHandle();
+    const auto state = QueryWindowState(window);
+    if (!state || WindowFullscreen()) {
+      return;
+    }
+    const WindowPlacement saved = SavedLauncherPlacement();
+    const bool restorable = PlacementIsVisible(saved, WorkAreas());
+    startup_ = WindowPlacement{state->rect, state->maximized};
+    placement_ = PlacementTracker(restorable ? std::optional<WindowPlacement>(saved) : std::nullopt);
+    if (restorable) {
+      ApplyWindowPlacement(window, saved);
+    }
+  }
+
+  void TrackPlacement() {
+    const double now = ImGui::GetTime();
+    const FullscreenGate::Step step = fullscreen_gate_.Update(WindowFullscreen(), now);
+    if (restore_when_windowed_) {
+      if (!WindowFullscreen() && !fullscreen_gate_.Pending()) {
+        restore_when_windowed_ = false;
+        StartInSavedState();
+      }
+      return;
+    }
+    if (!startup_) {
+      return;
+    }
+    if (step.restore) {
+      if (const auto current = placement_.Current()) {
+        ApplyWindowPlacement(WindowHandle(), *current);
+      }
+    }
+    if (!step.observe) {
+      return;
+    }
+    if (const auto state = QueryWindowState(WindowHandle())) {
+      placement_.Observe(*state, WindowFullscreen(), now);
+      SavePlacement(placement_.TakeSettled(now));
+    }
+  }
+
+  void SavePlacement(const std::optional<WindowPlacement>& placement) {
+    if (placement && !settings_.SaveNow(PlacementValues(*placement))) {
+      REXLOG_WARN("Could not save the launcher window placement");
+    }
+  }
+
+  // The game keeps the window it was created with, not the launcher's saved placement.
+  void RestoreStartupWindow() {
+    if (startup_ && !WindowFullscreen()) {
+      ApplyWindowPlacement(WindowHandle(), *startup_);
+    }
+  }
+
+  trg::LauncherConfig MakeConfig() {
+    trg::LauncherConfig c;
+    c.settings = &settings_;
+    // PLAY saves in RequestPlay, so a failed save keeps the launcher open.
+    c.save_on_play = false;
+    c.theme = LauncherTheme();
+    c.note = "Play applies the changes. Save keeps them without starting.";
+    c.fonts = g_fonts;
+    c.branding.title = "SUPER STREET FIGHTER II TURBO HD REMIX";
+    c.branding.background = LauncherHeader();
+    c.pages = {
+        {"Play", "Check the game files and start playing.", [this](trg::Ui& ui) { PagePlay(ui); },
+         [this] { return game_files_ != GameFiles::kReady; }},
+        {"Display", "Window, monitor and how the picture fits your screen.",
+         [this](trg::Ui& ui) { PageDisplay(ui); }},
+        {"Graphics", "Render resolution, anti-aliasing and texture filtering.",
+         [this](trg::Ui& ui) { PageGraphics(ui); }},
+        {"Gameplay", "What the window shows while you play.", [](trg::Ui& ui) { PageGameplay(ui); }},
+        {"Controls", "Controller and keyboard.", [](trg::Ui& ui) { PageControls(ui); }},
+        {"About", "About this port, and where your files and settings live.",
+         [this](trg::Ui& ui) { PageAbout(ui); }},
+    };
+    c.can_play = [this] {
+      if (install_.running()) {
+        return trg::PlayCheck{false, "Wait for the install to finish.", 0};
+      }
+      if (game_files_ == GameFiles::kReady) {
+        return trg::PlayCheck{};
+      }
+      return trg::PlayCheck{false, "The game files are not ready: see the Play page.", 0};
+    };
+    return c;
+  }
+
+  void PagePlay(trg::Ui& ui) {
+    const std::string dir = Utf8(paths_.game_dir);
+    if (install_.running()) {
+      ui.StatusCard(trg::Status::kBusy, "Installing game files", nullptr, std::max(0.0f, install_.fraction()));
+    } else {
+      switch (game_files_) {
+        case GameFiles::kReady:
+          ui.StatusCard(trg::Status::kReady, "Ready to play", dir.c_str());
+          break;
+        case GameFiles::kUnsupported:
+          ui.StatusCard(trg::Status::kAttention, "Different version of the game",
+                        DescribeInstall(InstallStatus::kWrongVersion).text);
+          break;
+        case GameFiles::kMissing:
+          ui.StatusCard(trg::Status::kAttention, "Game files needed",
+                        "This port requires your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade package.");
+          break;
+      }
+    }
+    if (!install_failure_.empty()) {
+      DrawFailure(ui, install_failure_, install_failure_text_);
+    }
+    if (paths_.game_dir.empty()) {
+      ui.Help("No game folder was given: start the game with --game_data_root.");
+    } else {
+      ui.Row("Game package",
+             "Title ID: 584108A4. No game files are included with this port; the package's files (about 370 MB) are "
+             "copied next to the program.");
+      if (!ui.TaskProgress(install_)) {
+        const bool clicked = game_files_ == GameFiles::kReady
+                                 ? ImGui::Button("Reinstall from package...", ImVec2(-FLT_MIN, 0))
+                                 : ui.AccentButton("Install from package...");
+        if (clicked) {
+          BrowseAndInstall();
+        }
+      }
+    }
+    ui.LauncherVisibilityRow("hcu_launcher");
+    ui.EndRows();
+  }
+
+  static void DrawFailure(trg::Ui& ui, const std::string& title, const std::string& text) {
+    ui.Spacer(4);
+    ImGui::PushStyleColor(ImGuiCol_Text, ui.theme().warn_dot);
+    ImGui::TextUnformatted(title.c_str());
+    ImGui::PopStyleColor();
+    ui.Help(text.c_str());
+    ui.Spacer(4);
+  }
+
+  void BrowseAndInstall() {
+    PollInstall();
+    if (install_.running()) {
+      return;
+    }
+    const std::string picked = trg::BrowseForFile("Select your Super Street Fighter II Turbo HD Remix Xbox Live Arcade package",
+                                                  {{"Xbox Live Arcade package", "*"}});
+    if (picked.empty()) {
+      return;
+    }
+    install_failure_.clear();
+    install_failure_text_.clear();
+    outcome_ = std::make_shared<InstallOutcome>();
+    const bool started = install_.Start(
+        "Reading package...",
+        [outcome = outcome_, package = PathFromUtf8(picked), game_dir = paths_.game_dir](trg::Task& task) {
+          InstallHooks hooks;
+          hooks.phase = [&task](const char* text) {
+            task.SetLabel(text);
+            task.Progress(0, 0);
+          };
+          hooks.progress = [&task](uint64_t done, uint64_t total) {
+            task.Progress(static_cast<long long>(done), static_cast<long long>(total));
+            return !task.cancelled();
+          };
+          outcome->result = InstallFromPackage(package, game_dir, hooks);
+          if (outcome->result.ok()) {
+            outcome->files = CheckGameFiles(game_dir).state;
+          }
+          return outcome->result.ok() ? std::string() : std::string(DescribeInstall(outcome->result.status).title);
+        });
+    if (started) {
+      REXLOG_INFO("Installing game files from {}", picked);
+    }
+  }
+
+  // Runs every frame so a finished install is picked up whichever page is open.
+  void PollInstall() {
+    std::string error;
+    if (install_.Finish(&error) == trg::Task::State::kIdle) {
+      return;
+    }
+    const std::shared_ptr<InstallOutcome> outcome = std::move(outcome_);
+    if (!outcome) {
+      return;
+    }
+    const InstallResult& result = outcome->result;
+    const InstallMessage message = DescribeInstall(result.status);
+    if (result.ok() || result.status == InstallStatus::kCancelled) {
+      if (result.ok()) {
+        game_files_ = outcome->files;
+        REXLOG_INFO("Game files installed: {} files, {} bytes", result.files, result.bytes);
+      } else {
+        REXLOG_INFO("Game install cancelled");
+      }
+      launcher_->SetStatus(std::string(message.title) + ". " + message.text, 6.0);
+      return;
+    }
+    REXLOG_WARN("Game install failed: {} ({})", message.title, result.detail);
+    install_failure_ = message.title;
+    install_failure_text_ = message.text;
+    launcher_->SetStatus("Install failed: " + install_failure_, 8.0);
+  }
+
+  void PageDisplay(trg::Ui& ui) {
+    ui.Toggle("Display mode",
+              "How the game starts. Borderless Fullscreen fills the monitor. F11 switches while playing.", "fullscreen",
+              false, "Windowed", "Borderless Fullscreen");
+    ui.Row("Window size", "The game window's size in Windowed mode.");
+    WindowSizeCombo();
+    ui.Row("Monitor", "The display the game opens on.");
+    MonitorCombo();
+    if (ui.Combo("Aspect Ratio",
+                 "Sets the game's target rendering format and the Window size choices.",
+                 "hcu_aspect_ratio", "16:9", AspectRatioOptions())) {
+      SelectWindowSizeForAspect();
+    }
+    ui.Row("VSync", "On prevents tearing. Off allows it, for the lowest latency and G-Sync/FreeSync.");
+    {
+      const bool tearing = settings_.GetBool(kTearingSetting, true);
+      if (int i = ui.Segmented("vsync", {"Off", "On"}, tearing ? 0 : 1); i >= 0) {
+        settings_.SetBool(kTearingSetting, i == 0);
+      }
+    }
+  }
+
+  const MonitorInfo* SelectedMonitor() const {
+    const int index = settings_.GetInt("monitor", 0);
+    if (index >= 1 && index <= int(monitors_.size())) {
+      return &monitors_[size_t(index - 1)];
+    }
+    for (const MonitorInfo& m : monitors_) {
+      if (m.primary) {
+        return &m;
+      }
+    }
+    return monitors_.empty() ? nullptr : &monitors_.front();
+  }
+
+  AspectRatio SelectedAspectRatio() const {
+    return ParseAspectRatio(settings_.Get("hcu_aspect_ratio", "16:9"));
+  }
+
+  static bool WindowSizeFits(int width, int height, const MonitorInfo* monitor) {
+    return !monitor || (width * monitor->scale < monitor->width && height * monitor->scale < monitor->height);
+  }
+
+  // Moves Window size to the new aspect ratio's default, unless the current size already belongs to it.
+  void SelectWindowSizeForAspect() {
+    const AspectRatio aspect = SelectedAspectRatio();
+    const int width = settings_.GetInt("window_width", 0);
+    const int height = settings_.GetInt("window_height", 0);
+    for (const WindowSize& size : kWindowSizes) {
+      if (size.aspect == aspect && size.width == width && size.height == height) {
+        return;
+      }
+    }
+    const AspectRatioInfo& info = InfoFor(aspect);
+    const MonitorInfo* monitor = SelectedMonitor();
+    const WindowSize* chosen = nullptr;
+    for (const WindowSize& size : kWindowSizes) {
+      if (size.aspect != aspect || !WindowSizeFits(size.width, size.height, monitor)) {
+        continue;
+      }
+      if (size.width == info.default_width && size.height == info.default_height) {
+        chosen = &size;
+        break;
+      }
+      if (!chosen || size.width > chosen->width) {
+        chosen = &size;
+      }
+    }
+    if (chosen) {
+      settings_.SetInt("window_width", chosen->width);
+      settings_.SetInt("window_height", chosen->height);
+    }
+  }
+
+  // window_width/height are logical pixels; display scaling enlarges them.
+  void WindowSizeCombo() {
+    const int width = settings_.GetInt("window_width", 0);
+    const int height = settings_.GetInt("window_height", 0);
+    const AspectRatio aspect = SelectedAspectRatio();
+    const MonitorInfo* monitor = SelectedMonitor();
+    const float scale = monitor ? monitor->scale : 1.0f;
+    auto label = [scale](int w, int h) {
+      if (w <= 0 || h <= 0) {
+        return std::string("Default");
+      }
+      std::string text = Size(w, h);
+      if (scale != 1.0f) {
+        text += "   (" + Size(int(std::lround(w * scale)), int(std::lround(h * scale))) + " on screen)";
+      }
+      return text;
+    };
+    if (ImGui::BeginCombo("##window_size", label(width, height).c_str())) {
+      for (const WindowSize& size : kWindowSizes) {
+        if (size.aspect != aspect) {
+          continue;
+        }
+        const bool current = size.width == width && size.height == height;
+        if (!current && !WindowSizeFits(size.width, size.height, monitor)) {
+          continue;
+        }
+        if (ImGui::Selectable(label(size.width, size.height).c_str(), current) && !current) {
+          settings_.SetInt("window_width", size.width);
+          settings_.SetInt("window_height", size.height);
+        }
+      }
+      ImGui::EndCombo();
+    }
+  }
+
+  void MonitorCombo() {
+    const int current = settings_.GetInt("monitor", 0);
+    auto label = [this](int index) {
+      if (index <= 0) {
+        return std::string("Default");
+      }
+      if (index > int(monitors_.size())) {
+        return "Display " + std::to_string(index) + " (not connected)";
+      }
+      const MonitorInfo& m = monitors_[size_t(index - 1)];
+      return "Display " + std::to_string(index) + (m.primary ? " (primary)" : "") + "   " + Size(m.width, m.height);
+    };
+    if (ImGui::BeginCombo("##monitor", label(current).c_str())) {
+      for (int i = 1; i <= int(monitors_.size()); ++i) {
+        if (ImGui::Selectable(label(i).c_str(), i == current) && i != current) {
+          settings_.SetInt("monitor", i);
+        }
+      }
+      ImGui::EndCombo();
+    }
+  }
+
+  void PageGraphics(trg::Ui& ui) {
+    if (!graphics_adapters_.empty()) {
+      std::vector<trg::Option> adapters;
+      for (const auto& [value, label] :
+           GraphicsAdapterOptions(graphics_adapters_, settings_.Get("hcu_graphics_adapter", kGraphicsAdapterAuto))) {
+        adapters.push_back({value, label});
+      }
+      ui.Combo("Graphics card",
+               "Selects which GPU renders the game. Automatic uses the recommended high-performance GPU. "
+               "A GPU chosen here overrides automatic selection and restarts the game window.",
+               "hcu_graphics_adapter", kGraphicsAdapterAuto, adapters);
+    }
+    ui.Combo("Render resolution",
+             "Draws the game at a multiple of its own picture, then scales it to the window. Higher is sharper and "
+             "costs more GPU time. Window size is separate.",
+             "resolution_scale", "1", RenderResolutionOptions(SelectedAspectRatio()));
+    ui.Combo("Internal render resolution",
+             "Renders the game internally at a lower resolution, then scales it to the selected render resolution. "
+             "Lower values improve GPU performance but reduce image sharpness.",
+             "hcu_internal_render_scale", "100",
+             {{"100", "100% Native"}, {"75", "75% Performance"}, {"50", "50% Low-end"}});
+    ui.Choice("Anti-aliasing", "Smooths jagged edges after the frame is drawn. Extreme is softer but cleaner.",
+              "swap_post_effect", "none", {{"none", "Off"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA Extreme"}});
+    ui.Toggle("Multisampling",
+              "Use 2\xC3\x97 MSAA for best performance. Try 4\xC3\x97 only if you see graphics problems with 2\xC3\x97.",
+              "hcu_msaa_compatibility", false, "2\xC3\x97 MSAA", "4\xC3\x97 MSAA (Compatibility)");
+    ui.Choice("Texture filtering", "Anisotropic filtering keeps textures sharp at oblique angles. Game leaves it to the game.",
+              "anisotropic_override", "3",
+              {{"-1", "Game"},
+               {"0", "Off"},
+               {"2", "2\xC3\x97"},
+               {"3", "4\xC3\x97"},
+               {"4", "8\xC3\x97"},
+               {"5", "16\xC3\x97"}},
+              6);
+  }
+
+  static void PageGameplay(trg::Ui& ui) {
+    ui.Toggle("Frame rate in title", "Shows the game's frame rate in the window title: Super Street Fighter II Turbo HD Remix | FPS: 60.00",
+              "hcu_show_fps", true, "Off", "On");
+    ui.Toggle("Render resolution in title", "Shows the game's render resolution in the window title",
+              "hcu_show_render_resolution", false, "Off", "On");
+    ui.Toggle("Frame counter", "Shows the game's frame rate in the corner. F2 toggles it while playing.",
+              "hcu_show_frame_counter", false, "Hidden", "Shown");
+  }
+
+  static void PageControls(trg::Ui& ui) {
+    ui.Info("Controller", "Automatic: Xbox controllers work without setup.");
+    ui.Toggle("Keyboard", "Plays as an Xbox 360 controller, together with any connected controller.", "mnk_mode",
+              true, "Disabled", "Enabled");
+    if (ui.Section("Keyboard keys")) {
+      ui.Help("Plain arrow keys are the right stick. Menus use W A S D or Shift + arrow keys.");
+      for (const rex::cvar::FlagEntry& e : rex::cvar::GetRegistry()) {
+        if (e.category == "Input/Keybinds/Controller") {
+          ui.Info(e.description.c_str(), KeyList(e.getter()).c_str());
+        }
+      }
+    }
+  }
+
+  void PageAbout(trg::Ui& ui) {
+    ui.Paragraph(
+        "Super Street Fighter II Turbo HD Remix for Xbox Live Arcade, statically recompiled to run natively on PC with "
+        "the ReXGlue SDK. No game code or assets are included: the game runs from your own game files.");
+    ui.Spacer(4);
+    if (!paths_.game_dir.empty()) {
+      ui.FolderRow("Game files", "Where the game data is read from.", "Open game folder", Utf8(paths_.game_dir));
+    }
+    ui.FolderRow("Saves and settings", UserDataFolderHelp(paths_.user_data_outcome), "Open data folder",
+                 Utf8(paths_.user_dir));
+    if (ui.ButtonRow("Settings file", "Your launcher choices, as plain text. Loaded after ssf2t_hd_remix.toml.",
+                     "Show settings file") &&
+        launcher_->Save()) {
+      std::error_code ec;
+      const bool exists = std::filesystem::exists(paths_.settings_file, ec);
+      trg::OpenInFileManager(Utf8(exists ? paths_.settings_file : paths_.user_dir));
+    }
+    ui.ResetAllRow();
+    ui.Info("Port version", SSF2T_PORT_VERSION);
+    ui.Info("Libraries", "ReXGlue SDK " REXGLUE_VERSION_STRING "   \xC2\xB7   TRG Launcher " SSF2T_TRG_VERSION);
+    ui.Info("Game", "Xbox Live Arcade, title 584108A4, game version 0.0.1.3");
+  }
+
+  LauncherPaths paths_;
+  LauncherCallbacks cb_;
+  GameSettings& settings_;
+  GameFiles game_files_;
+  std::vector<MonitorInfo> monitors_;
+  std::vector<GraphicsAdapter> graphics_adapters_;
+  std::unique_ptr<trg::Launcher> launcher_;
+  LauncherGamepad gamepad_;
+  bool nav_taken_ = false;
+  bool starting_ = false;
+  double play_started_ = 0.0;
+  ImGuiConfigFlags saved_nav_flags_ = 0;
+  ImGuiBackendFlags saved_has_gamepad_ = 0;
+  bool done_ = false;
+  std::optional<WindowPlacement> startup_;
+  PlacementTracker placement_;
+  FullscreenGate fullscreen_gate_;
+  LauncherFullscreenPreference fullscreen_pref_{SavedLauncherFullscreen()};
+  bool restore_when_windowed_ = false;
+  bool leave_requested_ = false;
+  bool leave_gave_up_ = false;
+  double leave_started_ = 0.0;
+  std::string install_failure_;
+  std::string install_failure_text_;
+  std::shared_ptr<InstallOutcome> outcome_;
+  trg::Task install_;
+};
+
+}  // namespace
+
+void LoadLauncherFonts(ImFontAtlas* atlas, float density) {
+  // Latin-1 plus General Punctuation.
+  static const ImWchar kRanges[] = {0x0020, 0x00FF, 0x2010, 0x205E, 0};
+  ImFontConfig config;
+  config.RasterizerDensity = density;
+  auto load = [&](const std::filesystem::path& path) -> ImFont* {
+    std::error_code ec;
+    if (path.empty() || !std::filesystem::exists(path, ec)) {
+      return nullptr;
+    }
+    return atlas->AddFontFromFileTTF(Utf8(path).c_str(), g_fonts.size, &config, kRanges);
+  };
+  const UiFontFiles fonts = FindUiFonts();
+  g_fonts.regular = load(fonts.regular);
+  g_fonts.semibold = load(fonts.semibold);
+  g_fonts.bold = load(fonts.bold);
+}
+
+ImFont* LauncherRegularFont() {
+  return g_fonts.regular;
+}
+
+ImFont* LauncherSemiboldFont() {
+  return g_fonts.semibold;
+}
+
+namespace {
+bool g_skipped_once = false;
+}  // namespace
+
+bool ShouldShowLauncher(const std::filesystem::path& game_dir) {
+  g_skipped_once = REXCVAR_GET(hcu_skip_launcher);
+  rex::cvar::ResetToDefault("hcu_skip_launcher");
+  return LauncherWanted(CheckAndLogGameFiles(game_dir) == GameFiles::kReady, g_skipped_once, ShiftHeld(),
+                        REXCVAR_GET(hcu_launcher));
+}
+
+bool ShiftHeldAfterWindowOpened() {
+#if defined(_WIN32)
+  return false;
+#else
+  return !g_skipped_once && ShiftHeld();
+#endif
+}
+
+namespace {
+
+std::pair<int, int> LauncherWindowSize() {
+  const MonitorInfo primary = MonitorForSetting(1);
+  if (primary.width == 0 || primary.scale <= 0.0f) {
+    return kLauncherWindowSize;
+  }
+  const int max_width = int(primary.work_width * kLauncherMaxShare / primary.scale);
+  const int max_height = int(primary.work_height * kLauncherMaxShare / primary.scale);
+  return {std::min(kLauncherWindowSize.first, max_width), std::min(kLauncherWindowSize.second, max_height)};
+}
+
+}  // namespace
+
+void PrepareLauncherWindow() {
+  const auto [width, height] = LauncherWindowSize();
+  rex::cvar::SetFlagByName("fullscreen", "false");
+  rex::cvar::SetFlagByName("window_width", std::to_string(width));
+  rex::cvar::SetFlagByName("window_height", std::to_string(height));
+  // Monitor 0 lets SDL centre the window on the primary display, whatever the display order.
+  rex::cvar::SetFlagByName("monitor", "0");
+  const WindowPlacement saved = SavedLauncherPlacement();
+  InstallPreShowPlacement(PlanPreShow(saved, WorkAreas()), saved);
+}
+
+void ShowLauncher(rex::ui::ImGuiDrawer* drawer, LauncherPaths paths, GameSettings& settings,
+                  LauncherCallbacks callbacks) {
+  new LauncherDialog(drawer, std::move(paths), settings, std::move(callbacks));
+}
+
+}  // namespace ssf2t

@@ -1,0 +1,89 @@
+diff --git a/include/rex/graphics/pipeline/render_target/cache.h b/include/rex/graphics/pipeline/render_target/cache.h
+index 8c32007..1d8a371 100644
+--- a/include/rex/graphics/pipeline/render_target/cache.h
++++ b/include/rex/graphics/pipeline/render_target/cache.h
+@@ -497,6 +497,13 @@ class RenderTargetCache {
+     assert_true(GetPath() == Path::kHostRenderTargets);
+     return last_update_transfers_;
+   }
++  // Tiles (wrapping around the EDRAM) in which the contents of the owning host render target may
++  // differ from what the EDRAM buffer last received from it: set when the owner changes or may
++  // write, cleared by dumping the tile.
++  void SetEdramTilesDirty(uint32_t start_tiles, uint32_t length_tiles, bool dirty);
++  bool IsEdramTileDirty(uint32_t tile) const {
++    return (edram_dirty_tiles_[(tile & (xenos::kEdramTileCount - 1)) >> 6] >> (tile & 63)) & 1;
++  }
+   // The EDRAM tiles [start, start + length), wrapping around the EDRAM, that the render target
+   // in the slot may be drawn to: what the last update claimed, or all of them if the slot has
+   // a render target the update didn't use.
+@@ -674,6 +681,8 @@ class RenderTargetCache {
+                        uint32_t length_tiles, std::vector<Transfer>* transfers_append_out,
+                        const Transfer::Rectangle* resolve_clear_cutout = nullptr);
+ 
++  uint64_t edram_dirty_tiles_[xenos::kEdramTileCount / 64];
++
+   // If failed to create, may contain nullptr to prevent attempting to create a
+   // render target twice.
+   std::unordered_map<RenderTargetKey, RenderTarget*, RenderTargetKey::Hasher> render_targets_;
+diff --git a/src/graphics/pipeline/render_target/cache.cpp b/src/graphics/pipeline/render_target/cache.cpp
+index e2b738d..7b1b310 100644
+--- a/src/graphics/pipeline/render_target/cache.cpp
++++ b/src/graphics/pipeline/render_target/cache.cpp
+@@ -333,8 +333,29 @@ RenderTargetCache::~RenderTargetCache() {
+   ShutdownCommon();
+ }
+ 
++void RenderTargetCache::SetEdramTilesDirty(uint32_t start_tiles, uint32_t length_tiles,
++                                           bool dirty) {
++  uint32_t end_tiles =
++      (start_tiles & (xenos::kEdramTileCount - 1)) + std::min(length_tiles, xenos::kEdramTileCount);
++  start_tiles &= xenos::kEdramTileCount - 1;
++  auto apply = [&](uint32_t first, uint32_t last) {
++    while (first < last) {
++      uint32_t count = std::min(64 - (first & 63), last - first);
++      uint64_t mask = (count == 64 ? ~uint64_t(0) : ((uint64_t(1) << count) - 1)) << (first & 63);
++      uint64_t& word = edram_dirty_tiles_[first >> 6];
++      word = dirty ? (word | mask) : (word & ~mask);
++      first += count;
++    }
++  };
++  apply(start_tiles, std::min(end_tiles, xenos::kEdramTileCount));
++  if (end_tiles > xenos::kEdramTileCount) {
++    apply(0, end_tiles - xenos::kEdramTileCount);
++  }
++}
++
+ void RenderTargetCache::InitializeCommon() {
+   assert_true(ownership_ranges_.empty());
++  SetEdramTilesDirty(0, xenos::kEdramTileCount, true);
+   ownership_ranges_.emplace(std::piecewise_construct, std::forward_as_tuple(uint32_t(0)),
+                             std::forward_as_tuple(xenos::kEdramTileCount, RenderTargetKey(),
+                                                   RenderTargetKey(), RenderTargetKey()));
+@@ -342,6 +363,7 @@ void RenderTargetCache::InitializeCommon() {
+ 
+ void RenderTargetCache::DestroyAllRenderTargets(bool shutting_down) {
+   ownership_ranges_.clear();
++  SetEdramTilesDirty(0, xenos::kEdramTileCount, true);
+   if (!shutting_down) {
+     ownership_ranges_.emplace(std::piecewise_construct, std::forward_as_tuple(uint32_t(0)),
+                               std::forward_as_tuple(xenos::kEdramTileCount, RenderTargetKey(),
+@@ -1124,6 +1146,11 @@ bool RenderTargetCache::PrepareHostRenderTargetsResolveClear(
+     return false;
+   }
+ 
++  // The clears happen in the host render targets even where they already own the tiles.
++  SetEdramTilesDirty(depth_render_target_key.base_tiles + depth_clear_start_tiles_base_relative,
++                     depth_clear_length_tiles, true);
++  SetEdramTilesDirty(color_render_target_key.base_tiles + color_clear_start_tiles_base_relative,
++                     color_clear_length_tiles, true);
+   clear_rectangle_out = clear_rectangle;
+   depth_render_target_out = depth_render_target;
+   depth_transfers_out.clear();
+@@ -1542,6 +1569,7 @@ void RenderTargetCache::ChangeOwnership(RenderTargetKey dest, uint32_t start_til
+         }
+       }
+       // Claim the current range.
++      SetEdramTilesDirty(it->first, it->second.end_tiles - it->first, true);
+       it->second.render_target = dest;
+       if (host_depth_encoding_different) {
+         it->second.GetHostDepthRenderTarget(dest.GetDepthFormat()) = dest;

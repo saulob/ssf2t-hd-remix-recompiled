@@ -1,0 +1,60 @@
+diff --git a/src/core/threading_posix.cpp b/src/core/threading_posix.cpp
+index 9ac8d15..1335b93 100644
+--- a/src/core/threading_posix.cpp
++++ b/src/core/threading_posix.cpp
+@@ -330,19 +330,18 @@ class PosixConditionBase {
+       return std::make_pair(result, 0);
+     }
+ 
+-    auto start_time = std::chrono::steady_clock::now();
+-    auto end_time = (timeout == std::chrono::milliseconds::max())
+-                        ? std::chrono::steady_clock::time_point::max()
+-                        : start_time + timeout;
++    const bool infinite_timeout = timeout == std::chrono::milliseconds::max();
++    auto end_time = infinite_timeout ? std::chrono::steady_clock::time_point::max()
++                                     : std::chrono::steady_clock::now() + timeout;
++
++    std::vector<std::unique_lock<std::mutex>> locks;
++    locks.reserve(handles.size());
+ 
+     while (true) {
+       size_t first_signaled = std::numeric_limits<size_t>::max();
+       bool condition_met = false;
+       bool all_locked = true;
+ 
+-      std::vector<std::unique_lock<std::mutex>> locks;
+-      locks.reserve(handles.size());
+-
+       for (size_t i = 0; i < handles.size(); ++i) {
+ #if REX_PLATFORM_LINUX
+         auto native_mutex = static_cast<pthread_mutex_t*>(handles[i]->mutex_.native_handle());
+@@ -367,7 +366,8 @@ class PosixConditionBase {
+ 
+       if (!all_locked) {
+         locks.clear();
+-        std::this_thread::yield();
++        // The signaling thread holds the lock; retrying at once spins while it is busy.
++        std::this_thread::sleep_for(std::chrono::microseconds(100));
+         continue;
+       }
+ 
+@@ -406,14 +406,13 @@ class PosixConditionBase {
+ 
+       locks.clear();
+ 
+-      auto now = std::chrono::steady_clock::now();
+-      if (now >= end_time) {
+-        return std::make_pair<WaitResult, size_t>(WaitResult::kTimeout, 0);
+-      }
+-
+-      if (timeout == std::chrono::milliseconds::max()) {
++      if (infinite_timeout) {
+         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+       } else {
++        auto now = std::chrono::steady_clock::now();
++        if (now >= end_time) {
++          return std::make_pair<WaitResult, size_t>(WaitResult::kTimeout, 0);
++        }
+         auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - now);
+         auto sleep_time = std::min(remaining, std::chrono::milliseconds(1));
+         std::this_thread::sleep_for(sleep_time);

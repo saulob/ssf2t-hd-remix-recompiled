@@ -1,0 +1,520 @@
+diff --git a/include/rex/graphics/flags.h b/include/rex/graphics/flags.h
+index 2cf24c4..0f12f19 100644
+--- a/include/rex/graphics/flags.h
++++ b/include/rex/graphics/flags.h
+@@ -23,6 +23,7 @@ REXCVAR_DECLARE(bool, async_shader_compilation);
+ REXCVAR_DECLARE(int32_t, resolution_scale);
+ REXCVAR_DECLARE(int32_t, draw_resolution_scale_x);
+ REXCVAR_DECLARE(int32_t, draw_resolution_scale_y);
++REXCVAR_DECLARE(int32_t, hcu_internal_render_scale);
+ REXCVAR_DECLARE(bool, resolve_resolution_scale_fill_half_pixel_offset);
+ REXCVAR_DECLARE(bool, draw_resolution_scaled_texture_offsets);
+ REXCVAR_DECLARE(std::string, readback_resolve);
+diff --git a/include/rex/graphics/pipeline/render_target/cache.h b/include/rex/graphics/pipeline/render_target/cache.h
+index 2265f74..3a3b187 100644
+--- a/include/rex/graphics/pipeline/render_target/cache.h
++++ b/include/rex/graphics/pipeline/render_target/cache.h
+@@ -165,6 +165,23 @@ class RenderTargetCache {
+     return draw_resolution_scale_x() > 1 || draw_resolution_scale_y() > 1;
+   }
+ 
++  // The host render targets are drawn at host_scale_quarters / 4 of the guest size, at most the
++  // draw resolution scale, which the EDRAM, the resolves and the textures keep.
++  uint32_t host_scale_quarters_x() const { return host_scale_quarters_x_; }
++  uint32_t host_scale_quarters_y() const { return host_scale_quarters_y_; }
++  bool AreHostRenderTargetsReduced() const {
++    return host_scale_quarters_x_ != (draw_resolution_scale_x_ << 2) ||
++           host_scale_quarters_y_ != (draw_resolution_scale_y_ << 2);
++  }
++  // Exact for the pixel counts of the tile and resolve granularity.
++  uint32_t GuestToHostX(uint32_t pixels) const { return (pixels * host_scale_quarters_x_) >> 2; }
++  uint32_t GuestToHostY(uint32_t pixels) const { return (pixels * host_scale_quarters_y_) >> 2; }
++  // Before Initialize.
++  void SetHostScaleQuarters(uint32_t x, uint32_t y) {
++    host_scale_quarters_x_ = x;
++    host_scale_quarters_y_ = y;
++  }
++
+   // Virtual (both the common code and the implementation may do something
+   // here), don't call from destructors (does work not needed for shutdown
+   // also).
+@@ -197,7 +214,9 @@ class RenderTargetCache {
+       : register_file_(register_file),
+         draw_extent_estimator_(register_file, memory),
+         draw_resolution_scale_x_(draw_resolution_scale_x),
+-        draw_resolution_scale_y_(draw_resolution_scale_y) {
++        draw_resolution_scale_y_(draw_resolution_scale_y),
++        host_scale_quarters_x_(draw_resolution_scale_x << 2),
++        host_scale_quarters_y_(draw_resolution_scale_y << 2) {
+     assert_not_zero(draw_resolution_scale_x);
+     assert_not_zero(draw_resolution_scale_y);
+   }
+@@ -654,6 +673,8 @@ class RenderTargetCache {
+   const RegisterFile& register_file_;
+   uint32_t draw_resolution_scale_x_;
+   uint32_t draw_resolution_scale_y_;
++  uint32_t host_scale_quarters_x_;
++  uint32_t host_scale_quarters_y_;
+ 
+   std::vector<ResolveCopyDumpRectangle> resolve_texture_copy_rectangles_;
+ 
+diff --git a/include/rex/graphics/pipeline/shader/dxbc_translator.h b/include/rex/graphics/pipeline/shader/dxbc_translator.h
+index 3b0fd61..bb1a61a 100644
+--- a/include/rex/graphics/pipeline/shader/dxbc_translator.h
++++ b/include/rex/graphics/pipeline/shader/dxbc_translator.h
+@@ -53,6 +53,13 @@ class DxbcShaderTranslator : public ShaderTranslator {
+                        uint32_t draw_resolution_scale_y = 1, bool force_emit_source_map = false);
+   ~DxbcShaderTranslator() override;
+ 
++  // Size of the host render targets in quarters of a guest pixel, if smaller than the draw
++  // resolution scale.
++  void SetHostScaleQuarters(uint32_t x, uint32_t y) {
++    host_scale_quarters_x_ = x;
++    host_scale_quarters_y_ = y;
++  }
++
+   // Stage linkage ordering and rules (must be respected not only within the
+   // DxbcShaderTranslator, but also by everything else between the VS and the
+   // PS, such as geometry shaders for primitive types, and built-in pixel
+@@ -936,6 +943,8 @@ class DxbcShaderTranslator : public ShaderTranslator {
+   // Guest pixel host width / height.
+   uint32_t draw_resolution_scale_x_;
+   uint32_t draw_resolution_scale_y_;
++  uint32_t host_scale_quarters_x_;
++  uint32_t host_scale_quarters_y_;
+ 
+   // Is currently writing the empty depth-only pixel shader, for
+   // CompleteTranslation.
+diff --git a/include/rex/graphics/pipeline/shader/spirv_translator.h b/include/rex/graphics/pipeline/shader/spirv_translator.h
+index dce3dbf..2494042 100644
+--- a/include/rex/graphics/pipeline/shader/spirv_translator.h
++++ b/include/rex/graphics/pipeline/shader/spirv_translator.h
+@@ -409,7 +409,16 @@ class SpirvShaderTranslator : public ShaderTranslator {
+         native_2x_msaa_no_attachments_(native_2x_msaa_no_attachments),
+         edram_fragment_shader_interlock_(edram_fragment_shader_interlock),
+         draw_resolution_scale_x_(draw_resolution_scale_x ? draw_resolution_scale_x : 1),
+-        draw_resolution_scale_y_(draw_resolution_scale_y ? draw_resolution_scale_y : 1) {}
++        draw_resolution_scale_y_(draw_resolution_scale_y ? draw_resolution_scale_y : 1),
++        host_scale_quarters_x_(draw_resolution_scale_x_ << 2),
++        host_scale_quarters_y_(draw_resolution_scale_y_ << 2) {}
++
++  // Size of the host render targets in quarters of a guest pixel, if smaller than the draw
++  // resolution scale.
++  void SetHostScaleQuarters(uint32_t x, uint32_t y) {
++    host_scale_quarters_x_ = x;
++    host_scale_quarters_y_ = y;
++  }
+ 
+   uint64_t GetDefaultVertexShaderModification(
+       uint32_t dynamic_addressable_register_count,
+@@ -758,6 +767,8 @@ class SpirvShaderTranslator : public ShaderTranslator {
+   bool edram_fragment_shader_interlock_;
+   uint32_t draw_resolution_scale_x_;
+   uint32_t draw_resolution_scale_y_;
++  uint32_t host_scale_quarters_x_;
++  uint32_t host_scale_quarters_y_;
+ 
+   // Is currently writing the empty depth-only pixel shader, such as for depth
+   // and stencil testing with fragment shader interlock.
+diff --git a/include/rex/graphics/pipeline/texture/cache.h b/include/rex/graphics/pipeline/texture/cache.h
+index 8e21d1f..2db832d 100644
+--- a/include/rex/graphics/pipeline/texture/cache.h
++++ b/include/rex/graphics/pipeline/texture/cache.h
+@@ -70,6 +70,11 @@ class TextureCache {
+ 
+   // Returns whether the actual scale is not smaller than the requested one.
+   static bool GetConfigDrawResolutionScale(uint32_t& x_out, uint32_t& y_out);
++  // Replaces the configured scale with the whole scale of the EDRAM, resolves and textures, and
++  // returns the scale of the host render targets in quarters of a guest pixel.
++  static void GetConfigInternalRenderScale(uint32_t& scale_x_inout, uint32_t& scale_y_inout,
++                                           uint32_t& host_quarters_x_out,
++                                           uint32_t& host_quarters_y_out);
+   uint32_t draw_resolution_scale_x() const { return draw_resolution_scale_x_; }
+   uint32_t draw_resolution_scale_y() const { return draw_resolution_scale_y_; }
+   bool IsDrawResolutionScaled() const {
+diff --git a/include/rex/graphics/util/draw.h b/include/rex/graphics/util/draw.h
+index 3785158..7365af3 100644
+--- a/include/rex/graphics/util/draw.h
++++ b/include/rex/graphics/util/draw.h
+@@ -279,12 +279,25 @@ void GetHostViewportInfo(const RegisterFile& regs, uint32_t draw_resolution_scal
+                          bool full_float24_in_0_to_1, bool pixel_shader_writes_depth,
+                          ViewportInfo& viewport_info_out);
+ 
++// Same as GetHostViewportInfo, with the host render target scale in quarters of a guest pixel
++// (4 is native), not necessarily a multiple of 4.
++void GetHostViewportInfoAtHostScale(const RegisterFile& regs, uint32_t host_scale_quarters_x,
++                                    uint32_t host_scale_quarters_y, bool origin_bottom_left,
++                                    uint32_t x_max, uint32_t y_max, bool allow_reverse_z,
++                                    reg::RB_DEPTHCONTROL normalized_depth_control,
++                                    bool convert_z_to_float24, bool full_float24_in_0_to_1,
++                                    bool pixel_shader_writes_depth,
++                                    ViewportInfo& viewport_info_out);
++
+ struct Scissor {
+   // Offset from render target UV = 0 to +UV.
+   uint32_t offset[2];
+   // Extent can be zero.
+   uint32_t extent[2];
+ };
++// Converts the scissor from guest pixels to host pixels, outward if the scale is fractional.
++void ScaleScissorToHost(Scissor& scissor, uint32_t host_scale_quarters_x,
++                        uint32_t host_scale_quarters_y);
+ void GetScissor(const RegisterFile& regs, Scissor& scissor_out, bool clamp_to_surface_pitch = true);
+ 
+ // Returns the color component write mask for the draw command taking into
+diff --git a/src/graphics/pipeline/render_target/cache.cpp b/src/graphics/pipeline/render_target/cache.cpp
+index 4089ec8..5f926d7 100644
+--- a/src/graphics/pipeline/render_target/cache.cpp
++++ b/src/graphics/pipeline/render_target/cache.cpp
+@@ -463,7 +463,7 @@ bool RenderTargetCache::CanDeferResolveWriteback(
+   // Rewriting the memory from the texture reproduces only what the texture covers. Without
+   // resolution scaling, other GPU work reads the resolved memory directly.
+   return REXCVAR_GET(resolve_defer_writeback) && resolve_writeback_deferral_allowed_ &&
+-         IsDrawResolutionScaled() &&
++         IsDrawResolutionScaled() && !AreHostRenderTargetsReduced() &&
+          texture_cache.TextureCoversResolve(texture, copy.width, copy.height);
+ }
+ 
+@@ -563,8 +563,7 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
+       xenos::kEdramTileWidthSamples;
+   if (!interlock_barrier_only) {
+     uint32_t pitch_pixels_tile_aligned_scaled =
+-        pitch_tiles_at_32bpp * (xenos::kEdramTileWidthSamples >> msaa_samples_x_log2) *
+-        draw_resolution_scale_x();
++        GuestToHostX(pitch_tiles_at_32bpp * (xenos::kEdramTileWidthSamples >> msaa_samples_x_log2));
+     uint32_t max_render_target_width = GetMaxRenderTargetWidth();
+     if (pitch_pixels_tile_aligned_scaled > max_render_target_width) {
+       // TODO(Triang3l): If really needed for some game on some device, clamp
+@@ -947,10 +946,10 @@ uint32_t RenderTargetCache::GetRenderTargetHeight(uint32_t pitch_tiles_at_32bpp,
+   static_assert(!(xenos::kTexture2DCubeMaxWidthHeight % xenos::kEdramTileHeightSamples),
+                 "Maximum guest render target height is assumed to always be a multiple "
+                 "of an EDRAM tile height");
+-  uint32_t max_height_scaled = std::min(
+-      xenos::kTexture2DCubeMaxWidthHeight * draw_resolution_scale_y(), GetMaxRenderTargetHeight());
++  uint32_t max_height_scaled = std::min(GuestToHostY(xenos::kTexture2DCubeMaxWidthHeight),
++                                        GetMaxRenderTargetHeight());
+   uint32_t msaa_samples_y_log2 = uint32_t(msaa_samples >= xenos::MsaaSamples::k2X);
+-  uint32_t tile_height_samples_scaled = xenos::kEdramTileHeightSamples * draw_resolution_scale_y();
++  uint32_t tile_height_samples_scaled = GuestToHostY(xenos::kEdramTileHeightSamples);
+   tile_rows =
+       std::min(tile_rows, (max_height_scaled << msaa_samples_y_log2) / tile_height_samples_scaled);
+   assert_not_zero(tile_rows);
+@@ -975,12 +974,12 @@ void RenderTargetCache::GetHostDepthStoreRectangleInfo(
+   rectangle_constant.width_pixels_div_8_minus_1 = (transfer_rectangle.width_pixels >> 3) - 1;
+   rectangle_constant_out = rectangle_constant;
+   // 1 thread group = 64x8 host samples.
+-  uint32_t pixel_size_x = draw_resolution_scale_x()
+-                          << uint32_t(msaa_samples >= xenos::MsaaSamples::k4X);
+-  uint32_t pixel_size_y = draw_resolution_scale_y()
+-                          << uint32_t(msaa_samples >= xenos::MsaaSamples::k2X);
+-  group_count_x_out = (transfer_rectangle.width_pixels * pixel_size_x + 63) >> 6;
+-  group_count_y_out = (transfer_rectangle.height_pixels * pixel_size_y) >> 3;
++  uint32_t host_width_samples = GuestToHostX(transfer_rectangle.width_pixels)
++                                << uint32_t(msaa_samples >= xenos::MsaaSamples::k4X);
++  uint32_t host_height_samples = GuestToHostY(transfer_rectangle.height_pixels)
++                                 << uint32_t(msaa_samples >= xenos::MsaaSamples::k2X);
++  group_count_x_out = (host_width_samples + 63) >> 6;
++  group_count_y_out = host_height_samples >> 3;
+ }
+ 
+ void RenderTargetCache::GetResolveCopyRectanglesToDump(
+@@ -1127,7 +1126,7 @@ bool RenderTargetCache::PrepareHostRenderTargetsResolveClear(
+   }
+   uint32_t pitch_pixels =
+       pitch_tiles_at_32bpp * (xenos::kEdramTileWidthSamples >> msaa_samples_x_log2);
+-  uint32_t pitch_pixels_scaled = pitch_pixels * draw_resolution_scale_x();
++  uint32_t pitch_pixels_scaled = GuestToHostX(pitch_pixels);
+   uint32_t max_render_target_width = GetMaxRenderTargetWidth();
+   if (pitch_pixels_scaled > max_render_target_width) {
+     // TODO(Triang3l): If really needed for some game on some device, clamp the
+@@ -1724,7 +1723,7 @@ void RenderTargetCache::ChangeOwnership(RenderTargetKey dest, uint32_t start_til
+ RenderTargetCache::ResolveTextureCopyResult RenderTargetCache::PlanResolveTextureCopy(
+     const draw_util::ResolveInfo& resolve_info, draw_util::ResolveTextureCopy& copy_out,
+     RenderTarget*& source_out) {
+-  if (!REXCVAR_GET(resolve_copy_into_textures)) {
++  if (!REXCVAR_GET(resolve_copy_into_textures) || AreHostRenderTargetsReduced()) {
+     return ResolveTextureCopyResult::kDisabled;
+   }
+   if (resolve_info.IsCopyingDepth()) {
+diff --git a/src/graphics/pipeline/shader/dxbc_translator.cpp b/src/graphics/pipeline/shader/dxbc_translator.cpp
+index 2c31a0e..2b299cf 100644
+--- a/src/graphics/pipeline/shader/dxbc_translator.cpp
++++ b/src/graphics/pipeline/shader/dxbc_translator.cpp
+@@ -73,6 +73,8 @@ DxbcShaderTranslator::DxbcShaderTranslator(ui::GraphicsProvider::GpuVendorID ven
+       emit_source_map_(force_emit_source_map || REXCVAR_GET(dxbc_source_map)) {
+   assert_not_zero(draw_resolution_scale_x);
+   assert_not_zero(draw_resolution_scale_y);
++  host_scale_quarters_x_ = draw_resolution_scale_x << 2;
++  host_scale_quarters_y_ = draw_resolution_scale_y << 2;
+   // Don't allocate again and again for the first shader.
+   shader_code_.reserve(8192);
+   shader_object_.reserve(16384);
+@@ -658,13 +660,13 @@ void DxbcShaderTranslator::StartPixelShader() {
+     in_position_used_ |= 0b0011;
+     a_.OpRoundNI(dxbc::Dest::R(param_gen_temp, 0b0011), dxbc::Src::V1D(in_reg_ps_position_));
+     uint32_t resolution_scaled_axes =
+-        uint32_t(draw_resolution_scale_x_ > 1) | (uint32_t(draw_resolution_scale_y_ > 1) << 1);
++        uint32_t(host_scale_quarters_x_ != 4) | (uint32_t(host_scale_quarters_y_ != 4) << 1);
+     if (resolution_scaled_axes) {
+       // Revert resolution scale - after truncating, so if the pixel position
+       // is passed to tfetch (assuming the game doesn't round it by itself),
+       // it will be sampled with higher resolution too.
+       a_.OpMul(dxbc::Dest::R(param_gen_temp, resolution_scaled_axes), dxbc::Src::R(param_gen_temp),
+-               dxbc::Src::LF(1.0f / draw_resolution_scale_x_, 1.0f / draw_resolution_scale_y_, 1.0f,
++               dxbc::Src::LF(4.0f / host_scale_quarters_x_, 4.0f / host_scale_quarters_y_, 1.0f,
+                              1.0f));
+     }
+     if (shader_modification.pixel.param_gen_point) {
+@@ -723,8 +725,10 @@ void DxbcShaderTranslator::StartPixelShader() {
+         dxbc::Dest::R(system_temp_memexport_enabled_and_eM_written_, 0b0001));
+     dxbc::Src memexport_enabled_src(
+         dxbc::Src::R(system_temp_memexport_enabled_and_eM_written_, dxbc::Src::kXXXX));
+-    uint32_t resolution_scaled_axes =
+-        uint32_t(draw_resolution_scale_x_ > 1) | (uint32_t(draw_resolution_scale_y_ > 1) << 1);
++    // Only whole host pixels per guest pixel can be told apart.
++    uint32_t memexport_scale_x = host_scale_quarters_x_ & 3 ? 1 : host_scale_quarters_x_ >> 2;
++    uint32_t memexport_scale_y = host_scale_quarters_y_ & 3 ? 1 : host_scale_quarters_y_ >> 2;
++    uint32_t resolution_scaled_axes = uint32_t(memexport_scale_x > 1) | (uint32_t(memexport_scale_y > 1) << 1);
+     if (resolution_scaled_axes) {
+       uint32_t memexport_condition_temp = PushSystemTemp();
+       // Only do memexport for one host pixel in a guest pixel - prefer the
+@@ -737,10 +741,10 @@ void DxbcShaderTranslator::StartPixelShader() {
+                 dxbc::Src::V1D(in_reg_ps_position_));
+       a_.OpUDiv(dxbc::Dest::Null(), dxbc::Dest::R(memexport_condition_temp, resolution_scaled_axes),
+                 dxbc::Src::R(memexport_condition_temp),
+-                dxbc::Src::LU(draw_resolution_scale_x_, draw_resolution_scale_y_, 0, 0));
++                dxbc::Src::LU(memexport_scale_x, memexport_scale_y, 0, 0));
+       a_.OpIEq(dxbc::Dest::R(memexport_condition_temp, resolution_scaled_axes),
+                dxbc::Src::R(memexport_condition_temp),
+-               dxbc::Src::LU(draw_resolution_scale_x_ >> 1, draw_resolution_scale_y_ >> 1, 0, 0));
++               dxbc::Src::LU(memexport_scale_x >> 1, memexport_scale_y >> 1, 0, 0));
+       for (uint32_t i = 0; i < 2; ++i) {
+         if (!(resolution_scaled_axes & (1 << i))) {
+           continue;
+diff --git a/src/graphics/pipeline/shader/spirv_translator.cpp b/src/graphics/pipeline/shader/spirv_translator.cpp
+index 1774f97..fdb98b8 100644
+--- a/src/graphics/pipeline/shader/spirv_translator.cpp
++++ b/src/graphics/pipeline/shader/spirv_translator.cpp
+@@ -2898,8 +2898,10 @@ void SpirvShaderTranslator::StartFragmentShaderBeforeMain() {
+   // TODO(Triang3l): More conditions - alpha to coverage (if RT 0 is written,
+   // and there's no early depth / stencil), depth writing in the fragment shader
+   // (per-sample if supported).
+-  bool memexport_resolution_scaled = current_shader().memexport_eM_written() &&
+-                                     (draw_resolution_scale_x_ > 1 || draw_resolution_scale_y_ > 1);
++  uint32_t memexport_scale_x = host_scale_quarters_x_ & 3 ? 1 : host_scale_quarters_x_ >> 2;
++  uint32_t memexport_scale_y = host_scale_quarters_y_ & 3 ? 1 : host_scale_quarters_y_ >> 2;
++  bool memexport_resolution_scaled =
++      current_shader().memexport_eM_written() && (memexport_scale_x > 1 || memexport_scale_y > 1);
+   if (edram_fragment_shader_interlock_ || param_gen_needed || memexport_resolution_scaled ||
+       float24_depth_from_fragment_coordinates || alpha_to_coverage_possible) {
+     input_fragment_coordinates_ = builder_->createVariable(spv::NoPrecision, spv::StorageClassInput,
+@@ -3097,8 +3099,10 @@ void SpirvShaderTranslator::StartFragmentShaderInMain() {
+ 
+   if (current_shader().memexport_eM_written()) {
+     // Make sure memexport is done only once for a guest pixel.
++    uint32_t memexport_scale_x = host_scale_quarters_x_ & 3 ? 1 : host_scale_quarters_x_ >> 2;
++    uint32_t memexport_scale_y = host_scale_quarters_y_ & 3 ? 1 : host_scale_quarters_y_ >> 2;
+     uint32_t resolution_scaled_axes =
+-        uint32_t(draw_resolution_scale_x_ > 1) | (uint32_t(draw_resolution_scale_y_ > 1) << 1);
++        uint32_t(memexport_scale_x > 1) | (uint32_t(memexport_scale_y > 1) << 1);
+     if (resolution_scaled_axes) {
+       assert_true(input_fragment_coordinates_ != spv::NoResult);
+       spv::Id memexport_allowed = spv::NoResult;
+@@ -3115,11 +3119,11 @@ void SpirvShaderTranslator::StartFragmentShaderInMain() {
+         spv::Id position_mod = builder_->createBinOp(
+             spv::OpUMod, type_uint_,
+             builder_->createUnaryOp(spv::OpConvertFToU, type_uint_, position),
+-            builder_->makeUintConstant(i ? draw_resolution_scale_y_ : draw_resolution_scale_x_));
++            builder_->makeUintConstant(i ? memexport_scale_y : memexport_scale_x));
+         spv::Id position_is_center =
+             builder_->createBinOp(spv::OpIEqual, type_bool_, position_mod,
+-                                  builder_->makeUintConstant(i ? (draw_resolution_scale_y_ >> 1)
+-                                                               : (draw_resolution_scale_x_ >> 1)));
++                                  builder_->makeUintConstant(i ? (memexport_scale_y >> 1)
++                                                               : (memexport_scale_x >> 1)));
+         memexport_allowed = memexport_allowed != spv::NoResult
+                                 ? builder_->createBinOp(spv::OpLogicalAnd, type_bool_,
+                                                         memexport_allowed, position_is_center)
+@@ -3210,10 +3214,10 @@ void SpirvShaderTranslator::StartFragmentShaderInMain() {
+             builder_->createAccessChain(spv::StorageClassInput, input_fragment_coordinates_,
+                                         id_vector_temp_),
+             spv::NoPrecision));
+-    if (draw_resolution_scale_x_ > 1) {
++    if (host_scale_quarters_x_ != 4) {
+       param_gen_x = builder_->createNoContractionBinOp(
+           spv::OpFMul, type_float_, param_gen_x,
+-          builder_->makeFloatConstant(1.0f / float(draw_resolution_scale_x_)));
++          builder_->makeFloatConstant(4.0f / float(host_scale_quarters_x_)));
+     }
+     param_gen_x = builder_->createUnaryBuiltinCall(type_float_, ext_inst_glsl_std_450_,
+                                                    GLSLstd450FAbs, param_gen_x);
+@@ -3246,10 +3250,10 @@ void SpirvShaderTranslator::StartFragmentShaderInMain() {
+             builder_->createAccessChain(spv::StorageClassInput, input_fragment_coordinates_,
+                                         id_vector_temp_),
+             spv::NoPrecision));
+-    if (draw_resolution_scale_y_ > 1) {
++    if (host_scale_quarters_y_ != 4) {
+       param_gen_y = builder_->createNoContractionBinOp(
+           spv::OpFMul, type_float_, param_gen_y,
+-          builder_->makeFloatConstant(1.0f / float(draw_resolution_scale_y_)));
++          builder_->makeFloatConstant(4.0f / float(host_scale_quarters_y_)));
+     }
+     param_gen_y = builder_->createUnaryBuiltinCall(type_float_, ext_inst_glsl_std_450_,
+                                                    GLSLstd450FAbs, param_gen_y);
+diff --git a/src/graphics/pipeline/texture/cache.cpp b/src/graphics/pipeline/texture/cache.cpp
+index fa451ca..6e79652 100644
+--- a/src/graphics/pipeline/texture/cache.cpp
++++ b/src/graphics/pipeline/texture/cache.cpp
+@@ -77,6 +77,12 @@ REXCVAR_DEFINE_INT32(resolution_scale, 1, "GPU",
+     .range(1, 8)
+     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+ 
++REXCVAR_DEFINE_INT32(hcu_internal_render_scale, 100, "GPU",
++                     "Percent of the draw resolution the host render targets are drawn at "
++                     "(100, 75 or 50)")
++    .range(50, 100)
++    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
++
+ REXCVAR_DEFINE_BOOL(pre_mask_resolve_l2_block, true, "GPU",
+                     "Pre-mask scaled resolve L2 blocks to the write range before iterating");
+ 
+@@ -249,6 +255,17 @@ bool TextureCache::GetConfigDrawResolutionScale(uint32_t& x_out, uint32_t& y_out
+   return clamped_x == config_x && clamped_y == config_y;
+ }
+ 
++void TextureCache::GetConfigInternalRenderScale(uint32_t& scale_x_inout, uint32_t& scale_y_inout,
++                                                uint32_t& host_quarters_x_out,
++                                                uint32_t& host_quarters_y_out) {
++  int32_t percent = REXCVAR_GET(hcu_internal_render_scale);
++  uint32_t quarters_per_scale = percent == 75 ? 3 : (percent == 50 ? 2 : 4);
++  host_quarters_x_out = scale_x_inout * quarters_per_scale;
++  host_quarters_y_out = scale_y_inout * quarters_per_scale;
++  scale_x_inout = (host_quarters_x_out + 3) >> 2;
++  scale_y_inout = (host_quarters_y_out + 3) >> 2;
++}
++
+ void TextureCache::ClearCache() {
+   DestroyAllTextures();
+ }
+diff --git a/src/graphics/util/draw.cpp b/src/graphics/util/draw.cpp
+index 305380e..47f0f4a 100644
+--- a/src/graphics/util/draw.cpp
++++ b/src/graphics/util/draw.cpp
+@@ -167,8 +167,22 @@ void GetHostViewportInfo(const RegisterFile& regs, uint32_t draw_resolution_scal
+                          reg::RB_DEPTHCONTROL normalized_depth_control, bool convert_z_to_float24,
+                          bool full_float24_in_0_to_1, bool pixel_shader_writes_depth,
+                          ViewportInfo& viewport_info_out) {
+-  assert_not_zero(draw_resolution_scale_x);
+-  assert_not_zero(draw_resolution_scale_y);
++  GetHostViewportInfoAtHostScale(regs, draw_resolution_scale_x << 2, draw_resolution_scale_y << 2,
++                                 origin_bottom_left, x_max, y_max, allow_reverse_z,
++                                 normalized_depth_control, convert_z_to_float24,
++                                 full_float24_in_0_to_1, pixel_shader_writes_depth,
++                                 viewport_info_out);
++}
++
++void GetHostViewportInfoAtHostScale(const RegisterFile& regs, uint32_t host_scale_quarters_x,
++                                    uint32_t host_scale_quarters_y, bool origin_bottom_left,
++                                    uint32_t x_max, uint32_t y_max, bool allow_reverse_z,
++                                    reg::RB_DEPTHCONTROL normalized_depth_control,
++                                    bool convert_z_to_float24, bool full_float24_in_0_to_1,
++                                    bool pixel_shader_writes_depth,
++                                    ViewportInfo& viewport_info_out) {
++  assert_not_zero(host_scale_quarters_x);
++  assert_not_zero(host_scale_quarters_y);
+ 
+   // A vertex position goes the following path:
+   //
+@@ -329,7 +343,9 @@ void GetHostViewportInfo(const RegisterFile& regs, uint32_t draw_resolution_scal
+ 
+   // The maximum value is at least the maximum host render target size anyway -
+   // and a guest pixel is always treated as a whole with resolution scaling.
+-  uint32_t xy_max_unscaled[] = {x_max / draw_resolution_scale_x, y_max / draw_resolution_scale_y};
++  uint32_t host_scale_quarters[] = {host_scale_quarters_x, host_scale_quarters_y};
++  uint32_t xy_max_unscaled[] = {(x_max << 2) / host_scale_quarters_x,
++                                (y_max << 2) / host_scale_quarters_y};
+   assert_not_zero(xy_max_unscaled[0]);
+   assert_not_zero(xy_max_unscaled[1]);
+ 
+@@ -347,8 +363,10 @@ void GetHostViewportInfo(const RegisterFile& regs, uint32_t draw_resolution_scal
+       viewport_info_out.xy_offset[i] = 0;
+       uint32_t extent_axis_unscaled =
+           std::min(xenos::kTexture2DCubeMaxWidthHeight, xy_max_unscaled[i]);
+-      viewport_info_out.xy_extent[i] =
+-          extent_axis_unscaled * (i ? draw_resolution_scale_y : draw_resolution_scale_x);
++      if (host_scale_quarters[i] & 3) {
++        extent_axis_unscaled &= ~uint32_t(3);
++      }
++      viewport_info_out.xy_extent[i] = (extent_axis_unscaled * host_scale_quarters[i]) >> 2;
+       float extent_axis_unscaled_float = float(extent_axis_unscaled);
+       float pixels_to_ndc_axis = 2.0f / extent_axis_unscaled_float;
+       ndc_scale[i] = scale_xy[i] * pixels_to_ndc_axis;
+@@ -373,7 +391,7 @@ void GetHostViewportInfo(const RegisterFile& regs, uint32_t draw_resolution_scal
+       // vertices if we did flooring in host pixels. Instead of flooring, also
+       // doing truncation for simplicity - since maxing with 0 is done anyway
+       // (we only return viewports in the positive quarter-plane).
+-      uint32_t axis_resolution_scale = i ? draw_resolution_scale_y : draw_resolution_scale_x;
++      uint32_t axis_scale_quarters = host_scale_quarters[i];
+       float offset_axis = offset_base_xy[i] + offset_add_xy[i];
+       float scale_axis = scale_xy[i];
+       float scale_axis_abs = std::abs(scale_xy[i]);
+@@ -383,11 +401,25 @@ void GetHostViewportInfo(const RegisterFile& regs, uint32_t draw_resolution_scal
+       uint32_t axis_1_int =
+           uint32_t(rex::clamp_float(offset_axis + scale_axis_abs, 0.0f, axis_max_unscaled_float));
+       uint32_t axis_extent_int = axis_1_int - axis_0_int;
+-      viewport_info_out.xy_offset[i] = axis_0_int * axis_resolution_scale;
+-      viewport_info_out.xy_extent[i] = axis_extent_int * axis_resolution_scale;
++      // The guest pixel bounds the host viewport actually covers.
++      float axis_0_snapped = float(axis_0_int);
++      float axis_extent_snapped = float(axis_extent_int);
++      if (axis_scale_quarters & 3) {
++        // Outward, so a fractional host pixel is never left uncovered.
++        uint32_t axis_0_host = (axis_0_int * axis_scale_quarters) >> 2;
++        uint32_t axis_1_host = (axis_1_int * axis_scale_quarters + 3) >> 2;
++        viewport_info_out.xy_offset[i] = axis_0_host;
++        viewport_info_out.xy_extent[i] = axis_1_host - axis_0_host;
++        axis_0_snapped = float(axis_0_host) * 4.0f / float(axis_scale_quarters);
++        axis_extent_snapped =
++            float(axis_1_host - axis_0_host) * 4.0f / float(axis_scale_quarters);
++      } else {
++        viewport_info_out.xy_offset[i] = axis_0_int * (axis_scale_quarters >> 2);
++        viewport_info_out.xy_extent[i] = axis_extent_int * (axis_scale_quarters >> 2);
++      }
+       float ndc_scale_axis;
+       float ndc_offset_axis;
+-      if (axis_extent_int) {
++      if (viewport_info_out.xy_extent[i]) {
+         // Rescale from the old bounds to the new ones, and also apply the sign.
+         // If the new bounds are smaller than the old, for instance, we're
+         // cropping - the new -W...W clip space is a subregion of the old one -
+@@ -395,10 +427,10 @@ void GetHostViewportInfo(const RegisterFile& regs, uint32_t draw_resolution_scal
+         // -W...W. If the new region should include more than the original clip
+         // space, a region previously outside -W...W should end up within it, so
+         // the scale should be < 1.
+-        float axis_extent_rounded = float(axis_extent_int);
++        float axis_extent_rounded = axis_extent_snapped;
+         ndc_scale_axis = scale_axis * 2.0f / axis_extent_rounded;
+         // Move the origin of the snapped coordinates back to the original one.
+-        ndc_offset_axis = (float(offset_axis) - (float(axis_0_int) + axis_extent_rounded * 0.5f)) *
++        ndc_offset_axis = (float(offset_axis) - (axis_0_snapped + axis_extent_rounded * 0.5f)) *
+                           2.0f / axis_extent_rounded;
+       } else {
+         // Empty viewport (everything outside the viewport scissor).
+@@ -530,6 +562,17 @@ void GetHostViewportInfo(const RegisterFile& regs, uint32_t draw_resolution_scal
+   }
+ }
+ 
++void ScaleScissorToHost(Scissor& scissor, uint32_t host_scale_quarters_x,
++                        uint32_t host_scale_quarters_y) {
++  uint32_t host_scale_quarters[] = {host_scale_quarters_x, host_scale_quarters_y};
++  for (uint32_t i = 0; i < 2; ++i) {
++    uint32_t start = (scissor.offset[i] * host_scale_quarters[i]) >> 2;
++    uint32_t end = ((scissor.offset[i] + scissor.extent[i]) * host_scale_quarters[i] + 3) >> 2;
++    scissor.offset[i] = start;
++    scissor.extent[i] = end - start;
++  }
++}
++
+ void GetScissor(const RegisterFile& regs, Scissor& scissor_out, bool clamp_to_surface_pitch) {
+   auto pa_sc_window_scissor_tl = regs.Get<reg::PA_SC_WINDOW_SCISSOR_TL>();
+   int32_t tl_x = int32_t(pa_sc_window_scissor_tl.tl_x);

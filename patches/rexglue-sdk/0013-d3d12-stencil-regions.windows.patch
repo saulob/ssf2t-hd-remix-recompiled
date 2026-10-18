@@ -1,0 +1,421 @@
+diff --git a/include/rex/graphics/d3d12/render_target_cache.h b/include/rex/graphics/d3d12/render_target_cache.h
+index c9a9cf6..0b7d9e8 100644
+--- a/include/rex/graphics/d3d12/render_target_cache.h
++++ b/include/rex/graphics/d3d12/render_target_cache.h
+@@ -242,10 +242,27 @@ class D3D12RenderTargetCache final : public RenderTargetCache {
+     uint32_t temporary_sort_index() const { return temporary_sort_index_; }
+     void SetTemporarySortIndex(uint32_t index) { temporary_sort_index_ = index; }
+ 
+-    // Depth: the stencil bits that may be set anywhere in the render target (it's created
+-    // zeroed). Copying a stencil bit that is clear everywhere in the source is pointless.
+-    uint32_t stencil_bits() const { return stencil_bits_; }
+-    void AddStencilBits(uint32_t bits) { stencil_bits_ |= uint8_t(bits); }
++    // Depth: for each EDRAM tile, the stencil bits that may be set in the render target there
++    // (it's created zeroed). Copying a stencil bit that is clear everywhere in the source is
++    // pointless. The ranges are in EDRAM tiles, wrapping around the EDRAM.
++    uint32_t GetTileStencilBits(uint32_t tile) const {
++      return stencil_tile_bits_[tile & (xenos::kEdramTileCount - 1)];
++    }
++    uint32_t GetStencilBits(uint32_t start_tiles, uint32_t length_tiles) const {
++      uint32_t bits = 0;
++      for (uint32_t i = 0; i < length_tiles; ++i) {
++        bits |= GetTileStencilBits(start_tiles + i);
++      }
++      return bits;
++    }
++    void AddStencilBits(uint32_t start_tiles, uint32_t length_tiles, uint32_t bits) {
++      for (uint32_t i = 0; i < length_tiles; ++i) {
++        stencil_tile_bits_[(start_tiles + i) & (xenos::kEdramTileCount - 1)] |= uint8_t(bits);
++      }
++    }
++    void SetTileStencilBits(uint32_t tile, uint32_t bits) {
++      stencil_tile_bits_[tile & (xenos::kEdramTileCount - 1)] = uint8_t(bits);
++    }
+ 
+    private:
+     Microsoft::WRL::ComPtr<ID3D12Resource> resource_;
+@@ -262,7 +279,7 @@ class D3D12RenderTargetCache final : public RenderTargetCache {
+     uint32_t temporary_srv_descriptor_index_ = UINT32_MAX;
+     uint32_t temporary_srv_descriptor_index_stencil_ = UINT32_MAX;
+     uint32_t temporary_sort_index_ = 0;
+-    uint8_t stencil_bits_ = 0;
++    uint8_t stencil_tile_bits_[xenos::kEdramTileCount] = {};
+   };
+ 
+   enum TransferCBVRegister : uint32_t {
+@@ -652,13 +669,84 @@ class D3D12RenderTargetCache final : public RenderTargetCache {
+       const Transfer::Rectangle* resolve_clear_rectangle = nullptr,
+       uint32_t cutout_render_targets = UINT32_MAX, bool depth_only_cutout = false);
+ 
++  // The depth render target's stencil in the tiles of the rectangle (relative to its base) was
++  // set to the value.
++  static void SetClearedStencilBits(D3D12RenderTarget& render_target,
++                                    const Transfer::Rectangle& rectangle, uint32_t stencil);
++
+   // The stencil bits the draw may set.
+   uint32_t GetDrawStencilBits(reg::RB_DEPTHCONTROL normalized_depth_control) const;
+-  // The stencil bits that may be set in the transfer source (anything from color).
+-  static uint32_t GetTransferSourceStencilBits(const Transfer& transfer) {
++  // A 32bpp color render target of these formats holds the depth and stencil of a transfer as
++  // they are packed (the stencil in the low byte), and reads the stencil back the same way. Its
++  // tile bits are the stencil bits that may be set in the low byte of the pixels there.
++  static bool IsStencilCarryingColorFormat(RenderTargetKey key) {
++    if (key.is_depth) {
++      return false;
++    }
++    switch (key.GetColorFormat()) {
++      case xenos::ColorRenderTargetFormat::k_8_8_8_8:
++      case xenos::ColorRenderTargetFormat::k_2_10_10_10:
++      case xenos::ColorRenderTargetFormat::k_2_10_10_10_AS_10_10_10_10:
++      case xenos::ColorRenderTargetFormat::k_16_16:
++        return true;
++      default:
++        return false;
++    }
++  }
++  // The stencil bits that may be set in a tile of the transfer source, as seen by the destination.
++  static uint32_t GetTransferTileStencilBits(const Transfer& transfer, uint32_t tile,
++                                             RenderTargetKey dest_key) {
+     const auto* source = static_cast<const D3D12RenderTarget*>(transfer.source);
+-    return source->key().is_depth ? source->stencil_bits() : UINT8_MAX;
++    RenderTargetKey source_key = source->key();
++    bool carried;
++    if (source_key.is_depth) {
++      carried = dest_key.is_depth || IsStencilCarryingColorFormat(dest_key);
++    } else {
++      carried = IsStencilCarryingColorFormat(source_key) &&
++                (dest_key.is_depth || source_key.resource_format == dest_key.resource_format);
++    }
++    return carried ? source->GetTileStencilBits(tile) : UINT8_MAX;
++  }
++  static uint32_t GetTransferSourceStencilBits(const Transfer& transfer) {
++    RenderTargetKey dest_key;
++    dest_key.is_depth = 1;
++    uint32_t bits = 0;
++    for (uint32_t tile = transfer.start_tiles; tile < transfer.end_tiles; ++tile) {
++      bits |= GetTransferTileStencilBits(transfer, tile, dest_key);
++    }
++    return bits;
++  }
++
++  struct StencilRun {
++    uint32_t start_tiles;
++    uint32_t end_tiles;
++    uint32_t bits;
++  };
++  static constexpr uint32_t kMaxStencilRuns = 8;
++  // Splits the tiles into runs of the same nonzero stencil bits, dropping the tiles without any.
++  // Past kMaxStencilRuns, the rest is merged into the last run (bits are only ever added).
++  template <typename BitsOfTile>
++  static uint32_t GetStencilRuns(uint32_t start_tiles, uint32_t end_tiles, BitsOfTile bits_of_tile,
++                                 StencilRun* runs_out) {
++    uint32_t run_count = 0;
++    for (uint32_t tile = start_tiles; tile < end_tiles; ++tile) {
++      uint32_t bits = bits_of_tile(tile);
++      if (!bits) {
++        continue;
++      }
++      if (run_count && runs_out[run_count - 1].end_tiles == tile &&
++          runs_out[run_count - 1].bits == bits) {
++        runs_out[run_count - 1].end_tiles = tile + 1;
++      } else if (run_count == kMaxStencilRuns) {
++        runs_out[run_count - 1].end_tiles = tile + 1;
++        runs_out[run_count - 1].bits |= bits;
++      } else {
++        runs_out[run_count++] = {tile, tile + 1, bits};
++      }
++    }
++    return run_count;
+   }
++  std::vector<Transfer> current_stencil_clear_transfers_;
+ 
+   // Accepts an array of (1 + xenos::kMaxColorRenderTargets) render targets,
+   // first depth, then color.
+diff --git a/src/graphics/d3d12/render_target_cache.cpp b/src/graphics/d3d12/render_target_cache.cpp
+index 01f9d1c..2797792 100644
+--- a/src/graphics/d3d12/render_target_cache.cpp
++++ b/src/graphics/d3d12/render_target_cache.cpp
+@@ -1109,7 +1109,9 @@ bool D3D12RenderTargetCache::Update(bool is_rasterization_done,
+             if (transfer.GetRectangles(key.base_tiles, key.GetPitchTiles(), key.msaa_samples,
+                                        key.Is64bpp(), rectangles, &overwrite_rectangle) ||
+                 (overwritten_depth_only && i == 0 &&
+-                 (static_cast<const D3D12RenderTarget*>(render_target)->stencil_bits() ||
++                 (static_cast<const D3D12RenderTarget*>(render_target)
++                      ->GetStencilBits(transfer.start_tiles,
++                                       transfer.end_tiles - transfer.start_tiles) ||
+                   GetTransferSourceStencilBits(transfer)))) {
+               kept_transfers.push_back(transfer);
+             }
+@@ -1123,8 +1125,23 @@ bool D3D12RenderTargetCache::Update(bool is_rasterization_done,
+                                          transfers);
+       }
+       if (depth_and_color_render_targets[0]) {
+-        static_cast<D3D12RenderTarget*>(depth_and_color_render_targets[0])
+-            ->AddStencilBits(GetDrawStencilBits(normalized_depth_control));
++        uint32_t draw_stencil_bits = GetDrawStencilBits(normalized_depth_control);
++        if (draw_stencil_bits) {
++          uint32_t draw_start_tiles, draw_length_tiles;
++          GetLastUpdateUsedTiles(0, draw_start_tiles, draw_length_tiles);
++          static_cast<D3D12RenderTarget*>(depth_and_color_render_targets[0])
++              ->AddStencilBits(draw_start_tiles, draw_length_tiles, draw_stencil_bits);
++        }
++      }
++      // What a draw writes to a color render target is not a stencil carried from before.
++      for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
++        if (depth_and_color_render_targets[1 + i] &&
++            ((normalized_color_mask >> (4 * i)) & 0b1111)) {
++          uint32_t draw_start_tiles, draw_length_tiles;
++          GetLastUpdateUsedTiles(1 + i, draw_start_tiles, draw_length_tiles);
++          static_cast<D3D12RenderTarget*>(depth_and_color_render_targets[1 + i])
++              ->AddStencilBits(draw_start_tiles, draw_length_tiles, UINT8_MAX);
++        }
+       }
+       SetCommandListRenderTargets(depth_and_color_render_targets);
+     } break;
+@@ -3844,10 +3861,15 @@ uint32_t D3D12RenderTargetCache::GetDrawStencilBits(
+     return 0;
+   }
+   const RegisterFile& regs = register_file();
++  bool z_enabled = normalized_depth_control.z_enable;
++  xenos::CompareFunction z_function = normalized_depth_control.zfunc;
+   // Which of the two is used depends on the face and the culling, consider both.
+   reg::RB_STENCILREFMASK ref_masks[2] = {
+       regs.Get<reg::RB_STENCILREFMASK>(),
+       regs.Get<reg::RB_STENCILREFMASK>(XE_GPU_REG_RB_STENCILREFMASK_BF)};
++  xenos::CompareFunction functions[2] = {normalized_depth_control.stencilfunc,
++                                         normalized_depth_control.stencilfunc_bf};
++  // Stencil fail, depth fail, depth pass.
+   xenos::StencilOp ops[2][3] = {
+       {normalized_depth_control.stencilfail, normalized_depth_control.stencilzfail,
+        normalized_depth_control.stencilzpass},
+@@ -3855,8 +3877,15 @@ uint32_t D3D12RenderTargetCache::GetDrawStencilBits(
+        normalized_depth_control.stencilzpass_bf}};
+   uint32_t bits = 0;
+   for (uint32_t face = 0; face <= uint32_t(normalized_depth_control.backface_enable); ++face) {
+-    for (xenos::StencilOp op : ops[face]) {
+-      if (op == xenos::StencilOp::kKeep || op == xenos::StencilOp::kZero) {
++    bool stencil_can_fail = functions[face] != xenos::CompareFunction::kAlways;
++    bool stencil_can_pass = functions[face] != xenos::CompareFunction::kNever;
++    bool depth_can_fail = z_enabled && z_function != xenos::CompareFunction::kAlways;
++    bool depth_can_pass = !z_enabled || z_function != xenos::CompareFunction::kNever;
++    bool op_used[3] = {stencil_can_fail, stencil_can_pass && depth_can_fail,
++                       stencil_can_pass && depth_can_pass};
++    for (uint32_t i = 0; i < 3; ++i) {
++      xenos::StencilOp op = ops[face][i];
++      if (!op_used[i] || op == xenos::StencilOp::kKeep || op == xenos::StencilOp::kZero) {
+         continue;
+       }
+       for (const reg::RB_STENCILREFMASK& ref_mask : ref_masks) {
+@@ -3868,6 +3897,35 @@ uint32_t D3D12RenderTargetCache::GetDrawStencilBits(
+   return bits;
+ }
+ 
++void D3D12RenderTargetCache::SetClearedStencilBits(D3D12RenderTarget& render_target,
++                                                   const Transfer::Rectangle& rectangle,
++                                                   uint32_t stencil) {
++  if (!rectangle.width_pixels || !rectangle.height_pixels) {
++    return;
++  }
++  RenderTargetKey key = render_target.key();
++  uint32_t tile_width = xenos::kEdramTileWidthSamples >>
++                        (uint32_t(key.msaa_samples >= xenos::MsaaSamples::k4X) +
++                         uint32_t(key.Is64bpp()));
++  uint32_t tile_height = xenos::kEdramTileHeightSamples >>
++                         uint32_t(key.msaa_samples >= xenos::MsaaSamples::k2X);
++  uint32_t pitch_tiles = key.GetPitchTiles();
++  uint32_t x_end = rectangle.x_pixels + rectangle.width_pixels;
++  uint32_t y_end = rectangle.y_pixels + rectangle.height_pixels;
++  for (uint32_t row = rectangle.y_pixels / tile_height; row * tile_height < y_end; ++row) {
++    for (uint32_t column = rectangle.x_pixels / tile_width; column * tile_width < x_end;
++         ++column) {
++      uint32_t tile = key.base_tiles + row * pitch_tiles + column;
++      bool cleared_whole = rectangle.x_pixels <= column * tile_width &&
++                           (column + 1) * tile_width <= x_end &&
++                           rectangle.y_pixels <= row * tile_height &&
++                           (row + 1) * tile_height <= y_end;
++      render_target.SetTileStencilBits(
++          tile, cleared_whole ? stencil : (stencil | render_target.GetTileStencilBits(tile)));
++    }
++  }
++}
++
+ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
+     uint32_t render_target_count, RenderTarget* const* render_targets,
+     const std::vector<Transfer>* render_target_transfers,
+@@ -4220,22 +4278,26 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
+       TransferShaderKey new_transfer_shader_key;
+       new_transfer_shader_key.dest_msaa_samples = dest_rt_key.msaa_samples;
+       new_transfer_shader_key.dest_resource_format = dest_rt_key.resource_format;
+-      // The stencil only needs clearing if it may have something to be cleared (it is zero until
+-      // written to), and only the bits set in the source need to be copied.
+-      uint32_t stencil_clear_rectangle_count = 0;
+-      if (need_stencil_bit_draws && dest_d3d12_rt.stencil_bits()) {
++      // The stencil only needs clearing where it may have something to be cleared (it is zero
++      // until written to), and only the bits set in the source need to be copied.
++      current_stencil_clear_transfers_.clear();
++      if (need_stencil_bit_draws) {
+         for (const Transfer& transfer : current_transfers) {
+-          stencil_clear_rectangle_count += transfer.GetRectangles(
+-              dest_rt_key.base_tiles, dest_pitch_tiles, dest_rt_key.msaa_samples, dest_is_64bpp,
+-              nullptr, get_cutout(i, true));
++          StencilRun clear_runs[kMaxStencilRuns];
++          uint32_t clear_run_count = GetStencilRuns(
++              transfer.start_tiles, transfer.end_tiles,
++              [&](uint32_t tile) { return dest_d3d12_rt.GetTileStencilBits(tile); }, clear_runs);
++          for (uint32_t k = 0; k < clear_run_count; ++k) {
++            current_stencil_clear_transfers_.emplace_back(
++                clear_runs[k].start_tiles, clear_runs[k].end_tiles, transfer.source, nullptr);
++          }
+         }
+       }
+-      if (dest_rt_key.is_depth) {
+-        uint32_t transferred_stencil_bits = 0;
+-        for (const Transfer& transfer : current_transfers) {
+-          transferred_stencil_bits |= GetTransferSourceStencilBits(transfer);
+-        }
+-        dest_d3d12_rt.AddStencilBits(transferred_stencil_bits);
++      uint32_t stencil_clear_rectangle_count = 0;
++      for (const Transfer& transfer : current_stencil_clear_transfers_) {
++        stencil_clear_rectangle_count += transfer.GetRectangles(
++            dest_rt_key.base_tiles, dest_pitch_tiles, dest_rt_key.msaa_samples, dest_is_64bpp,
++            nullptr, get_cutout(i, true));
+       }
+       for (uint32_t j = 0; j <= uint32_t(need_stencil_bit_draws); ++j) {
+         // j == 0 - color or depth.
+@@ -4275,35 +4337,37 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
+               (host_depth_source_d3d12_rt && !host_depth_source_is_copy)
+                   ? host_depth_source_d3d12_rt->key().msaa_samples
+                   : xenos::MsaaSamples::k1X;
+-          uint32_t stencil_bits = 0;
+           if (j) {
+-            stencil_bits = GetTransferSourceStencilBits(transfer);
+-            if (!stencil_bits) {
+-              continue;
+-            }
+             new_transfer_shader_key.mode = source_rt_key.is_depth
+                                                ? TransferMode::kDepthToStencilBit
+                                                : TransferMode::kColorToStencilBit;
+-          } else {
+-            if (dest_rt_key.is_depth) {
+-              if (host_depth_source_d3d12_rt) {
+-                new_transfer_shader_key.mode = source_rt_key.is_depth
+-                                                   ? TransferMode::kDepthAndHostDepthToDepth
+-                                                   : TransferMode::kColorAndHostDepthToDepth;
+-              } else {
+-                new_transfer_shader_key.mode = source_rt_key.is_depth ? TransferMode::kDepthToDepth
+-                                                                      : TransferMode::kColorToDepth;
+-              }
+-            } else {
+-              new_transfer_shader_key.mode = source_rt_key.is_depth ? TransferMode::kDepthToColor
+-                                                                    : TransferMode::kColorToColor;
++            StencilRun source_runs[kMaxStencilRuns];
++            uint32_t source_run_count = GetStencilRuns(
++                transfer.start_tiles, transfer.end_tiles,
++                [&](uint32_t tile) { return GetTransferTileStencilBits(transfer, tile, dest_rt_key); },
++                source_runs);
++            for (uint32_t k = 0; k < source_run_count; ++k) {
++              current_transfer_invocations_.emplace_back(
++                  Transfer(source_runs[k].start_tiles, source_runs[k].end_tiles, transfer.source,
++                           nullptr),
++                  new_transfer_shader_key, source_runs[k].bits);
+             }
++            continue;
+           }
+-          current_transfer_invocations_.emplace_back(transfer, new_transfer_shader_key,
+-                                                     stencil_bits);
+-          if (j) {
+-            current_transfer_invocations_.back().transfer.host_depth_source = nullptr;
++          if (dest_rt_key.is_depth) {
++            if (host_depth_source_d3d12_rt) {
++              new_transfer_shader_key.mode = source_rt_key.is_depth
++                                                 ? TransferMode::kDepthAndHostDepthToDepth
++                                                 : TransferMode::kColorAndHostDepthToDepth;
++            } else {
++              new_transfer_shader_key.mode = source_rt_key.is_depth ? TransferMode::kDepthToDepth
++                                                                    : TransferMode::kColorToDepth;
++            }
++          } else {
++            new_transfer_shader_key.mode = source_rt_key.is_depth ? TransferMode::kDepthToColor
++                                                                  : TransferMode::kColorToColor;
+           }
++          current_transfer_invocations_.emplace_back(transfer, new_transfer_shader_key);
+         }
+       }
+       std::sort(current_transfer_invocations_.begin(), current_transfer_invocations_.end());
+@@ -4318,7 +4382,7 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
+             dest_d3d12_rt.descriptor_draw().GetHandle(), D3D12_CLEAR_FLAG_STENCIL, 0.0f, 0,
+             stencil_clear_rectangle_count);
+         assert_not_null(stencil_clear_rect_write_ptr);
+-        for (const Transfer& transfer : current_transfers) {
++        for (const Transfer& transfer : current_stencil_clear_transfers_) {
+           Transfer::Rectangle transfer_stencil_clear_rectangles[Transfer::kMaxRectanglesWithCutout];
+           uint32_t transfer_stencil_clear_rectangle_count = transfer.GetRectangles(
+               dest_rt_key.base_tiles, dest_pitch_tiles, dest_rt_key.msaa_samples, dest_is_64bpp,
+@@ -4366,6 +4430,7 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
+         command_processor_.SetScissorRect(transfer_scissor);
+       }
+ 
++      bool all_transfers_drawn = true;
+       for (auto it = current_transfer_invocations_.cbegin();
+            it != current_transfer_invocations_.cend(); ++it) {
+         const TransferInvocation& transfer_invocation_first = *it;
+@@ -4439,6 +4504,7 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
+                 current_submission, transfer_rectangle_buffer_view.SizeInBytes, sizeof(float),
+                 nullptr, nullptr, &transfer_rectangle_buffer_view.BufferLocation));
+         if (!transfer_rectangle_write_ptr) {
++          all_transfers_drawn = false;
+           continue;
+         }
+         for (auto it_merged = it_merged_first; it_merged <= it_merged_last; ++it_merged) {
+@@ -4492,6 +4558,7 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
+         ID3D12PipelineState* const* transfer_pipelines =
+             GetOrCreateTransferPipelines(transfer_shader_key);
+         if (!transfer_pipelines) {
++          all_transfers_drawn = false;
+           continue;
+         }
+         if (last_transfer_root_signature_index != transfer_root_signature_index) {
+@@ -4662,6 +4729,19 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
+           command_list.D3DDrawInstanced(transfer_vertex_count, 1, 0, 0);
+         }
+       }
++
++      // Where the destination was cleared and the whole tile was transferred, it now has the
++      // source's; otherwise something of what it had may remain. A color render target that doesn't
++      // carry the stencil has it unknown.
++      bool dest_replaced = all_transfers_drawn && !get_cutout(i, dest_rt_key.is_depth);
++      for (const Transfer& transfer : current_transfers) {
++        for (uint32_t tile = transfer.start_tiles; tile < transfer.end_tiles; ++tile) {
++          uint32_t source_bits = GetTransferTileStencilBits(transfer, tile, dest_rt_key);
++          dest_d3d12_rt.SetTileStencilBits(
++              tile, dest_replaced ? source_bits
++                                  : (source_bits | dest_d3d12_rt.GetTileStencilBits(tile)));
++        }
++      }
+     }
+ 
+     // Perform the clear.
+@@ -4684,11 +4764,11 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
+             dest_d3d12_rt.SetResourceState(D3D12_RESOURCE_STATE_DEPTH_WRITE),
+             D3D12_RESOURCE_STATE_DEPTH_WRITE);
+         command_processor_.SubmitBarriers();
+-        dest_d3d12_rt.AddStencilBits(UINT(clear_value));
+         command_list.D3DClearDepthStencilView(dest_d3d12_rt.descriptor_draw().GetHandle(),
+                                               D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
+                                               depth_host_clear_value, UINT(clear_value) & 0xFF, 1,
+                                               &clear_rect);
++        SetClearedStencilBits(dest_d3d12_rt, *resolve_clear_rectangle, UINT(clear_value) & 0xFF);
+       } else {
+         float color_clear_value[4] = {};
+         bool clear_via_drawing = false;
+@@ -4798,6 +4878,10 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
+                   : dest_d3d12_rt.descriptor_draw().GetHandle(),
+               color_clear_value, 1, &clear_rect);
+         }
++        SetClearedStencilBits(dest_d3d12_rt, *resolve_clear_rectangle,
++                              IsStencilCarryingColorFormat(dest_rt_key)
++                                  ? uint32_t(clear_value) & 0xFF
++                                  : uint32_t(UINT8_MAX));
+       }
+     }
+   }

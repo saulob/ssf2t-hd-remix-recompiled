@@ -1,0 +1,9 @@
+build/
+build-*/
+out/
+.vs/
+.vscode/
+*.ppm
+demo_settings.txt
+game.img
+game.img.part

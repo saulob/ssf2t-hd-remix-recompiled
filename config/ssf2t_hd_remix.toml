@@ -1,0 +1,19 @@
+# ReXGlue runtime settings, read from <exe dir>/ssf2t_hd_remix.toml.
+# The launcher writes the player's choices to <user data>/settings.toml, which is loaded after this file.
+# Full (purchased) license for XamContentGetLicenseMask; the SDK default 0 means trial.
+license_mask = 1
+gpu_plugin = "xenos"
+
+# Keyboard emulates the Xbox 360 pad next to a connected controller, with ReXGlue's default bindings.
+mnk_mode = true
+# Empty skips the optional gamecontrollerdb.txt load; SDL's built-in mappings still apply.
+hid_mappings_file = ""
+
+# Default game window: 1280x720 logical, centered on the primary display. Logical pixels are scaled by the display scale.
+fullscreen = false
+monitor = 1
+window_width = 1280
+window_height = 720
+# Guest video mode for 16:9 Original, assumed 720p until the first log confirms it.
+video_mode_width = 1280
+video_mode_height = 720

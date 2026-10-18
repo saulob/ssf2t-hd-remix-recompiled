@@ -1,0 +1,304 @@
+diff --git a/src/graphics/vulkan/command_processor.cpp b/src/graphics/vulkan/command_processor.cpp
+index 871cde0..87b6e7d 100644
+--- a/src/graphics/vulkan/command_processor.cpp
++++ b/src/graphics/vulkan/command_processor.cpp
+@@ -918,6 +918,9 @@ bool VulkanCommandProcessor::SetupContext() {
+         "emulator, reducing to {}x{}",
+         draw_resolution_scale_x, draw_resolution_scale_y);
+   }
++  uint32_t host_scale_quarters_x, host_scale_quarters_y;
++  TextureCache::GetConfigInternalRenderScale(draw_resolution_scale_x, draw_resolution_scale_y,
++                                             host_scale_quarters_x, host_scale_quarters_y);
+   if (draw_resolution_scale_x > 1 || draw_resolution_scale_y > 1) {
+     REXGPU_WARN(
+         "Vulkan draw resolution scaling is experimental and may not affect all "
+@@ -963,6 +966,7 @@ bool VulkanCommandProcessor::SetupContext() {
+   // Requires the transient descriptor set layouts.
+   render_target_cache_ = std::make_unique<VulkanRenderTargetCache>(
+       *register_file_, *memory_, draw_resolution_scale_x, draw_resolution_scale_y, *this);
++  render_target_cache_->SetHostScaleQuarters(host_scale_quarters_x, host_scale_quarters_y);
+   if (!render_target_cache_->Initialize(shared_memory_binding_count)) {
+     REXGPU_ERROR("Failed to initialize the render target cache");
+     return false;
+@@ -3939,8 +3943,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+ 
+   bool host_render_targets_used =
+       render_target_cache_->GetPath() == RenderTargetCache::Path::kHostRenderTargets;
+-  uint32_t draw_resolution_scale_x = texture_cache_->draw_resolution_scale_x();
+-  uint32_t draw_resolution_scale_y = texture_cache_->draw_resolution_scale_y();
++  uint32_t host_scale_quarters_x = render_target_cache_->host_scale_quarters_x();
++  uint32_t host_scale_quarters_y = render_target_cache_->host_scale_quarters_y();
+ 
+   // Get dynamic rasterizer state.
+   draw_util::ViewportInfo viewport_info;
+@@ -3960,8 +3964,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+   // life. Or even disregard the viewport bounds range in the fragment shader
+   // interlocks case completely - apply the viewport and the scissor offset
+   // directly to pixel address and to things like ps_param_gen.
+-  draw_util::GetHostViewportInfo(
+-      regs, draw_resolution_scale_x, draw_resolution_scale_y, false,
++  draw_util::GetHostViewportInfoAtHostScale(
++      regs, host_scale_quarters_x, host_scale_quarters_y, false,
+       device_properties.maxViewportDimensions[0], device_properties.maxViewportDimensions[1], true,
+       normalized_depth_control,
+       host_render_targets_used && render_target_cache_->depth_float24_convert_in_pixel_shader(),
+@@ -4983,12 +4987,16 @@ void VulkanCommandProcessor::CompleteOcclusionQueries(bool wait) {
+ }
+ 
+ uint64_t VulkanCommandProcessor::NormalizeOcclusionSamples(uint64_t samples) const {
+-  if (samples == 0 || !texture_cache_) {
++  if (samples == 0 || !texture_cache_ || !render_target_cache_) {
+     return samples;
+   }
+-  uint64_t scale_x = texture_cache_->draw_resolution_scale_x();
+-  uint64_t scale_y = texture_cache_->draw_resolution_scale_y();
+-  uint64_t scale = scale_x * scale_y;
++  uint64_t quarters_x = render_target_cache_->host_scale_quarters_x();
++  uint64_t quarters_y = render_target_cache_->host_scale_quarters_y();
++  if ((quarters_x | quarters_y) & 3) {
++    uint64_t scale_sixteenths = quarters_x * quarters_y;
++    return (samples * 16 + (scale_sixteenths >> 1)) / scale_sixteenths;
++  }
++  uint64_t scale = (quarters_x >> 2) * (quarters_y >> 2);
+   if (scale <= 1) {
+     return samples;
+   }
+@@ -5733,8 +5741,8 @@ void VulkanCommandProcessor::UpdateDynamicState(const draw_util::ViewportInfo& v
+ #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
+ 
+   const RegisterFile& regs = *register_file_;
+-  uint32_t draw_resolution_scale_x = texture_cache_ ? texture_cache_->draw_resolution_scale_x() : 1;
+-  uint32_t draw_resolution_scale_y = texture_cache_ ? texture_cache_->draw_resolution_scale_y() : 1;
++  uint32_t host_scale_quarters_x = render_target_cache_->host_scale_quarters_x();
++  uint32_t host_scale_quarters_y = render_target_cache_->host_scale_quarters_y();
+ 
+   // Window parameters.
+   // http://ftp.tku.edu.tw/NetBSD/NetBSD-current/xsrc/external/mit/xf86-video-ati/dist/src/r600_reg_auto_r6xx.h
+@@ -5765,10 +5773,7 @@ void VulkanCommandProcessor::UpdateDynamicState(const draw_util::ViewportInfo& v
+   // Scissor.
+   draw_util::Scissor scissor;
+   draw_util::GetScissor(regs, scissor);
+-  scissor.offset[0] *= draw_resolution_scale_x;
+-  scissor.offset[1] *= draw_resolution_scale_y;
+-  scissor.extent[0] *= draw_resolution_scale_x;
+-  scissor.extent[1] *= draw_resolution_scale_y;
++  draw_util::ScaleScissorToHost(scissor, host_scale_quarters_x, host_scale_quarters_y);
+   VkRect2D scissor_rect;
+   scissor_rect.offset.x = int32_t(scissor.offset[0]);
+   scissor_rect.offset.y = int32_t(scissor.offset[1]);
+@@ -5790,7 +5795,7 @@ void VulkanCommandProcessor::UpdateDynamicState(const draw_util::ViewportInfo& v
+     // better than less bias, because less bias means Z fighting with the
+     // background is more likely.
+     depth_bias_slope_factor *= xenos::kPolygonOffsetScaleSubpixelUnit *
+-                               float(std::max(draw_resolution_scale_x, draw_resolution_scale_y));
++                               (float(std::max(host_scale_quarters_x, host_scale_quarters_y)) * 0.25f);
+     // std::memcmp instead of != so in case of NaN, every draw won't be
+     // invalidating it.
+     dynamic_depth_bias_update_needed_ |=
+@@ -6223,10 +6228,10 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
+     // to radius conversion to avoid multiplying the per-vertex diameter by an
+     // additional constant in the shader.
+     float point_screen_diameter_to_ndc_radius_x =
+-        (/* 0.5f * 2.0f * */ float(draw_resolution_scale_x)) /
++        (/* 0.5f * 2.0f * */ float(render_target_cache_->host_scale_quarters_x()) * 0.25f) /
+         std::max(viewport_info.xy_extent[0], uint32_t(1));
+     float point_screen_diameter_to_ndc_radius_y =
+-        (/* 0.5f * 2.0f * */ float(draw_resolution_scale_y)) /
++        (/* 0.5f * 2.0f * */ float(render_target_cache_->host_scale_quarters_y()) * 0.25f) /
+         std::max(viewport_info.xy_extent[1], uint32_t(1));
+     dirty |= system_constants_.point_screen_diameter_to_ndc_radius[0] !=
+              point_screen_diameter_to_ndc_radius_x;
+diff --git a/src/graphics/vulkan/pipeline_cache.cpp b/src/graphics/vulkan/pipeline_cache.cpp
+index 91ac08f..3e69d70 100644
+--- a/src/graphics/vulkan/pipeline_cache.cpp
++++ b/src/graphics/vulkan/pipeline_cache.cpp
+@@ -297,6 +297,8 @@ bool VulkanPipelineCache::Initialize() {
+       render_target_cache_.msaa_2x_no_attachments_supported(), edram_fragment_shader_interlock,
+       render_target_cache_.draw_resolution_scale_x(),
+       render_target_cache_.draw_resolution_scale_y());
++  shader_translator_->SetHostScaleQuarters(render_target_cache_.host_scale_quarters_x(),
++                                           render_target_cache_.host_scale_quarters_y());
+ 
+   if (edram_fragment_shader_interlock) {
+     std::vector<uint8_t> depth_only_fragment_shader_code =
+diff --git a/src/graphics/vulkan/render_target_cache.cpp b/src/graphics/vulkan/render_target_cache.cpp
+index b665b10..5ab7fb0 100644
+--- a/src/graphics/vulkan/render_target_cache.cpp
++++ b/src/graphics/vulkan/render_target_cache.cpp
+@@ -237,6 +237,13 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
+       path_ = Path::kHostRenderTargets;
+     }
+   }
++  if (path_ != Path::kHostRenderTargets && AreHostRenderTargetsReduced()) {
++    SetHostScaleQuarters(draw_resolution_scale_x() << 2, draw_resolution_scale_y() << 2);
++    REXGPU_WARN(
++        "The internal render scale needs the host render target path, drawing at {}x{} of the "
++        "guest resolution instead",
++        draw_resolution_scale_x(), draw_resolution_scale_y());
++  }
+ 
+   // Format support.
+   constexpr VkFormatFeatureFlags kUsedDepthFormatFeatures =
+@@ -1881,9 +1888,9 @@ RenderTargetCache::RenderTarget* VulkanRenderTargetCache::CreateRenderTarget(Ren
+   image_create_info.pNext = nullptr;
+   image_create_info.flags = 0;
+   image_create_info.imageType = VK_IMAGE_TYPE_2D;
+-  image_create_info.extent.width = key.GetWidth() * draw_resolution_scale_x();
++  image_create_info.extent.width = GuestToHostX(key.GetWidth());
+   image_create_info.extent.height =
+-      GetRenderTargetHeight(key.pitch_tiles_at_32bpp, key.msaa_samples) * draw_resolution_scale_y();
++      GuestToHostY(GetRenderTargetHeight(key.pitch_tiles_at_32bpp, key.msaa_samples));
+   image_create_info.extent.depth = 1;
+   image_create_info.mipLevels = 1;
+   image_create_info.arrayLayers = 1;
+@@ -2099,6 +2106,10 @@ RenderTargetCache::RenderTarget* VulkanRenderTargetCache::CreateRenderTarget(Ren
+ 
+ bool VulkanRenderTargetCache::IsHostDepthEncodingDifferent(
+     xenos::DepthRenderTargetFormat format) const {
++  // The host depth is stored in the EDRAM buffer at the draw resolution scale.
++  if (AreHostRenderTargetsReduced()) {
++    return false;
++  }
+   switch (format) {
+     case xenos::DepthRenderTargetFormat::kD24S8:
+       return !depth_unorm24_vulkan_format_supported();
+@@ -2298,10 +2309,10 @@ VulkanRenderTargetCache::GetHostRenderTargetsFramebuffer(
+   // Limiting to the device limit for the case of no attachments, for which
+   // there's no limit imposed by the sizes of the attachments that have been
+   // created successfully.
+-  host_extent.width = std::min(host_extent.width * draw_resolution_scale_x(),
+-                               device_properties.maxFramebufferWidth);
+-  host_extent.height = std::min(host_extent.height * draw_resolution_scale_y(),
+-                                device_properties.maxFramebufferHeight);
++  host_extent.width =
++      std::min(GuestToHostX(host_extent.width), device_properties.maxFramebufferWidth);
++  host_extent.height =
++      std::min(GuestToHostY(host_extent.height), device_properties.maxFramebufferHeight);
+   framebuffer_create_info.width = host_extent.width;
+   framebuffer_create_info.height = host_extent.height;
+   framebuffer_create_info.layers = 1;
+@@ -2633,8 +2644,8 @@ VkShaderModule VulkanRenderTargetCache::GetTransferShader(TransferShaderKey key)
+   // Working with unsigned numbers for simplicity now, bitcasting to signed will
+   // be done at texture fetch.
+ 
+-  uint32_t tile_width_samples = xenos::kEdramTileWidthSamples * draw_resolution_scale_x();
+-  uint32_t tile_height_samples = xenos::kEdramTileHeightSamples * draw_resolution_scale_y();
++  uint32_t tile_width_samples = GuestToHostX(xenos::kEdramTileWidthSamples);
++  uint32_t tile_height_samples = GuestToHostY(xenos::kEdramTileHeightSamples);
+ 
+   // Split the destination pixel index into 32bpp tile and 32bpp-tile-relative
+   // pixel index.
+@@ -4690,14 +4701,10 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
+   if (resolve_clear_needed) {
+     // Assuming the rectangle is already clamped by the setup function from the
+     // common render target cache.
+-    resolve_clear_rect.rect.offset.x =
+-        int32_t(resolve_clear_rectangle->x_pixels * draw_resolution_scale_x());
+-    resolve_clear_rect.rect.offset.y =
+-        int32_t(resolve_clear_rectangle->y_pixels * draw_resolution_scale_y());
+-    resolve_clear_rect.rect.extent.width =
+-        resolve_clear_rectangle->width_pixels * draw_resolution_scale_x();
+-    resolve_clear_rect.rect.extent.height =
+-        resolve_clear_rectangle->height_pixels * draw_resolution_scale_y();
++    resolve_clear_rect.rect.offset.x = int32_t(GuestToHostX(resolve_clear_rectangle->x_pixels));
++    resolve_clear_rect.rect.offset.y = int32_t(GuestToHostY(resolve_clear_rectangle->y_pixels));
++    resolve_clear_rect.rect.extent.width = GuestToHostX(resolve_clear_rectangle->width_pixels);
++    resolve_clear_rect.rect.extent.height = GuestToHostY(resolve_clear_rectangle->height_pixels);
+     resolve_clear_rect.baseArrayLayer = 0;
+     resolve_clear_rect.layerCount = 1;
+   }
+@@ -5138,13 +5145,13 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
+             const Transfer::Rectangle& stencil_clear_rectangle =
+                 transfer_stencil_clear_rectangles[j];
+             stencil_clear_rect_write_ptr->rect.offset.x =
+-                int32_t(stencil_clear_rectangle.x_pixels * draw_resolution_scale_x());
++                int32_t(GuestToHostX(stencil_clear_rectangle.x_pixels));
+             stencil_clear_rect_write_ptr->rect.offset.y =
+-                int32_t(stencil_clear_rectangle.y_pixels * draw_resolution_scale_y());
++                int32_t(GuestToHostY(stencil_clear_rectangle.y_pixels));
+             stencil_clear_rect_write_ptr->rect.extent.width =
+-                stencil_clear_rectangle.width_pixels * draw_resolution_scale_x();
++                GuestToHostX(stencil_clear_rectangle.width_pixels);
+             stencil_clear_rect_write_ptr->rect.extent.height =
+-                stencil_clear_rectangle.height_pixels * draw_resolution_scale_y();
++                GuestToHostY(stencil_clear_rectangle.height_pixels);
+             stencil_clear_rect_write_ptr->baseArrayLayer = 0;
+             stencil_clear_rect_write_ptr->layerCount = 1;
+             ++stencil_clear_rect_write_ptr;
+@@ -5166,8 +5173,10 @@ void VulkanRenderTargetCache::PerformTransfersAndResolveClears(
+       transfer_viewport.minDepth = 0.0f;
+       transfer_viewport.maxDepth = 1.0f;
+       command_processor_.SetViewport(transfer_viewport);
+-      float pixels_to_ndc_x = (2.0f / transfer_viewport.width) * float(draw_resolution_scale_x());
+-      float pixels_to_ndc_y = (2.0f / transfer_viewport.height) * float(draw_resolution_scale_y());
++      float pixels_to_ndc_x =
++          (2.0f / transfer_viewport.width) * (float(host_scale_quarters_x()) * 0.25f);
++      float pixels_to_ndc_y =
++          (2.0f / transfer_viewport.height) * (float(host_scale_quarters_y()) * 0.25f);
+       VkRect2D transfer_scissor;
+       transfer_scissor.offset.x = 0;
+       transfer_scissor.offset.y = 0;
+@@ -5795,15 +5804,59 @@ VkPipeline VulkanRenderTargetCache::GetDumpPipeline(DumpPipelineKey key) {
+       builder.createBinOp(spv::OpUDiv, type_uint, source_tile_index, source_pitch_tiles);
+   spv::Id source_tile_index_x =
+       builder.createBinOp(spv::OpUMod, type_uint, source_tile_index, source_pitch_tiles);
++  // The source texture is at the host scale, and the EDRAM at the draw resolution scale.
++  spv::Id source_tile_sample_x = tile_sample_x;
++  spv::Id source_tile_sample_y = tile_sample_y;
++  spv::Id const_source_tile_width = const_tile_width;
++  spv::Id const_source_tile_height = const_tile_height;
++  if (AreHostRenderTargetsReduced()) {
++    // The sample of the EDRAM scale gets the value of the source pixel its center is in.
++    auto resample_axis = [&](spv::Id tile_sample, uint32_t source_msaa_log2,
++                             uint32_t host_scale_quarters, uint32_t draw_resolution_scale) {
++      spv::Id pixel = tile_sample;
++      spv::Id sample_bits = const_uint_0;
++      if (source_msaa_log2) {
++        pixel = builder.createBinOp(spv::OpShiftRightLogical, type_uint, tile_sample,
++                                    builder.makeUintConstant(source_msaa_log2));
++        sample_bits =
++            builder.createBinOp(spv::OpBitwiseAnd, type_uint, tile_sample,
++                                builder.makeUintConstant((UINT32_C(1) << source_msaa_log2) - 1));
++      }
++      spv::Id pixel_center_doubled = builder.createBinOp(
++          spv::OpIAdd, type_uint,
++          builder.createBinOp(spv::OpIMul, type_uint, pixel, builder.makeUintConstant(2)),
++          builder.makeUintConstant(1));
++      spv::Id host_pixel = builder.createBinOp(
++          spv::OpUDiv, type_uint,
++          builder.createBinOp(spv::OpIMul, type_uint, pixel_center_doubled,
++                              builder.makeUintConstant(host_scale_quarters)),
++          builder.makeUintConstant(draw_resolution_scale << 3));
++      return builder.createBinOp(
++          spv::OpIAdd, type_uint,
++          builder.createBinOp(spv::OpIMul, type_uint, host_pixel,
++                              builder.makeUintConstant(UINT32_C(1) << source_msaa_log2)),
++          sample_bits);
++    };
++    source_tile_sample_x =
++        resample_axis(tile_sample_x, uint32_t(key.msaa_samples >= xenos::MsaaSamples::k4X),
++                      host_scale_quarters_x(), draw_resolution_scale_x());
++    source_tile_sample_y =
++        resample_axis(tile_sample_y, uint32_t(key.msaa_samples >= xenos::MsaaSamples::k2X),
++                      host_scale_quarters_y(), draw_resolution_scale_y());
++    const_source_tile_width = builder.makeUintConstant(
++        GuestToHostX(xenos::kEdramTileWidthSamples) >> uint32_t(format_is_64bpp));
++    const_source_tile_height =
++        builder.makeUintConstant(GuestToHostY(xenos::kEdramTileHeightSamples));
++  }
+   // Combine the source tile offset and the sample index within the tile.
+   spv::Id source_sample_x = builder.createBinOp(
+       spv::OpIAdd, type_uint,
+-      builder.createBinOp(spv::OpIMul, type_uint, const_tile_width, source_tile_index_x),
+-      tile_sample_x);
++      builder.createBinOp(spv::OpIMul, type_uint, const_source_tile_width, source_tile_index_x),
++      source_tile_sample_x);
+   spv::Id source_sample_y = builder.createBinOp(
+       spv::OpIAdd, type_uint,
+-      builder.createBinOp(spv::OpIMul, type_uint, const_tile_height, source_tile_index_y),
+-      tile_sample_y);
++      builder.createBinOp(spv::OpIMul, type_uint, const_source_tile_height, source_tile_index_y),
++      source_tile_sample_y);
+   // Get the source pixel coordinate and the sample index within the pixel.
+   spv::Id source_pixel_x = source_sample_x, source_pixel_y = source_sample_y;
+   spv::Id source_sample_id = spv::NoResult;

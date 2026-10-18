@@ -1,0 +1,12 @@
+add_executable(trg_launcher_demo main.cpp)
+target_link_libraries(trg_launcher_demo PRIVATE trg::launcher_standalone)
+if(MSVC)
+  target_compile_options(trg_launcher_demo PRIVATE /utf-8)
+endif()
+if(WIN32)
+  # A windowed app: no console. main() is still the entry point.
+  set_target_properties(trg_launcher_demo PROPERTIES WIN32_EXECUTABLE ON)
+  if(MSVC)
+    target_link_options(trg_launcher_demo PRIVATE /ENTRY:mainCRTStartup)
+  endif()
+endif()

@@ -1,0 +1,314 @@
+diff --git a/include/rex/graphics/pipeline/render_target/cache.h b/include/rex/graphics/pipeline/render_target/cache.h
+index d39df37..2265f74 100644
+--- a/include/rex/graphics/pipeline/render_target/cache.h
++++ b/include/rex/graphics/pipeline/render_target/cache.h
+@@ -22,6 +22,7 @@
+ 
+ #include <rex/assert.h>
+ #include <rex/graphics/pipeline/shader/shader.h>
++#include <rex/graphics/pipeline/texture/cache.h>
+ #include <rex/graphics/register_file.h>
+ #include <rex/graphics/registers.h>
+ #include <rex/graphics/util/draw.h>
+@@ -171,6 +172,16 @@ class RenderTargetCache {
+ 
+   virtual void BeginFrame();
+ 
++  // Resolves with deferred memory writes (resolve_defer_writeback, see DeferredResolve). Readback
++  // needs the resolved memory right away.
++  void SetResolveWritebackDeferralAllowed(bool allowed) {
++    resolve_writeback_deferral_allowed_ = allowed;
++  }
++  // Writes the memory of the deferred resolves overlapping the guest range.
++  void MaterializeDeferredResolves(uint32_t start, uint32_t length);
++  // At the beginning of a frame: writes the memory of those not repeated in the previous frame.
++  void MaterializeStaleDeferredResolves();
++
+   virtual bool Update(bool is_rasterization_done, reg::RB_DEPTHCONTROL normalized_depth_control,
+                       uint32_t normalized_color_mask, const Shader& vertex_shader);
+ 
+@@ -565,6 +576,48 @@ class RenderTargetCache {
+                                                   draw_util::ResolveTextureCopy& copy_out,
+                                                   RenderTarget*& source_out);
+ 
++  // A resolve copied into the one texture sampling exactly its rectangle may leave the memory
++  // unwritten while only that texture uses it (resolve_defer_writeback). The memory is written,
++  // from the texture through the EDRAM like the resolve would have, before anything reads or partly
++  // overwrites it, or when the resolve isn't repeated the next frame.
++  struct DeferredResolve {
++    uint32_t extent_start;
++    uint32_t extent_length;
++    uint32_t dest_base;
++    draw_util::ResolveCopyShaderIndex copy_shader;
++    draw_util::ResolveCopyShaderConstants copy_constants;
++    uint32_t group_count_x;
++    uint32_t group_count_y;
++    uint32_t dump_base;
++    uint32_t dump_row_length_used;
++    uint32_t dump_rows;
++    uint32_t dump_pitch;
++    RenderTargetKey source_key;
++    TextureCache::DeferredResolveTexture texture;
++    uint64_t frame;
++
++    bool WritesSameAs(const DeferredResolve& other) const {
++      return extent_start == other.extent_start && extent_length == other.extent_length &&
++             dest_base == other.dest_base && copy_shader == other.copy_shader && group_count_x == other.group_count_x &&
++             group_count_y == other.group_count_y &&
++             !std::memcmp(&copy_constants, &other.copy_constants, sizeof(copy_constants));
++    }
++  };
++  static DeferredResolve GetResolveWrites(const draw_util::ResolveInfo& resolve_info,
++                                          draw_util::ResolveCopyShaderIndex copy_shader,
++                                          const draw_util::ResolveCopyShaderConstants& constants,
++                                          uint32_t group_count_x, uint32_t group_count_y);
++  bool CanDeferResolveWriteback(const draw_util::ResolveTextureCopy& copy,
++                                const TextureCache& texture_cache,
++                                TextureCache::DeferredResolveTexture texture) const;
++  // Before a resolve writes its range: deferred resolves writing the same bytes are dropped, others
++  // overlapping it written.
++  void PrepareResolveDestination(const DeferredResolve& writes);
++  void AddDeferredResolve(const DeferredResolve& resolve, TextureCache& texture_cache);
++  // Writes the memory of one deferred resolve from its texture.
++  virtual bool MaterializeDeferredResolve(const DeferredResolve&) { return false; }
++  TextureCache& deferred_resolve_texture_cache() const { return *deferred_resolve_texture_cache_; }
++
+   // Sets up the needed render targets and transfers to perform a clear in a
+   // resolve operation via a host render target clear. resolve_info is expected
+   // to be obtained via draw_util::GetResolveInfo. Returns whether any clears
+@@ -604,6 +657,11 @@ class RenderTargetCache {
+ 
+   std::vector<ResolveCopyDumpRectangle> resolve_texture_copy_rectangles_;
+ 
++  std::vector<DeferredResolve> deferred_resolves_;
++  TextureCache* deferred_resolve_texture_cache_ = nullptr;
++  uint64_t deferred_resolve_frame_ = 0;
++  bool resolve_writeback_deferral_allowed_ = false;
++
+   DrawExtentEstimator draw_extent_estimator_;
+ 
+   // For host render targets.
+diff --git a/include/rex/graphics/pipeline/texture/cache.h b/include/rex/graphics/pipeline/texture/cache.h
+index a98b883..8e21d1f 100644
+--- a/include/rex/graphics/pipeline/texture/cache.h
++++ b/include/rex/graphics/pipeline/texture/cache.h
+@@ -14,6 +14,7 @@
+ #include <atomic>
+ #include <cstdint>
+ #include <cstring>
++#include <functional>
+ #include <memory>
+ #include <unordered_map>
+ #include <vector>
+@@ -93,6 +94,23 @@ class TextureCache {
+   static uint32_t GuestToHostSwizzle(uint32_t guest_swizzle, uint32_t host_format_swizzle);
+   static uint32_t SwapRedBlueSwizzle(uint32_t host_swizzle);
+ 
++  // Called with the guest range before a texture is loaded from the scaled resolve memory.
++  void SetScaledResolveReadCallback(std::function<void(uint32_t start, uint32_t length)> callback) {
++    scaled_resolve_read_callback_ = std::move(callback);
++  }
++
++  // A texture holding what a resolve with deferred writeback hasn't written to the memory yet, for
++  // the render target cache.
++  using DeferredResolveTexture = const void*;
++  void SetHoldsDeferredResolve(DeferredResolveTexture texture, bool holds) {
++    static_cast<Texture*>(const_cast<void*>(texture))->SetHoldsDeferredResolve(holds);
++  }
++  bool TextureCoversResolve(DeferredResolveTexture texture, uint32_t width,
++                            uint32_t height) const {
++    const TextureKey& key = static_cast<const Texture*>(texture)->key();
++    return key.GetWidth() == width && key.GetHeight() == height;
++  }
++
+   void TextureFetchConstantWritten(uint32_t index) { TextureFetchConstantsWritten(index, index); }
+   void TextureFetchConstantsWritten(uint32_t first_index, uint32_t last_index) {
+     if (first_index > last_index) {
+@@ -237,6 +255,11 @@ class TextureCache {
+     bool content_red_blue_swapped() const { return content_red_blue_swapped_; }
+     void SetContentRedBlueSwapped(bool swapped) { content_red_blue_swapped_ = swapped; }
+ 
++    // Holds what a resolve with deferred writeback hasn't written to the memory yet, so it must not
++    // be destroyed before the memory is written.
++    bool holds_deferred_resolve() const { return holds_deferred_resolve_; }
++    void SetHoldsDeferredResolve(bool holds) { holds_deferred_resolve_ = holds; }
++
+     // For LRU caching - updates the last usage frame and moves the texture to
+     // the end of the usage queue. Must be called any time the texture is
+     // referenced by any GPU work in the implementation to make sure it's not
+@@ -270,6 +293,7 @@ class TextureCache {
+     bool in_usage_list_;
+     bool force_load_3d_tiling_ = false;
+     bool content_red_blue_swapped_ = false;
++    bool holds_deferred_resolve_ = false;
+ 
+     // These are to be accessed within the global critical region to synchronize
+     // with shared memory.
+@@ -563,6 +587,8 @@ class TextureCache {
+   // After the render target has been copied into the texture: it matches the memory again.
+   void EndResolveCopyIntoTexture(Texture& texture, bool red_blue_swapped);
+ 
++  std::function<void(uint32_t start, uint32_t length)> scaled_resolve_read_callback_;
++
+  private:
+   struct PendingTextureLoad {
+     Texture* texture = nullptr;
+diff --git a/src/graphics/pipeline/render_target/cache.cpp b/src/graphics/pipeline/render_target/cache.cpp
+index 4817588..4089ec8 100644
+--- a/src/graphics/pipeline/render_target/cache.cpp
++++ b/src/graphics/pipeline/render_target/cache.cpp
+@@ -46,6 +46,11 @@ REXCVAR_DEFINE_BOOL(resolve_copy_into_textures, true, "GPU",
+                     "sample the result instead of loading them again from the resolved memory")
+     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+ 
++REXCVAR_DEFINE_BOOL(resolve_defer_writeback, true, "GPU",
++                    "With resolution scaling, write the memory of a resolve copied into the one "
++                    "texture sampling it only when something else needs that memory")
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
+ namespace rex::graphics {
+ 
+ void RenderTargetCache::GetPSIColorFormatInfo(xenos::ColorRenderTargetFormat format,
+@@ -388,6 +393,9 @@ void RenderTargetCache::ShutdownCommon() {
+ }
+ 
+ void RenderTargetCache::ClearCache() {
++  // The texture cache is cleared first, destroying the textures holding them.
++  deferred_resolves_.clear();
++
+   // Keep only render targets currently owning any EDRAM data.
+   if (!render_targets_.empty()) {
+     std::unordered_set<RenderTargetKey, RenderTargetKey::Hasher> used_render_targets;
+@@ -424,6 +432,102 @@ void RenderTargetCache::BeginFrame() {
+   ResetAccumulatedRenderTargets();
+ }
+ 
++namespace {
++bool GuestRangesOverlap(uint32_t start_a, uint32_t length_a, uint32_t start_b, uint32_t length_b) {
++  start_a &= 0x1FFFFFFF;
++  start_b &= 0x1FFFFFFF;
++  return start_a < start_b + length_b && start_b < start_a + length_a;
++}
++}  // namespace
++
++RenderTargetCache::DeferredResolve RenderTargetCache::GetResolveWrites(
++    const draw_util::ResolveInfo& resolve_info, draw_util::ResolveCopyShaderIndex copy_shader,
++    const draw_util::ResolveCopyShaderConstants& constants, uint32_t group_count_x,
++    uint32_t group_count_y) {
++  DeferredResolve writes = {};
++  writes.extent_start = resolve_info.copy_dest_extent_start;
++  writes.extent_length = resolve_info.copy_dest_extent_length;
++  writes.dest_base = resolve_info.copy_dest_base;
++  writes.copy_shader = copy_shader;
++  writes.copy_constants = constants;
++  writes.group_count_x = group_count_x;
++  writes.group_count_y = group_count_y;
++  resolve_info.GetCopyEdramTileSpan(writes.dump_base, writes.dump_row_length_used,
++                                    writes.dump_rows, writes.dump_pitch);
++  return writes;
++}
++
++bool RenderTargetCache::CanDeferResolveWriteback(
++    const draw_util::ResolveTextureCopy& copy, const TextureCache& texture_cache,
++    TextureCache::DeferredResolveTexture texture) const {
++  // Rewriting the memory from the texture reproduces only what the texture covers. Without
++  // resolution scaling, other GPU work reads the resolved memory directly.
++  return REXCVAR_GET(resolve_defer_writeback) && resolve_writeback_deferral_allowed_ &&
++         IsDrawResolutionScaled() &&
++         texture_cache.TextureCoversResolve(texture, copy.width, copy.height);
++}
++
++void RenderTargetCache::PrepareResolveDestination(const DeferredResolve& writes) {
++  for (size_t i = 0; i < deferred_resolves_.size();) {
++    DeferredResolve resolve = deferred_resolves_[i];
++    if (!GuestRangesOverlap(resolve.extent_start, resolve.extent_length, writes.extent_start,
++                            writes.extent_length)) {
++      ++i;
++      continue;
++    }
++    deferred_resolves_[i] = deferred_resolves_.back();
++    deferred_resolves_.pop_back();
++    deferred_resolve_texture_cache_->SetHoldsDeferredResolve(resolve.texture, false);
++    if (resolve.WritesSameAs(writes)) {
++      continue;
++    }
++    if (!MaterializeDeferredResolve(resolve)) {
++      REXGPU_ERROR("RenderTargetCache: Failed to write the memory of a deferred resolve");
++    }
++  }
++}
++
++void RenderTargetCache::AddDeferredResolve(const DeferredResolve& resolve,
++                                           TextureCache& texture_cache) {
++  deferred_resolve_texture_cache_ = &texture_cache;
++  texture_cache.SetHoldsDeferredResolve(resolve.texture, true);
++  deferred_resolves_.push_back(resolve);
++  deferred_resolves_.back().frame = deferred_resolve_frame_;
++}
++
++void RenderTargetCache::MaterializeDeferredResolves(uint32_t start, uint32_t length) {
++  for (size_t i = 0; i < deferred_resolves_.size();) {
++    DeferredResolve resolve = deferred_resolves_[i];
++    if (!GuestRangesOverlap(resolve.extent_start, resolve.extent_length, start, length)) {
++      ++i;
++      continue;
++    }
++    deferred_resolves_[i] = deferred_resolves_.back();
++    deferred_resolves_.pop_back();
++    deferred_resolve_texture_cache_->SetHoldsDeferredResolve(resolve.texture, false);
++    if (!MaterializeDeferredResolve(resolve)) {
++      REXGPU_ERROR("RenderTargetCache: Failed to write the memory of a deferred resolve");
++    }
++  }
++}
++
++void RenderTargetCache::MaterializeStaleDeferredResolves() {
++  ++deferred_resolve_frame_;
++  for (size_t i = 0; i < deferred_resolves_.size();) {
++    DeferredResolve resolve = deferred_resolves_[i];
++    if (resolve.frame + 1 >= deferred_resolve_frame_) {
++      ++i;
++      continue;
++    }
++    deferred_resolves_[i] = deferred_resolves_.back();
++    deferred_resolves_.pop_back();
++    deferred_resolve_texture_cache_->SetHoldsDeferredResolve(resolve.texture, false);
++    if (!MaterializeDeferredResolve(resolve)) {
++      REXGPU_ERROR("RenderTargetCache: Failed to write the memory of a deferred resolve");
++    }
++  }
++}
++
+ bool RenderTargetCache::Update(bool is_rasterization_done,
+                                reg::RB_DEPTHCONTROL normalized_depth_control,
+                                uint32_t normalized_color_mask, const Shader& vertex_shader) {
+diff --git a/src/graphics/pipeline/texture/cache.cpp b/src/graphics/pipeline/texture/cache.cpp
+index 4c0f5fa..fa451ca 100644
+--- a/src/graphics/pipeline/texture/cache.cpp
++++ b/src/graphics/pipeline/texture/cache.cpp
+@@ -276,7 +276,8 @@ void TextureCache::CompletedSubmissionUpdated(uint64_t completed_submission_inde
+       break;
+     }
+     Texture* texture = texture_used_first_;
+-    if (texture->last_usage_submission_index() > completed_submission_index) {
++    if (texture->last_usage_submission_index() > completed_submission_index ||
++        texture->holds_deferred_resolve()) {
+       break;
+     }
+     if (!limit_hard_exceeded && (texture->last_usage_time() + limit_soft_lifetime) > current_time) {
+@@ -449,6 +450,15 @@ bool TextureCache::CommitPreparedTextureLoad(const PendingTextureLoad& pending_l
+     }
+   }
+ 
++  if (texture_key.scaled_resolve && scaled_resolve_read_callback_) {
++    if (pending_load.load_base) {
++      scaled_resolve_read_callback_(texture_key.base_page << 12, texture.GetGuestBaseSize());
++    }
++    if (pending_load.load_mips) {
++      scaled_resolve_read_callback_(texture_key.mip_page << 12, texture.GetGuestMipsSize());
++    }
++  }
++
+   if (!LoadTextureDataFromResidentMemoryImpl(texture, pending_load.load_base,
+                                              pending_load.load_mips)) {
+     return false;

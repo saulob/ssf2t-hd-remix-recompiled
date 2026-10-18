@@ -1,0 +1,197 @@
+diff --git a/include/rex/graphics/vulkan/render_target_cache.h b/include/rex/graphics/vulkan/render_target_cache.h
+index fb153a3..aef2224 100644
+--- a/include/rex/graphics/vulkan/render_target_cache.h
++++ b/include/rex/graphics/vulkan/render_target_cache.h
+@@ -759,6 +759,9 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
+   struct DumpInvocation {
+     ResolveCopyDumpRectangle rectangle;
+     DumpPipelineKey pipeline_key;
++    // Only the tiles that are dirty.
++    ResolveCopyDumpRectangle::Dispatch dispatches[ResolveCopyDumpRectangle::kMaxDispatches];
++    uint32_t dispatch_count = 0;
+     DumpInvocation(const ResolveCopyDumpRectangle& rectangle, const DumpPipelineKey& pipeline_key)
+         : rectangle(rectangle), pipeline_key(pipeline_key) {}
+     bool operator<(const DumpInvocation& other_invocation) const {
+@@ -839,6 +842,11 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
+   static void SetClearedStencilBits(VulkanRenderTarget& render_target,
+                                     const Transfer::Rectangle& rectangle, uint32_t stencil);
+ 
++  // Shrinks the dispatch to the smallest rectangle containing all its dirty tiles, false if there
++  // are none.
++  bool ShrinkDumpDispatchToDirtyTiles(uint32_t dump_base, uint32_t dump_pitch,
++                                      ResolveCopyDumpRectangle::Dispatch& dispatch) const;
++  bool CanDrawWriteDepthStencil(reg::RB_DEPTHCONTROL normalized_depth_control) const;
+   // The stencil bits the draw may set.
+   uint32_t GetDrawStencilBits(reg::RB_DEPTHCONTROL normalized_depth_control) const;
+   // A 32bpp color render target of these formats holds the depth and stencil of a transfer as
+diff --git a/src/graphics/vulkan/render_target_cache.cpp b/src/graphics/vulkan/render_target_cache.cpp
+index 3e9f637..d33d15f 100644
+--- a/src/graphics/vulkan/render_target_cache.cpp
++++ b/src/graphics/vulkan/render_target_cache.cpp
+@@ -1443,6 +1443,11 @@ bool VulkanRenderTargetCache::Update(bool is_rasterization_done,
+                                          transfers);
+       }
+       if (depth_and_color_render_targets[0]) {
++        if (CanDrawWriteDepthStencil(normalized_depth_control)) {
++          uint32_t draw_start_tiles, draw_length_tiles;
++          GetLastUpdateUsedTiles(0, draw_start_tiles, draw_length_tiles);
++          SetEdramTilesDirty(draw_start_tiles, draw_length_tiles, true);
++        }
+         uint32_t draw_stencil_bits = GetDrawStencilBits(normalized_depth_control);
+         if (draw_stencil_bits) {
+           uint32_t draw_start_tiles, draw_length_tiles;
+@@ -1457,6 +1462,7 @@ bool VulkanRenderTargetCache::Update(bool is_rasterization_done,
+             ((normalized_color_mask >> (4 * i)) & 0b1111)) {
+           uint32_t draw_start_tiles, draw_length_tiles;
+           GetLastUpdateUsedTiles(1 + i, draw_start_tiles, draw_length_tiles);
++          SetEdramTilesDirty(draw_start_tiles, draw_length_tiles, true);
+           static_cast<VulkanRenderTarget*>(depth_and_color_render_targets[1 + i])
+               ->AddStencilBits(draw_start_tiles, draw_length_tiles, UINT8_MAX);
+         }
+@@ -4608,6 +4614,34 @@ VkPipeline const* VulkanRenderTargetCache::GetTransferPipelines(TransferPipeline
+   return transfer_pipelines_.emplace(key, pipelines).first->second.data();
+ }
+ 
++bool VulkanRenderTargetCache::CanDrawWriteDepthStencil(
++    reg::RB_DEPTHCONTROL normalized_depth_control) const {
++  if (normalized_depth_control.z_enable && normalized_depth_control.z_write_enable) {
++    return true;
++  }
++  if (!normalized_depth_control.stencil_enable) {
++    return false;
++  }
++  const RegisterFile& regs = register_file();
++  if (!regs.Get<reg::RB_STENCILREFMASK>().stencilwritemask &&
++      !regs.Get<reg::RB_STENCILREFMASK>(XE_GPU_REG_RB_STENCILREFMASK_BF).stencilwritemask) {
++    return false;
++  }
++  xenos::StencilOp ops[2][3] = {
++      {normalized_depth_control.stencilfail, normalized_depth_control.stencilzfail,
++       normalized_depth_control.stencilzpass},
++      {normalized_depth_control.stencilfail_bf, normalized_depth_control.stencilzfail_bf,
++       normalized_depth_control.stencilzpass_bf}};
++  for (uint32_t face = 0; face <= uint32_t(normalized_depth_control.backface_enable); ++face) {
++    for (xenos::StencilOp op : ops[face]) {
++      if (op != xenos::StencilOp::kKeep) {
++        return true;
++      }
++    }
++  }
++  return false;
++}
++
+ uint32_t VulkanRenderTargetCache::GetDrawStencilBits(
+     reg::RB_DEPTHCONTROL normalized_depth_control) const {
+   if (!normalized_depth_control.stencil_enable) {
+@@ -6215,6 +6249,29 @@ bool VulkanRenderTargetCache::TryResolveCopyDirectly(const draw_util::ResolveInf
+   return DumpRenderTargets(dump_base, dump_row_length_used, dump_rows, dump_pitch);
+ }
+ 
++bool VulkanRenderTargetCache::ShrinkDumpDispatchToDirtyTiles(
++    uint32_t dump_base, uint32_t dump_pitch, ResolveCopyDumpRectangle::Dispatch& dispatch) const {
++  uint32_t first_row = UINT32_MAX, last_row = 0, first_column = UINT32_MAX, last_column = 0;
++  for (uint32_t row = 0; row < dispatch.height_tiles; ++row) {
++    uint32_t row_first_tile = dump_base + dispatch.offset + row * dump_pitch;
++    for (uint32_t column = 0; column < dispatch.width_tiles; ++column) {
++      if (IsEdramTileDirty(row_first_tile + column)) {
++        first_row = std::min(first_row, row);
++        last_row = row;
++        first_column = std::min(first_column, column);
++        last_column = std::max(last_column, column);
++      }
++    }
++  }
++  if (first_row == UINT32_MAX) {
++    return false;
++  }
++  dispatch.offset += first_row * dump_pitch + first_column;
++  dispatch.width_tiles = last_column - first_column + 1;
++  dispatch.height_tiles = last_row - first_row + 1;
++  return true;
++}
++
+ bool VulkanRenderTargetCache::DumpRenderTargets(uint32_t dump_base, uint32_t dump_row_length_used,
+                                                 uint32_t dump_rows, uint32_t dump_pitch) {
+   assert_true(GetPath() == Path::kHostRenderTargets);
+@@ -6225,16 +6282,40 @@ bool VulkanRenderTargetCache::DumpRenderTargets(uint32_t dump_base, uint32_t dum
+     return true;
+   }
+ 
+-  // Clear previously set temporary indices.
++  dump_invocations_.clear();
++  dump_invocations_.reserve(dump_rectangles_.size());
+   for (const ResolveCopyDumpRectangle& rectangle : dump_rectangles_) {
+-    static_cast<VulkanRenderTarget*>(rectangle.render_target)->SetTemporarySortIndex(UINT32_MAX);
++    RenderTargetKey rt_key = rectangle.render_target->key();
++    DumpPipelineKey pipeline_key;
++    pipeline_key.msaa_samples = rt_key.msaa_samples;
++    pipeline_key.resource_format = rt_key.resource_format;
++    pipeline_key.is_depth = rt_key.is_depth;
++    DumpInvocation invocation(rectangle, pipeline_key);
++    ResolveCopyDumpRectangle::Dispatch dispatches[ResolveCopyDumpRectangle::kMaxDispatches];
++    uint32_t dispatch_count = rectangle.GetDispatches(dump_pitch, dump_row_length_used, dispatches);
++    for (uint32_t i = 0; i < dispatch_count; ++i) {
++      if (ShrinkDumpDispatchToDirtyTiles(dump_base, dump_pitch, dispatches[i])) {
++        invocation.dispatches[invocation.dispatch_count++] = dispatches[i];
++      }
++    }
++    if (invocation.dispatch_count) {
++      dump_invocations_.push_back(invocation);
++    }
++  }
++  if (dump_invocations_.empty()) {
++    return true;
++  }
++
++  // Clear previously set temporary indices.
++  for (const DumpInvocation& invocation : dump_invocations_) {
++    static_cast<VulkanRenderTarget*>(invocation.rectangle.render_target)
++        ->SetTemporarySortIndex(UINT32_MAX);
+   }
+   // Gather all needed barriers and info needed to sort the invocations.
+   UseEdramBuffer(EdramBufferUsage::kComputeWrite);
+-  dump_invocations_.clear();
+-  dump_invocations_.reserve(dump_rectangles_.size());
+   uint32_t rt_sort_index = 0;
+-  for (const ResolveCopyDumpRectangle& rectangle : dump_rectangles_) {
++  for (const DumpInvocation& invocation : dump_invocations_) {
++    const ResolveCopyDumpRectangle& rectangle = invocation.rectangle;
+     auto& vulkan_rt = *static_cast<VulkanRenderTarget*>(rectangle.render_target);
+     RenderTargetKey rt_key = vulkan_rt.key();
+     command_processor_.PushImageMemoryBarrier(
+@@ -6250,11 +6331,6 @@ bool VulkanRenderTargetCache::DumpRenderTargets(uint32_t dump_base, uint32_t dum
+     if (vulkan_rt.temporary_sort_index() == UINT32_MAX) {
+       vulkan_rt.SetTemporarySortIndex(rt_sort_index++);
+     }
+-    DumpPipelineKey pipeline_key;
+-    pipeline_key.msaa_samples = rt_key.msaa_samples;
+-    pipeline_key.resource_format = rt_key.resource_format;
+-    pipeline_key.is_depth = rt_key.is_depth;
+-    dump_invocations_.emplace_back(rectangle, pipeline_key);
+   }
+ 
+   // Sort the invocations to reduce context and binding switches.
+@@ -6316,10 +6392,8 @@ bool VulkanRenderTargetCache::DumpRenderTargets(uint32_t dump_base, uint32_t dum
+ 
+     DumpOffsets offsets;
+     offsets.source_base_tiles = rt_key.base_tiles;
+-    ResolveCopyDumpRectangle::Dispatch dispatches[ResolveCopyDumpRectangle::kMaxDispatches];
+-    uint32_t dispatch_count = rectangle.GetDispatches(dump_pitch, dump_row_length_used, dispatches);
+-    for (uint32_t i = 0; i < dispatch_count; ++i) {
+-      const ResolveCopyDumpRectangle::Dispatch& dispatch = dispatches[i];
++    for (uint32_t i = 0; i < invocation.dispatch_count; ++i) {
++      const ResolveCopyDumpRectangle::Dispatch& dispatch = invocation.dispatches[i];
+       offsets.dispatch_first_tile = dump_base + dispatch.offset;
+       if (last_offsets != offsets) {
+         last_offsets = offsets;
+@@ -6342,6 +6416,10 @@ bool VulkanRenderTargetCache::DumpRenderTargets(uint32_t dump_base, uint32_t dum
+            (kDumpSamplesPerGroupY - 1)) /
+               kDumpSamplesPerGroupY,
+           1);
++      for (uint32_t row = 0; row < dispatch.height_tiles; ++row) {
++        SetEdramTilesDirty(dump_base + dispatch.offset + row * dump_pitch, dispatch.width_tiles,
++                           false);
++      }
+     }
+     MarkEdramBufferModified();
+   }

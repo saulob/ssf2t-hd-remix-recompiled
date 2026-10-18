@@ -1,0 +1,9 @@
+[project]
+name = "ssf2t_hd_remix"
+sdk_version = "0.10.0"
+game_root = "game/extracted"
+
+[entrypoint]
+file_path = "game/extracted/default.xex"
+out_directory_path = "generated/default"
+includes = ["config/overrides.toml", "config/discovered-functions.toml"]

@@ -1,0 +1,5 @@
+# Manual analysis fixes for SSF2T HD Remix (default.xex, title 584108A4)
+
+[functions]
+# Tail-branch target with no function start in .pdata and no usable data reference; kept manual.
+0x824521C0 = {}

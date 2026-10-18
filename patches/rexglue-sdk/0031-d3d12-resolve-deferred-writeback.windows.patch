@@ -1,0 +1,485 @@
+diff --git a/include/rex/graphics/d3d12/render_target_cache.h b/include/rex/graphics/d3d12/render_target_cache.h
+index 3dee183..c84bce2 100644
+--- a/include/rex/graphics/d3d12/render_target_cache.h
++++ b/include/rex/graphics/d3d12/render_target_cache.h
+@@ -771,6 +771,12 @@ class D3D12RenderTargetCache final : public RenderTargetCache {
+   bool DumpRenderTargets(uint32_t dump_base, uint32_t dump_row_length_used, uint32_t dump_rows,
+                          uint32_t dump_pitch);
+ 
++  // The resolve's write from edram_buffer_ to its memory. The shared memory is needed without
++  // resolution scaling.
++  bool DispatchResolveCopy(D3D12SharedMemory* shared_memory, D3D12TextureCache& texture_cache,
++                           const DeferredResolve& writes);
++  bool MaterializeDeferredResolve(const DeferredResolve& resolve) override;
++
+   bool use_stencil_reference_output_ = false;
+ 
+   bool gamma_render_target_as_unorm16_ = false;
+diff --git a/include/rex/graphics/d3d12/texture_cache.h b/include/rex/graphics/d3d12/texture_cache.h
+index 2907b72..42e5665 100644
+--- a/include/rex/graphics/d3d12/texture_cache.h
++++ b/include/rex/graphics/d3d12/texture_cache.h
+@@ -168,6 +168,11 @@ class D3D12TextureCache final : public TextureCache {
+   uint32_t PrepareResolveTextureCopies(const draw_util::ResolveTextureCopy& copy);
+   void PerformResolveTextureCopies(const draw_util::ResolveTextureCopy& copy,
+                                    ID3D12Resource* source);
++  DeferredResolveTexture resolve_copy_texture(uint32_t index) const {
++    return resolve_copy_textures_[index];
++  }
++  // Makes the base level readable by compute shaders, returning the resource.
++  ID3D12Resource* UseTextureForComputeRead(DeferredResolveTexture texture);
+ 
+  protected:
+   bool IsSignedVersionSeparateForFormat(TextureKey key) const override;
+diff --git a/src/graphics/d3d12/command_processor.cpp b/src/graphics/d3d12/command_processor.cpp
+index 7bcf980..7004096 100644
+--- a/src/graphics/d3d12/command_processor.cpp
++++ b/src/graphics/d3d12/command_processor.cpp
+@@ -1193,6 +1193,9 @@ bool D3D12CommandProcessor::SetupContext() {
+     REXGPU_ERROR("Failed to initialize the texture cache");
+     return false;
+   }
++  texture_cache_->SetScaledResolveReadCallback([this](uint32_t start, uint32_t length) {
++    render_target_cache_->MaterializeDeferredResolves(start, length);
++  });
+ 
+   pipeline_cache_ = std::make_unique<PipelineCache>(
+       *this, *register_file_, *render_target_cache_.get(), bindless_resources_used_);
+@@ -2910,6 +2913,8 @@ bool D3D12CommandProcessor::IssueCopy() {
+     return false;
+   }
+   ReadbackResolveMode readback_mode = GetReadbackResolveMode(REXCVAR_GET(d3d12_readback_resolve));
++  render_target_cache_->SetResolveWritebackDeferralAllowed(readback_mode ==
++                                                           ReadbackResolveMode::kDisabled);
+   if (readback_mode == ReadbackResolveMode::kDisabled) {
+     uint32_t written_address, written_length;
+     return render_target_cache_->Resolve(*memory_, *shared_memory_, *texture_cache_,
+@@ -3400,6 +3405,7 @@ bool D3D12CommandProcessor::BeginSubmission(bool is_guest_command) {
+     primitive_processor_->BeginFrame();
+ 
+     texture_cache_->BeginFrame();
++    render_target_cache_->MaterializeStaleDeferredResolves();
+   }
+ 
+   return true;
+diff --git a/src/graphics/d3d12/render_target_cache.cpp b/src/graphics/d3d12/render_target_cache.cpp
+index 6133fe0..15d0d15 100644
+--- a/src/graphics/d3d12/render_target_cache.cpp
++++ b/src/graphics/d3d12/render_target_cache.cpp
+@@ -1248,8 +1248,6 @@ bool D3D12RenderTargetCache::Resolve(const memory::Memory& memory, D3D12SharedMe
+   written_address_out = 0;
+   written_length_out = 0;
+ 
+-  bool draw_resolution_scaled = IsDrawResolutionScaled();
+-
+   draw_util::ResolveInfo resolve_info;
+   bool fixed_16_truncated_to_minus_1_to_1 = IsFixed16TruncatedToMinus1To1();
+   if (!draw_util::GetResolveInfo(register_file(), memory, draw_resolution_scale_x(),
+@@ -1275,145 +1273,60 @@ bool D3D12RenderTargetCache::Resolve(const memory::Memory& memory, D3D12SharedMe
+                                    copy_shader_constants, copy_group_count_x, copy_group_count_y);
+     assert_true(copy_group_count_x && copy_group_count_y);
+     if (copy_shader != draw_util::ResolveCopyShaderIndex::kUnknown) {
+-      const draw_util::ResolveCopyShaderInfo& copy_shader_info =
+-          draw_util::resolve_copy_shader_info[size_t(copy_shader)];
+-      if (GetPath() == Path::kHostRenderTargets) {
+-        // Dump the current contents of the render targets owning the affected
+-        // range to edram_buffer_.
+-        uint32_t dump_base;
+-        uint32_t dump_row_length_used;
+-        uint32_t dump_rows;
+-        uint32_t dump_pitch;
+-        resolve_info.GetCopyEdramTileSpan(dump_base, dump_row_length_used, dump_rows, dump_pitch);
+-        if (!DumpRenderTargets(dump_base, dump_row_length_used, dump_rows, dump_pitch)) {
++      DeferredResolve writes = GetResolveWrites(resolve_info, copy_shader, copy_shader_constants,
++                                                copy_group_count_x, copy_group_count_y);
++      PrepareResolveDestination(writes);
++
++      // Textures sampling the destination must be found while they still match the memory.
++      draw_util::ResolveTextureCopy texture_copy;
++      RenderTarget* texture_copy_source = nullptr;
++      ResolveTextureCopyResult texture_copy_result =
++          GetPath() == Path::kHostRenderTargets
++              ? PlanResolveTextureCopy(resolve_info, texture_copy, texture_copy_source)
++              : ResolveTextureCopyResult::kDisabled;
++      if (texture_copy_result == ResolveTextureCopyResult::kEligible &&
++          copy_shader != draw_util::ResolveCopyShaderIndex::kFast32bpp1x2xMSAA) {
++        texture_copy_result = ResolveTextureCopyResult::kFormat;
++      }
++      uint32_t texture_copy_count =
++          texture_copy_result == ResolveTextureCopyResult::kEligible
++              ? texture_cache.PrepareResolveTextureCopies(texture_copy)
++              : 0;
++      TextureCache::DeferredResolveTexture deferred_texture =
++          texture_copy_count == 1 && CanDeferResolveWriteback(texture_copy, texture_cache,
++                                                              texture_cache.resolve_copy_texture(0))
++              ? texture_cache.resolve_copy_texture(0)
++              : nullptr;
++
++      if (deferred_texture) {
++        copied = true;
++      } else {
++        if (GetPath() == Path::kHostRenderTargets &&
++            !DumpRenderTargets(writes.dump_base, writes.dump_row_length_used, writes.dump_rows,
++                               writes.dump_pitch)) {
+           REXGPU_ERROR("D3D12RenderTargetCache: Failed to dump host render targets for resolve");
+           return false;
+         }
++        copied = DispatchResolveCopy(&shared_memory, texture_cache, writes);
+       }
+-
+-      // Make sure there is memory to write to.
+-      bool copy_dest_committed;
+-      if (draw_resolution_scaled) {
+-        // Committing starting with the beginning of the potentially written
+-        // extent, but making the buffer containing the base current as the
+-        // beginning of the bound buffer is the base.
+-        copy_dest_committed =
+-            texture_cache.EnsureScaledResolveMemoryCommitted(
+-                resolve_info.copy_dest_extent_start, resolve_info.copy_dest_extent_length) &&
+-            texture_cache.MakeScaledResolveRangeCurrent(resolve_info.copy_dest_base,
+-                                                        resolve_info.copy_dest_extent_start -
+-                                                            resolve_info.copy_dest_base +
+-                                                            resolve_info.copy_dest_extent_length);
+-      } else {
+-        copy_dest_committed = shared_memory.RequestRange(resolve_info.copy_dest_extent_start,
+-                                                         resolve_info.copy_dest_extent_length);
+-      }
+-      if (copy_dest_committed) {
+-        // Write the descriptors and transition the resources.
+-        // Full shared memory without resolution scaling, range of the scaled
+-        // resolve buffer with scaling because only at least 128 * 2^20 R32
+-        // elements must be addressable
+-        // (D3D12_REQ_BUFFER_RESOURCE_TEXEL_COUNT_2_TO_EXP).
+-        ui::d3d12::util::DescriptorCpuGpuHandlePair descriptor_dest;
+-        ui::d3d12::util::DescriptorCpuGpuHandlePair descriptor_source;
+-        ui::d3d12::util::DescriptorCpuGpuHandlePair descriptors[2];
+-        if (command_processor_.RequestOneUseSingleViewDescriptors(
+-                bindless_resources_used_ ? uint32_t(draw_resolution_scaled) : 2, descriptors)) {
+-          if (bindless_resources_used_) {
+-            if (draw_resolution_scaled) {
+-              descriptor_dest = descriptors[0];
+-            } else {
+-              descriptor_dest = command_processor_.GetSharedMemoryUintPow2BindlessUAVHandlePair(
+-                  copy_shader_info.dest_bpe_log2);
+-            }
+-            if (copy_shader_info.source_is_raw) {
+-              descriptor_source = command_processor_.GetSystemBindlessViewHandlePair(
+-                  D3D12CommandProcessor::SystemBindlessView::kEdramRawSRV);
+-            } else {
+-              descriptor_source = command_processor_.GetEdramUintPow2BindlessSRVHandlePair(
+-                  copy_shader_info.source_bpe_log2);
+-            }
+-          } else {
+-            descriptor_dest = descriptors[0];
+-            if (!draw_resolution_scaled) {
+-              shared_memory.WriteUintPow2UAVDescriptor(descriptor_dest.first,
+-                                                       copy_shader_info.dest_bpe_log2);
+-            }
+-            descriptor_source = descriptors[1];
+-            if (copy_shader_info.source_is_raw) {
+-              WriteEdramRawSRVDescriptor(descriptor_source.first);
+-            } else {
+-              WriteEdramUintPow2SRVDescriptor(descriptor_source.first,
+-                                              copy_shader_info.source_bpe_log2);
+-            }
+-          }
+-          if (draw_resolution_scaled) {
+-            texture_cache.CreateCurrentScaledResolveRangeUintPow2UAV(
+-                descriptor_dest.first, copy_shader_info.dest_bpe_log2);
+-            texture_cache.TransitionCurrentScaledResolveRange(
+-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+-          } else {
+-            shared_memory.UseForWriting();
+-          }
+-          TransitionEdramBuffer(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+-
+-          // Submit the resolve.
+-          command_list.D3DSetComputeRootSignature(resolve_copy_root_signature_);
+-          command_list.D3DSetComputeRootDescriptorTable(2, descriptor_source.second);
+-          command_list.D3DSetComputeRootDescriptorTable(1, descriptor_dest.second);
+-          if (draw_resolution_scaled) {
+-            command_list.D3DSetComputeRoot32BitConstants(
+-                0, sizeof(copy_shader_constants.dest_relative) / sizeof(uint32_t),
+-                &copy_shader_constants.dest_relative, 0);
+-          } else {
+-            command_list.D3DSetComputeRoot32BitConstants(
+-                0, sizeof(copy_shader_constants) / sizeof(uint32_t), &copy_shader_constants, 0);
+-          }
+-          command_processor_.SetExternalPipeline(resolve_copy_pipelines_[size_t(copy_shader)]);
+-          command_processor_.SubmitBarriers();
+-          command_list.D3DDispatch(copy_group_count_x, copy_group_count_y, 1);
+-
+-          // Order the resolve with other work using the destination as a UAV.
+-          if (draw_resolution_scaled) {
+-            texture_cache.MarkCurrentScaledResolveRangeUAVWritesCommitNeeded();
+-          } else {
+-            shared_memory.MarkUAVWritesCommitNeeded();
+-          }
+-
+-          // Textures sampling the destination must be found while they still match the memory.
+-          draw_util::ResolveTextureCopy texture_copy;
+-          RenderTarget* texture_copy_source = nullptr;
+-          ResolveTextureCopyResult texture_copy_result =
+-              GetPath() == Path::kHostRenderTargets
+-                  ? PlanResolveTextureCopy(resolve_info, texture_copy, texture_copy_source)
+-                  : ResolveTextureCopyResult::kDisabled;
+-          if (texture_copy_result == ResolveTextureCopyResult::kEligible &&
+-              copy_shader != draw_util::ResolveCopyShaderIndex::kFast32bpp1x2xMSAA) {
+-            texture_copy_result = ResolveTextureCopyResult::kFormat;
+-          }
+-          uint32_t texture_copy_count =
+-              texture_copy_result == ResolveTextureCopyResult::kEligible
+-                  ? texture_cache.PrepareResolveTextureCopies(texture_copy)
+-                  : 0;
+-
+-          // Invalidate textures and mark the range as scaled if needed.
+-          texture_cache.MarkRangeAsResolved(resolve_info.copy_dest_extent_start,
+-                                            resolve_info.copy_dest_extent_length);
+-          if (texture_copy_count) {
+-            auto& source = *static_cast<D3D12RenderTarget*>(texture_copy_source);
+-            command_processor_.PushTransitionBarrier(
+-                source.resource(), source.SetResourceState(D3D12_RESOURCE_STATE_COPY_SOURCE),
+-                D3D12_RESOURCE_STATE_COPY_SOURCE);
+-            texture_cache.PerformResolveTextureCopies(texture_copy, source.resource());
+-          }
+-          written_address_out = resolve_info.copy_dest_extent_start;
+-          written_length_out = resolve_info.copy_dest_extent_length;
+-          copied = true;
++      if (copied) {
++        // Invalidate textures and mark the range as scaled if needed.
++        texture_cache.MarkRangeAsResolved(resolve_info.copy_dest_extent_start,
++                                          resolve_info.copy_dest_extent_length);
++        if (texture_copy_count) {
++          auto& source = *static_cast<D3D12RenderTarget*>(texture_copy_source);
++          command_processor_.PushTransitionBarrier(
++              source.resource(), source.SetResourceState(D3D12_RESOURCE_STATE_COPY_SOURCE),
++              D3D12_RESOURCE_STATE_COPY_SOURCE);
++          texture_cache.PerformResolveTextureCopies(texture_copy, source.resource());
+         }
+-      } else {
+-        REXGPU_ERROR(
+-            "D3D12RenderTargetCache: Failed to obtain the resolve destination "
+-            "memory region");
++        if (deferred_texture) {
++          writes.source_key = texture_copy_source->key();
++          writes.texture = deferred_texture;
++          AddDeferredResolve(writes, texture_cache);
++        }
++        written_address_out = resolve_info.copy_dest_extent_start;
++        written_length_out = resolve_info.copy_dest_extent_length;
+       }
+     }
+   } else {
+@@ -5861,6 +5774,191 @@ bool D3D12RenderTargetCache::ShrinkDumpDispatchToDirtyTiles(
+   return true;
+ }
+ 
++bool D3D12RenderTargetCache::DispatchResolveCopy(D3D12SharedMemory* shared_memory,
++                                                 D3D12TextureCache& texture_cache,
++                                                 const DeferredResolve& writes) {
++  bool draw_resolution_scaled = IsDrawResolutionScaled();
++  const draw_util::ResolveCopyShaderInfo& copy_shader_info =
++      draw_util::resolve_copy_shader_info[size_t(writes.copy_shader)];
++  const draw_util::ResolveCopyShaderConstants& copy_shader_constants = writes.copy_constants;
++
++  // Make sure there is memory to write to.
++  bool copy_dest_committed;
++  if (draw_resolution_scaled) {
++    // Committing starting with the beginning of the potentially written
++    // extent, but making the buffer containing the base current as the
++    // beginning of the bound buffer is the base.
++    copy_dest_committed =
++        texture_cache.EnsureScaledResolveMemoryCommitted(writes.extent_start,
++                                                         writes.extent_length) &&
++        texture_cache.MakeScaledResolveRangeCurrent(
++            writes.dest_base, writes.extent_start - writes.dest_base + writes.extent_length);
++  } else {
++    copy_dest_committed =
++        shared_memory && shared_memory->RequestRange(writes.extent_start, writes.extent_length);
++  }
++  if (!copy_dest_committed) {
++    REXGPU_ERROR(
++        "D3D12RenderTargetCache: Failed to obtain the resolve destination "
++        "memory region");
++    return false;
++  }
++
++  // Write the descriptors and transition the resources.
++  // Full shared memory without resolution scaling, range of the scaled
++  // resolve buffer with scaling because only at least 128 * 2^20 R32
++  // elements must be addressable
++  // (D3D12_REQ_BUFFER_RESOURCE_TEXEL_COUNT_2_TO_EXP).
++  ui::d3d12::util::DescriptorCpuGpuHandlePair descriptor_dest;
++  ui::d3d12::util::DescriptorCpuGpuHandlePair descriptor_source;
++  ui::d3d12::util::DescriptorCpuGpuHandlePair descriptors[2];
++  if (!command_processor_.RequestOneUseSingleViewDescriptors(
++          bindless_resources_used_ ? uint32_t(draw_resolution_scaled) : 2, descriptors)) {
++    return false;
++  }
++  if (bindless_resources_used_) {
++    if (draw_resolution_scaled) {
++      descriptor_dest = descriptors[0];
++    } else {
++      descriptor_dest = command_processor_.GetSharedMemoryUintPow2BindlessUAVHandlePair(
++          copy_shader_info.dest_bpe_log2);
++    }
++    if (copy_shader_info.source_is_raw) {
++      descriptor_source = command_processor_.GetSystemBindlessViewHandlePair(
++          D3D12CommandProcessor::SystemBindlessView::kEdramRawSRV);
++    } else {
++      descriptor_source =
++          command_processor_.GetEdramUintPow2BindlessSRVHandlePair(copy_shader_info.source_bpe_log2);
++    }
++  } else {
++    descriptor_dest = descriptors[0];
++    if (!draw_resolution_scaled) {
++      shared_memory->WriteUintPow2UAVDescriptor(descriptor_dest.first,
++                                                copy_shader_info.dest_bpe_log2);
++    }
++    descriptor_source = descriptors[1];
++    if (copy_shader_info.source_is_raw) {
++      WriteEdramRawSRVDescriptor(descriptor_source.first);
++    } else {
++      WriteEdramUintPow2SRVDescriptor(descriptor_source.first, copy_shader_info.source_bpe_log2);
++    }
++  }
++  if (draw_resolution_scaled) {
++    texture_cache.CreateCurrentScaledResolveRangeUintPow2UAV(descriptor_dest.first,
++                                                            copy_shader_info.dest_bpe_log2);
++    texture_cache.TransitionCurrentScaledResolveRange(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
++  } else {
++    shared_memory->UseForWriting();
++  }
++  TransitionEdramBuffer(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
++
++  // Submit the resolve.
++  DeferredCommandList& command_list = command_processor_.GetDeferredCommandList();
++  command_list.D3DSetComputeRootSignature(resolve_copy_root_signature_);
++  command_list.D3DSetComputeRootDescriptorTable(2, descriptor_source.second);
++  command_list.D3DSetComputeRootDescriptorTable(1, descriptor_dest.second);
++  if (draw_resolution_scaled) {
++    command_list.D3DSetComputeRoot32BitConstants(
++        0, sizeof(copy_shader_constants.dest_relative) / sizeof(uint32_t),
++        &copy_shader_constants.dest_relative, 0);
++  } else {
++    command_list.D3DSetComputeRoot32BitConstants(
++        0, sizeof(copy_shader_constants) / sizeof(uint32_t), &copy_shader_constants, 0);
++  }
++  command_processor_.SetExternalPipeline(resolve_copy_pipelines_[size_t(writes.copy_shader)]);
++  command_processor_.SubmitBarriers();
++  command_list.D3DDispatch(writes.group_count_x, writes.group_count_y, 1);
++
++  // Order the resolve with other work using the destination as a UAV.
++  if (draw_resolution_scaled) {
++    texture_cache.MarkCurrentScaledResolveRangeUAVWritesCommitNeeded();
++  } else {
++    shared_memory->MarkUAVWritesCommitNeeded();
++  }
++  return true;
++}
++
++bool D3D12RenderTargetCache::MaterializeDeferredResolve(const DeferredResolve& resolve) {
++  auto& texture_cache = static_cast<D3D12TextureCache&>(deferred_resolve_texture_cache());
++  const ui::d3d12::D3D12Provider& provider = command_processor_.GetD3D12Provider();
++  ID3D12Device* device = provider.GetDevice();
++
++  DumpPipelineKey pipeline_key;
++  pipeline_key.msaa_samples = xenos::MsaaSamples::k1X;
++  pipeline_key.resource_format = resolve.source_key.resource_format;
++  pipeline_key.is_depth = false;
++  ID3D12PipelineState* pipeline = GetOrCreateDumpPipeline(pipeline_key);
++  if (!pipeline) {
++    return false;
++  }
++  ui::d3d12::util::DescriptorCpuGpuHandlePair descriptors[2];
++  if (!command_processor_.RequestOneUseSingleViewDescriptors(bindless_resources_used_ ? 1 : 2,
++                                                             descriptors)) {
++    return false;
++  }
++  // The format the render target's own dump source view has.
++  D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc;
++  srv_desc.Format = GetColorOwnershipTransferDXGIFormat(resolve.source_key.GetColorFormat());
++  srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
++  srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
++  srv_desc.Texture2D.MostDetailedMip = 0;
++  srv_desc.Texture2D.MipLevels = 1;
++  srv_desc.Texture2D.PlaneSlice = 0;
++  srv_desc.Texture2D.ResourceMinLODClamp = 0.0f;
++  ID3D12Resource* texture_resource = texture_cache.UseTextureForComputeRead(resolve.texture);
++  device->CreateShaderResourceView(texture_resource, &srv_desc, descriptors[0].first);
++  D3D12_GPU_DESCRIPTOR_HANDLE descriptor_edram;
++  if (bindless_resources_used_) {
++    descriptor_edram = command_processor_.GetEdramUintPow2BindlessUAVHandlePair(2).second;
++  } else {
++    device->CopyDescriptorsSimple(
++        1, descriptors[1].first,
++        provider.OffsetViewDescriptor(edram_buffer_descriptor_heap_start_,
++                                      uint32_t(EdramBufferDescriptorIndex::kR32UintUAV)),
++        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
++    descriptor_edram = descriptors[1].second;
++  }
++
++  // The texture into the EDRAM tiles the resolve reads, as dumping its render target did. The
++  // resolve's fill takes the same pixels again, as the texture already has them filled.
++  TransitionEdramBuffer(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
++  DeferredCommandList& command_list = command_processor_.GetDeferredCommandList();
++  command_processor_.SetExternalPipeline(pipeline);
++  command_list.D3DSetComputeRootSignature(dump_root_signature_color_);
++  command_list.D3DSetComputeRootDescriptorTable(kDumpRootParameterColorEdram, descriptor_edram);
++  command_list.D3DSetComputeRootDescriptorTable(kDumpRootParameterSource, descriptors[0].second);
++  DumpPitches pitches;
++  pitches.dest_pitch = resolve.dump_pitch;
++  pitches.source_pitch = resolve.source_key.GetPitchTiles();
++  command_list.D3DSetComputeRoot32BitConstants(kDumpRootParameterColorPitches,
++                                               sizeof(pitches) / sizeof(uint32_t), &pitches, 0);
++  ResolveCopyDumpRectangle rectangle(nullptr, 0, resolve.dump_rows, 0,
++                                     resolve.dump_row_length_used);
++  ResolveCopyDumpRectangle::Dispatch dispatches[ResolveCopyDumpRectangle::kMaxDispatches];
++  uint32_t dispatch_count =
++      rectangle.GetDispatches(resolve.dump_pitch, resolve.dump_row_length_used, dispatches);
++  DumpOffsets offsets;
++  offsets.source_base_tiles = resolve.source_key.base_tiles;
++  for (uint32_t i = 0; i < dispatch_count; ++i) {
++    const ResolveCopyDumpRectangle::Dispatch& dispatch = dispatches[i];
++    offsets.dispatch_first_tile = resolve.dump_base + dispatch.offset;
++    command_list.D3DSetComputeRoot32BitConstants(kDumpRootParameterOffsets,
++                                                 sizeof(offsets) / sizeof(uint32_t), &offsets, 0);
++    command_processor_.SubmitBarriers();
++    // 32bpp: a tile in two dispatches at 1x1 scale, as in DumpRenderTargets.
++    command_list.D3DDispatch((dispatch.width_tiles * draw_resolution_scale_x()) << 1,
++                             dispatch.height_tiles * draw_resolution_scale_y(), 1);
++    // Not the render target's contents anymore.
++    for (uint32_t row = 0; row < dispatch.height_tiles; ++row) {
++      SetEdramTilesDirty(resolve.dump_base + dispatch.offset + row * resolve.dump_pitch,
++                         dispatch.width_tiles, true);
++    }
++  }
++  MarkEdramBufferModified();
++
++  return DispatchResolveCopy(nullptr, texture_cache, resolve);
++}
++
+ bool D3D12RenderTargetCache::DumpRenderTargets(uint32_t dump_base, uint32_t dump_row_length_used,
+                                                uint32_t dump_rows, uint32_t dump_pitch) {
+   assert_true(GetPath() == Path::kHostRenderTargets);
+diff --git a/src/graphics/d3d12/texture_cache.cpp b/src/graphics/d3d12/texture_cache.cpp
+index ce8525c..1ba0de7 100644
+--- a/src/graphics/d3d12/texture_cache.cpp
++++ b/src/graphics/d3d12/texture_cache.cpp
+@@ -1429,6 +1429,16 @@ uint32_t D3D12TextureCache::PrepareResolveTextureCopies(const draw_util::Resolve
+   return resolve_copy_texture_count_;
+ }
+ 
++ID3D12Resource* D3D12TextureCache::UseTextureForComputeRead(DeferredResolveTexture texture) {
++  auto& d3d12_texture =
++      *static_cast<D3D12Texture*>(static_cast<Texture*>(const_cast<void*>(texture)));
++  constexpr D3D12_RESOURCE_STATES kReadState =
++      D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
++  command_processor_.PushTransitionBarrier(d3d12_texture.resource(),
++                                           d3d12_texture.SetResourceState(kReadState), kReadState);
++  return d3d12_texture.resource();
++}
++
+ void D3D12TextureCache::PerformResolveTextureCopies(const draw_util::ResolveTextureCopy& copy,
+                                                     ID3D12Resource* source) {
+   for (uint32_t i = 0; i < resolve_copy_texture_count_; ++i) {
