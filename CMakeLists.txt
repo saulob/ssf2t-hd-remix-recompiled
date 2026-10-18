@@ -66,6 +66,7 @@ if(WIN32)
     set_source_files_properties("${SSF2T_APP_RC}" PROPERTIES
         OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons/app-icon.ico")
     list(APPEND SSF2T_SOURCES "${SSF2T_APP_RC}")
+    list(APPEND SSF2T_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/ssf2t_hd_remix.manifest")
     add_executable(ssf2t_hd_remix WIN32 ${SSF2T_SOURCES})
 else()
     add_executable(ssf2t_hd_remix ${SSF2T_SOURCES})
