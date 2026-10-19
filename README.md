@@ -12,6 +12,8 @@
 
 </div>
 
+<img width="1930" height="1149" alt="title screen" src="https://github.com/user-attachments/assets/d52ee275-da0b-4860-ae1d-24216df5b05f" />
+
 ## Features
 
 - **Native static recompilation**: the game's own code, not an emulator. Windows, plus an experimental Linux AppImage.
@@ -76,6 +78,10 @@ Your choices are saved to `settings.toml` in the `user_data` folder next to the 
 - **Achievements**: unlocked achievements and gamerscore
 - **Controls**: keyboard on or off and the key layout
 - **About**: versions, folders, **Show settings file** and **Reset all settings**
+
+## Screenshots
+
+<img width="1935" height="1158" alt="gameplay" src="https://github.com/user-attachments/assets/a5295360-0c5a-40b2-9bc1-c45fcd6d2e30" />
 
 ## Reporting problems
 
