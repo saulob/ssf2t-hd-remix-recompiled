@@ -32,6 +32,7 @@ $SdkRoot = Join-Path $Root 'tools\rexglue\win-amd64'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 $ProgramFiles = @('ssf2t_hd_remix.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'ssf2t_hd_remix.toml')
 $LicenseFiles = @('ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt')
+$AssetFiles = @('assets\launcher\header-art.png')
 $CheckFolder = Join-Path $PSScriptRoot 'check-release-folder.ps1'
 $ZipTimestamp = [DateTimeOffset]::new(2026, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
 
@@ -111,6 +112,11 @@ if (Test-Path -LiteralPath $Stage) { Remove-Item -LiteralPath $Stage -Recurse -F
 New-Item -ItemType Directory $Stage, (Join-Path $Stage 'licenses') | Out-Null
 
 foreach ($leaf in $ProgramFiles) { Copy-Item (Join-Path $ReleaseBuild $leaf) $Stage }
+$AssetDir = Join-Path $Stage 'assets\launcher'
+New-Item -ItemType Directory -Force $AssetDir | Out-Null
+foreach ($asset in $AssetFiles) {
+    Copy-Item -LiteralPath (Join-Path $Root $asset) $AssetDir
+}
 foreach ($leaf in @('rexruntime.dll', 'rexgpu-xenos.dll')) {
     $staged = Get-FileSha256 (Join-Path $Stage $leaf)
     if ($staged -ne (Get-FileSha256 (Join-Path $SdkRoot "bin\$leaf"))) { throw "$leaf is not the file installed in tools\rexglue" }

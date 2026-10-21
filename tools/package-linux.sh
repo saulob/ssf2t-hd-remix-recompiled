@@ -71,6 +71,7 @@ $BIN_NAME.png
 $APP_ID.desktop
 usr/bin/$BIN_NAME
 usr/bin/$BIN_NAME.toml
+usr/bin/assets/launcher/header-art.png
 usr/bin/librexgpu-xenos.so
 usr/bin/librexruntime.so
 usr/lib/libgcc_s.so.1
@@ -190,7 +191,7 @@ mkdir -p "$WORK/third_party" "$WORK/tools"
 for f in CMakeLists.txt CMakePresets.json ssf2t_hd_remix_manifest.toml LICENSE tools/build-patched-rexruntime.sh; do
   rsync -a "$ROOT/$f" "$WORK/$f"
 done
-for d in config src tests generated packaging patches/rexglue-sdk third_party/trg-launcher; do
+for d in assets config src tests generated packaging patches/rexglue-sdk third_party/trg-launcher; do
   mkdir -p "$WORK/$d"
   rsync -a --delete --exclude .git "$ROOT/$d/" "$WORK/$d/"
 done
@@ -238,7 +239,7 @@ echo "== Build ($PRESET)"
 BIN="$WORK/out/build/$PRESET"
 [ "$CLEAN" = 1 ] && rm -rf "$BIN"
 (cd "$WORK" && cmake --preset "$PRESET" >/dev/null && cmake --build --preset "$PRESET")
-for f in $BIN_NAME librexruntime.so librexgpu-xenos.so $BIN_NAME.toml; do
+for f in $BIN_NAME librexruntime.so librexgpu-xenos.so $BIN_NAME.toml assets/launcher/header-art.png; do
   [ -f "$BIN/$f" ] || fail "build output is missing $f"
 done
 bash "$PATCHED" --check "$SDK" --staged "$BIN" || fail "the build folder does not hold the patched ReXGlue libraries"
@@ -249,6 +250,8 @@ DOC="$APPDIR/usr/share/doc/$BIN_NAME"
 rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" "$DOC"
 cp "$BIN/$BIN_NAME" "$BIN/librexruntime.so" "$BIN/librexgpu-xenos.so" "$BIN/$BIN_NAME.toml" "$APPDIR/usr/bin/"
+mkdir -p "$APPDIR/usr/bin/assets/launcher"
+cp "$BIN/assets/launcher/header-art.png" "$APPDIR/usr/bin/assets/launcher/"
 # Debug sections carry the build machine's folders.
 strip --strip-unneeded "$APPDIR/usr/bin/$BIN_NAME"
 # ReXGlue needs GLIBCXX_3.4.32 (GCC 13); AppRun uses this copy only on systems without it.
@@ -281,7 +284,7 @@ cp "$ICONS/app-icon-256.png" "$APPDIR/$BIN_NAME.png"
 cp "$ICONS/app-icon-256.png" "$APPDIR/.DirIcon"
 chmod 755 "$APPDIR/AppRun" "$APPDIR/usr/bin/$BIN_NAME"
 chmod 644 "$APPDIR/"*.desktop "$APPDIR/"*.png "$APPDIR/.DirIcon" "$APPDIR/usr/bin/"*.so \
-  "$APPDIR/usr/bin/$BIN_NAME.toml" "$APPDIR/usr/lib/"* "$DOC/"*
+  "$APPDIR/usr/bin/$BIN_NAME.toml" "$APPDIR/usr/bin/assets/launcher/header-art.png" "$APPDIR/usr/lib/"* "$DOC/"*
 find "$THEME" -type f -exec chmod 644 {} +
 bash "$PATCHED" --check "$SDK" --staged "$APPDIR/usr/bin" || fail "the AppDir does not hold the patched ReXGlue libraries"
 

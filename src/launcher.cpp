@@ -4,6 +4,9 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -13,11 +16,13 @@
 #include <imgui.h>
 
 #include <rex/cvar.h>
+#include <rex/filesystem.h>
 #include <rex/logging.h>
+#include <rex/ui/image_decode.h>
+#include <rex/ui/immediate_drawer.h>
 #include <rex/ui/imgui_dialog.h>
 #include <rex/version.h>
 
-#include "trg/headers.h"
 #include "trg/launcher.h"
 #include "trg/platform.h"
 
@@ -27,6 +32,7 @@
 #include "internal_render_scale.h"
 #include "language_setting.h"
 #include "launcher_achievements.h"
+#include "launcher_assets.h"
 #include "platform.h"
 #include "presentation_setting.h"
 #include "settings.h"
@@ -54,9 +60,43 @@ trg::Theme LauncherTheme() {
   return theme;
 }
 
-trg::HeaderPainter LauncherHeader() {
-  return trg::headers::Gradient(IM_COL32(24, 14, 10, 255), IM_COL32(96, 40, 8, 255), IM_COL32(44, 20, 8, 255),
-                                IM_COL32(10, 8, 12, 255));
+constexpr float kHeaderArtAspect = 1600.0f / 180.0f;
+
+trg::HeaderPainter LauncherHeader(ImTextureID art, float art_aspect) {
+  return [art, art_aspect](const trg::HeaderContext& c) {
+    c.draw->AddRectFilledMultiColor(c.min, c.max, IM_COL32(24, 14, 10, 255), IM_COL32(96, 40, 8, 255),
+                                    IM_COL32(44, 20, 8, 255), IM_COL32(10, 8, 12, 255));
+    if (art == ImTextureID{}) {
+      return;
+    }
+    const float height = c.max.y - c.min.y;
+    const float width = height * art_aspect;
+    const ImVec2 top_left(c.max.x - width, c.min.y);
+    c.draw->AddImage(ImTextureRef(art), top_left, c.max);
+  };
+}
+
+std::unique_ptr<rex::ui::ImmediateTexture> LoadHeaderArt(rex::ui::ImmediateDrawer* drawer) {
+  const std::filesystem::path path = LauncherHeaderArtPath(rex::filesystem::GetExecutableFolder());
+  if (!drawer) {
+    REXLOG_WARN("Launcher header art unavailable without an immediate drawer: {}", Utf8(path));
+    return nullptr;
+  }
+  std::ifstream in(path, std::ios::binary);
+  if (!in) {
+    REXLOG_WARN("Launcher header art not found: {}", Utf8(path));
+    return nullptr;
+  }
+  const std::vector<uint8_t> encoded((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  int width = 0;
+  int height = 0;
+  const std::vector<uint8_t> pixels = rex::ui::DecodeImageRGBA(encoded.data(), encoded.size(), width, height);
+  if (pixels.empty() || width <= 0 || height <= 0) {
+    REXLOG_WARN("Launcher header art could not be decoded: {}", Utf8(path));
+    return nullptr;
+  }
+  return drawer->CreateTexture(uint32_t(width), uint32_t(height), rex::ui::ImmediateTextureFilter::kLinear, false,
+                               pixels.data());
 }
 
 trg::Fonts g_fonts;
@@ -129,6 +169,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         game_files_(CheckAndLogGameFiles(paths_.game_dir)),
         monitors_(ListMonitors()),
         graphics_adapters_(ListGraphicsAdapters()) {
+    header_art_ = LoadHeaderArt(paths_.immediate_drawer);
     launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
     if (WindowFullscreen()) {
       restore_when_windowed_ = true;
@@ -353,7 +394,10 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     c.note = "Play applies the changes. Save keeps them without starting.";
     c.fonts = g_fonts;
     c.branding.title = "SUPER STREET FIGHTER II TURBO HD REMIX";
-    c.branding.background = LauncherHeader();
+    const float art_aspect =
+        header_art_ ? float(header_art_->width) / float(header_art_->height) : kHeaderArtAspect;
+    c.branding.background = LauncherHeader(
+        header_art_ ? reinterpret_cast<ImTextureID>(header_art_.get()) : ImTextureID{}, art_aspect);
     c.pages = {
         {"Play", "Check the game files and start playing.", [this](trg::Ui& ui) { PagePlay(ui); },
          [this] { return game_files_ != GameFiles::kReady; }},
@@ -770,6 +814,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   GameFiles game_files_;
   std::vector<MonitorInfo> monitors_;
   std::vector<GraphicsAdapter> graphics_adapters_;
+  std::unique_ptr<rex::ui::ImmediateTexture> header_art_;
   std::unique_ptr<trg::Launcher> launcher_;
   LauncherGamepad gamepad_;
   bool nav_taken_ = false;

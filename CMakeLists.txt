@@ -202,3 +202,12 @@ add_custom_command(TARGET ssf2t_hd_remix POST_BUILD
         "$<TARGET_FILE_DIR:ssf2t_hd_remix>"
     VERBATIM
 )
+
+add_custom_command(TARGET ssf2t_hd_remix POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:ssf2t_hd_remix>/assets/launcher"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/launcher/header-art.png"
+        "$<TARGET_FILE_DIR:ssf2t_hd_remix>/assets/launcher/header-art.png"
+    VERBATIM
+)

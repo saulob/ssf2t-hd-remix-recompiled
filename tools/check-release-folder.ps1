@@ -14,6 +14,7 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path $PSScriptRoot -Parent
 $RequiredFiles = @('ssf2t_hd_remix.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'ssf2t_hd_remix.toml', 'README.txt', 'LICENSE')
 $LicenseFiles = @('ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt')
+$AssetFiles = @('assets\launcher\header-art.png')
 # Names that mean game data, a package, saves, settings, caches or logs.
 $ForbiddenNames = @('default.xex', 'game', 'game-install-temp', 'game-install-backup', 'user_data', 'user_data.migrating',
     'content', 'cache', 'logs', 'settings.toml', 'settings.toml.bak', 'flog_x360.fpg', '584108A4', 'renderdoc', 'renderdoc.dll',
@@ -71,9 +72,17 @@ function Test-ReleaseFolder([string]$Dir) {
         }
         $parts = $relative -split '\\'
         if ($parts.Count -eq 1) {
-            if ($item.PSIsContainer) { if ($item.Name -ne 'licenses') { $problems.Add("unexpected folder: $relative") } }
+            if ($item.PSIsContainer) { if (@('licenses', 'assets') -notcontains $item.Name) { $problems.Add("unexpected folder: $relative") } }
             elseif ($RequiredFiles -notcontains $item.Name) { $problems.Add("unexpected file: $relative") }
-        } elseif ($parts[0] -ne 'licenses' -or $parts.Count -gt 2 -or $item.PSIsContainer -or $LicenseFiles -notcontains $item.Name) {
+        } elseif ($parts[0] -eq 'licenses') {
+            if ($parts.Count -gt 2 -or $item.PSIsContainer -or $LicenseFiles -notcontains $item.Name) { $problems.Add("unexpected item: $relative") }
+        } elseif ($parts[0] -eq 'assets') {
+            if ($item.PSIsContainer) {
+                if ($relative -ne 'assets\launcher') { $problems.Add("unexpected folder: $relative") }
+            } elseif ($AssetFiles -notcontains $relative) {
+                $problems.Add("unexpected item: $relative")
+            }
+        } else {
             $problems.Add("unexpected item: $relative")
         }
     }
@@ -82,6 +91,9 @@ function Test-ReleaseFolder([string]$Dir) {
     }
     foreach ($leaf in $LicenseFiles) {
         if (-not (Test-Path -LiteralPath (Join-Path $base "licenses\$leaf") -PathType Leaf)) { $problems.Add("missing: licenses\$leaf") }
+    }
+    foreach ($asset in $AssetFiles) {
+        if (-not (Test-Path -LiteralPath (Join-Path $base $asset) -PathType Leaf)) { $problems.Add("missing: $asset") }
     }
     return $problems
 }

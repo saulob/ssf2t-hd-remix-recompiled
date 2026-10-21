@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 180" preserveAspectRatio="xMidYMid meet">
+  <style>
+    .deep { fill: #210705; }
+    .deep-line { fill: none; stroke: #210705; }
+    .red { fill: #7A1B10; }
+    .red-line { fill: none; stroke: #7A1B10; }
+    .orange { fill: #D8551A; }
+    .orange-line { fill: none; stroke: #D8551A; }
+    .amber { fill: #F2A541; }
+    .amber-line { fill: none; stroke: #F2A541; }
+    .highlight { fill: #FFE6A0; }
+    .deep-stop { stop-color: #210705; }
+    .red-stop { stop-color: #7A1B10; }
+    .orange-stop { stop-color: #D8551A; }
+    .amber-stop { stop-color: #F2A541; }
+    .highlight-stop { stop-color: #FFE6A0; }
+  </style>
+
+  <defs>
+    <radialGradient id="sunGlow" cx="1460" cy="96" r="260" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="amber-stop" stop-opacity=".30"/>
+      <stop offset=".5" class="orange-stop" stop-opacity=".10"/>
+      <stop offset="1" class="orange-stop" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="sun" cx="1460" cy="96" r="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="highlight-stop" stop-opacity=".9"/>
+      <stop offset=".6" class="amber-stop" stop-opacity=".75"/>
+      <stop offset="1" class="orange-stop" stop-opacity=".5"/>
+    </radialGradient>
+    <linearGradient id="haze" x1="900" y1="0" x2="1600" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="red-stop" stop-opacity="0"/>
+      <stop offset=".55" class="red-stop" stop-opacity=".07"/>
+      <stop offset="1" class="orange-stop" stop-opacity=".12"/>
+    </linearGradient>
+    <linearGradient id="mountainGrad" x1="0" y1="60" x2="0" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="red-stop" stop-opacity=".10"/>
+      <stop offset="1" class="deep-stop" stop-opacity=".55"/>
+    </linearGradient>
+    <linearGradient id="roofGrad" x1="0" y1="60" x2="0" y2="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="red-stop" stop-opacity=".65"/>
+      <stop offset="1" class="deep-stop" stop-opacity=".85"/>
+    </linearGradient>
+    <linearGradient id="portalGrad" x1="0" y1="20" x2="0" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="orange-stop" stop-opacity=".55"/>
+      <stop offset="1" class="deep-stop" stop-opacity=".80"/>
+    </linearGradient>
+    <linearGradient id="strokeFade" x1="700" y1="0" x2="1020" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="orange-stop" stop-opacity="0"/>
+      <stop offset=".7" class="orange-stop" stop-opacity=".10"/>
+      <stop offset="1" class="orange-stop" stop-opacity=".40"/>
+    </linearGradient>
+  </defs>
+
+  <g id="ambient">
+    <rect x="900" y="0" width="700" height="180" fill="url(#haze)"/>
+    <rect x="1200" y="0" width="400" height="180" fill="url(#sunGlow)"/>
+  </g>
+
+  <g id="mountains" fill="url(#mountainGrad)">
+    <polygon points="880,180 960,112 1030,150 1110,96 1190,140 1280,104 1360,146 1600,112 1600,180"/>
+  </g>
+
+  <circle id="sun" cx="1460" cy="96" r="38" fill="url(#sun)"/>
+
+  <g id="dojo-roofs" fill="url(#roofGrad)">
+    <path d="M1182 118C1182 112 1188 108 1198 108L1198 102L1206 102L1206 108C1216 108 1222 112 1222 118L1222 124L1182 124Z"/>
+    <rect x="1189" y="124" width="26" height="30"/>
+    <path d="M1248 100C1248 92 1258 86 1272 86L1272 78L1282 78L1282 86C1296 86 1306 92 1306 100L1306 108L1248 108Z"/>
+    <rect x="1258" y="108" width="36" height="44"/>
+  </g>
+  <g id="roof-edges" class="amber-line" stroke-opacity=".30" stroke-width="1">
+    <path d="M1182 118C1182 112 1188 108 1198 108L1206 108C1216 108 1222 112 1222 118"/>
+    <path d="M1248 100C1248 92 1258 86 1272 86L1282 86C1296 86 1306 92 1306 100"/>
+  </g>
+
+  <g id="portal" fill="url(#portalGrad)">
+    <rect x="1456" y="20" width="10" height="160"/>
+    <rect x="1534" y="20" width="10" height="160"/>
+    <rect x="1444" y="34" width="112" height="12"/>
+    <rect x="1452" y="54" width="96" height="8"/>
+  </g>
+  <g id="portal-edges" class="amber-line" stroke-opacity=".24" stroke-width="1">
+    <path d="M1444 40H1556"/>
+    <path d="M1452 58H1548"/>
+  </g>
+
+  <g id="brushstrokes">
+    <path d="M700 150C800 146 880 138 1010 128" fill="none" stroke="url(#strokeFade)" stroke-width="5" stroke-linecap="round"/>
+    <path d="M760 164C860 160 940 154 1040 146" fill="none" stroke="url(#strokeFade)" stroke-width="3" stroke-linecap="round"/>
+    <path d="M980 126C1080 120 1180 118 1280 122" class="orange-line" stroke-opacity=".16" stroke-width="2" stroke-linecap="round"/>
+    <path d="M1020 30C1120 24 1220 24 1320 32" class="amber-line" stroke-opacity=".14" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
+
+  <g id="horizon-lines" class="amber-line" stroke-opacity=".10" stroke-width="1">
+    <path d="M960 150H1600"/>
+    <path d="M1020 160H1600"/>
+  </g>
+
+  <g id="rings">
+    <circle cx="1130" cy="60" r="26" class="amber-line" stroke-opacity=".18" stroke-width="1" stroke-dasharray="3 7"/>
+    <circle cx="1130" cy="60" r="40" class="orange-line" stroke-opacity=".10" stroke-width="1" stroke-dasharray="2 10"/>
+    <path d="M1380 150A60 60 0 0 1 1440 92" class="amber-line" stroke-opacity=".20" stroke-width="1"/>
+  </g>
+
+  <g id="bars" class="amber" fill-opacity=".30">
+    <rect x="1348" y="138" width="10" height="2"/>
+    <rect x="1362" y="138" width="10" height="2" fill-opacity=".55"/>
+    <rect x="1376" y="138" width="10" height="2" fill-opacity=".78"/>
+    <rect x="1140" y="150" width="8" height="2" fill-opacity=".40"/>
+    <rect x="1152" y="150" width="8" height="2" fill-opacity=".65"/>
+  </g>
+
+  <g id="particles">
+    <circle cx="930" cy="70" r="1" class="amber" fill-opacity=".28"/>
+    <circle cx="1000" cy="110" r="1.1" class="orange" fill-opacity=".30"/>
+    <circle cx="1060" cy="52" r="1" class="amber" fill-opacity=".26"/>
+    <circle cx="1120" cy="140" r="1.2" class="highlight" fill-opacity=".40"/>
+    <circle cx="1220" cy="44" r="1" class="orange" fill-opacity=".30"/>
+    <circle cx="1300" cy="150" r="1.1" class="amber" fill-opacity=".32"/>
+    <circle cx="1380" cy="60" r="1" class="highlight" fill-opacity=".36"/>
+    <circle cx="1420" cy="140" r="1.2" class="orange" fill-opacity=".28"/>
+    <circle cx="1500" cy="150" r="1" class="amber" fill-opacity=".30"/>
+    <circle cx="1560" cy="70" r="1.1" class="orange" fill-opacity=".30"/>
+  </g>
+</svg>
