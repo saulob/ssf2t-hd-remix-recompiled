@@ -29,6 +29,75 @@ if(NOT EXISTS "${_trg_dir}/CMakeLists.txt")
     message(FATAL_ERROR "TRG Launcher not found: place it in third_party/trg-launcher or set SSF2T_TRG_LAUNCHER_DIR")
 endif()
 
+# The TRG Launcher in third_party stays as upstream published it. Every build compiles a patched copy under the
+# binary directory; the copy is rebuilt only when the source or a patch changes.
+set(SSF2T_TRG_LAUNCHER_PATCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/patches/trg-launcher")
+set(SSF2T_TRG_LAUNCHER_PATCH_STAMP_VERSION 1)
+file(GLOB _trg_patch_names CONFIGURE_DEPENDS RELATIVE "${SSF2T_TRG_LAUNCHER_PATCH_DIR}"
+    "${SSF2T_TRG_LAUNCHER_PATCH_DIR}/*.patch")
+list(SORT _trg_patch_names)
+foreach(_trg_patch_name IN LISTS _trg_patch_names)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${SSF2T_TRG_LAUNCHER_PATCH_DIR}/${_trg_patch_name}")
+endforeach()
+
+find_package(Git QUIET)
+if(NOT Git_FOUND)
+    message(FATAL_ERROR "TRG Launcher: git is required to apply patches/trg-launcher")
+endif()
+
+# GIT_CEILING_DIRECTORIES keeps git apply from discovering this repository around the generated copy.
+function(ssf2t_prepare_patched_trg_launcher source_dir output_dir)
+    file(GLOB_RECURSE _source_files LIST_DIRECTORIES false RELATIVE "${source_dir}" "${source_dir}/*")
+    list(SORT _source_files)
+    set(_source_state "")
+    foreach(_file IN LISTS _source_files)
+        file(SHA256 "${source_dir}/${_file}" _file_hash)
+        string(APPEND _source_state "${_file}\n${_file_hash}\n")
+    endforeach()
+    set(_fingerprint "${SSF2T_TRG_LAUNCHER_PATCH_STAMP_VERSION}\n${source_dir}\n${_source_state}")
+    foreach(_patch_name IN LISTS _trg_patch_names)
+        file(SHA256 "${SSF2T_TRG_LAUNCHER_PATCH_DIR}/${_patch_name}" _patch_hash)
+        string(APPEND _fingerprint "${_patch_name}\n${_patch_hash}\n")
+    endforeach()
+    string(SHA256 _fingerprint "${_fingerprint}")
+
+    set(_stamp "${output_dir}/.ssf2t-trg-patch-stamp")
+    if(EXISTS "${_stamp}" AND EXISTS "${output_dir}/CMakeLists.txt")
+        file(READ "${_stamp}" _stamp_value)
+        if(_stamp_value STREQUAL _fingerprint)
+            return()
+        endif()
+    endif()
+
+    message(STATUS "TRG Launcher: preparing patched copy in ${output_dir}")
+    file(REMOVE_RECURSE "${output_dir}")
+    file(MAKE_DIRECTORY "${output_dir}")
+    file(COPY "${source_dir}/" DESTINATION "${output_dir}")
+
+    get_filename_component(_ceiling "${output_dir}" DIRECTORY)
+    foreach(_patch_name IN LISTS _trg_patch_names)
+        set(_patch "${SSF2T_TRG_LAUNCHER_PATCH_DIR}/${_patch_name}")
+        execute_process(COMMAND "${CMAKE_COMMAND}" -E env "GIT_CEILING_DIRECTORIES=${_ceiling}"
+                        "${GIT_EXECUTABLE}" -C "${output_dir}" apply --check "${_patch}"
+                        RESULT_VARIABLE _can_apply ERROR_VARIABLE _apply_error)
+        if(NOT _can_apply EQUAL 0)
+            message(FATAL_ERROR "TRG Launcher: ${_patch} does not apply to ${source_dir} (${_apply_error}); the patch and the source are out of sync.")
+        endif()
+        execute_process(COMMAND "${CMAKE_COMMAND}" -E env "GIT_CEILING_DIRECTORIES=${_ceiling}"
+                        "${GIT_EXECUTABLE}" -C "${output_dir}" apply "${_patch}"
+                        RESULT_VARIABLE _apply_result)
+        if(NOT _apply_result EQUAL 0)
+            message(FATAL_ERROR "TRG Launcher: failed to apply ${_patch}")
+        endif()
+    endforeach()
+    file(WRITE "${_stamp}" "${_fingerprint}")
+endfunction()
+
+set(_trg_patched_dir "${CMAKE_BINARY_DIR}/trg-launcher-patched")
+ssf2t_prepare_patched_trg_launcher("${_trg_dir}" "${_trg_patched_dir}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_trg_dir}/CMakeLists.txt")
+
 # The launcher draws inside the runtime's own Dear ImGui frame, so it must use the ImGui compiled into rexruntime.
 add_library(ssf2t_imgui INTERFACE)
 target_link_libraries(ssf2t_imgui INTERFACE rex::runtime)
@@ -36,30 +105,57 @@ set(TRG_LAUNCHER_IMGUI_TARGET ssf2t_imgui CACHE STRING "" FORCE)
 set(TRG_LAUNCHER_STANDALONE OFF CACHE BOOL "" FORCE)
 set(TRG_LAUNCHER_BUILD_DEMO OFF CACHE BOOL "" FORCE)
 set(TRG_LAUNCHER_FETCH_DEPS OFF CACHE BOOL "" FORCE)
-add_subdirectory("${_trg_dir}" trg-launcher)
+add_subdirectory("${_trg_patched_dir}" trg-launcher)
 # Written for C++17: in C++20 and later u8string() is a different type.
 set_target_properties(trg_launcher PROPERTIES CXX_STANDARD 17)
 target_compile_definitions(trg_launcher PRIVATE _CRT_SECURE_NO_WARNINGS)
-get_directory_property(SSF2T_TRG_VERSION DIRECTORY "${_trg_dir}" DEFINITION PROJECT_VERSION)
+get_directory_property(SSF2T_TRG_VERSION DIRECTORY "${_trg_patched_dir}" DEFINITION PROJECT_VERSION)
 
 set(SSF2T_SOURCES
     src/main.cpp
     src/achievement_ui_hook.cpp
     src/achievements_overlay.cpp
+    src/active_log.cpp
     src/aspect_render.cpp
+    src/crash_report.cpp
+    src/diagnostics.cpp
     src/frame_counter.cpp
     src/game_files.cpp
     src/graphics_adapters.cpp
+    src/imgui_gamepad.cpp
+    src/guest_functions.cpp
+    src/input_summary.cpp
     src/menu_text_hook.cpp
     src/launcher.cpp
     src/launcher_achievements.cpp
+    src/log_filter.cpp
+    src/log_path.cpp
     src/modal_dialog.cpp
     src/platform.cpp
+    src/session_log.cpp
     src/settings.cpp
     src/stfs.cpp
+    src/system_info.cpp
+    src/update_config.cpp
+    src/updater/github_release.cpp
+    src/updater/json.cpp
+    src/updater/sha256.cpp
+    src/updater/update_controller.cpp
+    src/updater/update_job.cpp
+    src/updater/update_paths.cpp
+    src/updater/update_platform.cpp
+    src/updater/update_ui.cpp
+    src/updater/update_zip.cpp
+    src/updater/version.cpp
+    src/updater/third_party/miniz/miniz.c
     src/user_data.cpp
     src/window_host.cpp
 )
+set_source_files_properties(src/updater/third_party/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "-w")
+set_property(SOURCE src/update_config.cpp src/updater/github_release.cpp src/updater/json.cpp src/updater/sha256.cpp
+    src/updater/update_controller.cpp src/updater/update_job.cpp src/updater/update_paths.cpp
+    src/updater/update_platform.cpp src/updater/update_ui.cpp src/updater/update_zip.cpp src/updater/version.cpp
+    APPEND PROPERTY COMPILE_OPTIONS -Wall -Wextra)
 if(WIN32)
     # Resource 1 is the first icon in the executable: Explorer, and SDL's window class, use it.
     enable_language(RC)
@@ -75,6 +171,7 @@ else()
 endif()
 
 rexglue_setup_target(ssf2t_hd_remix GPU_PLUGINS xenos)
+target_include_directories(ssf2t_hd_remix PRIVATE src)
 target_link_libraries(ssf2t_hd_remix PRIVATE trg::launcher)
 if(WIN32)
     target_link_libraries(ssf2t_hd_remix PRIVATE shcore synchronization dxgi)
@@ -137,9 +234,30 @@ function(ssf2t_enable_thinlto target)
     target_link_options(${target} PRIVATE "$<${_lto}:${_link}>")
 endfunction()
 ssf2t_enable_thinlto(ssf2t_hd_remix)
+
+# The update helper runs from the temporary update workspace, away from the installation, so it keeps its runtime
+# inside the executable.
+if(WIN32)
+    add_executable(trg-updater WIN32
+        src/updater/helper_main.cpp
+        src/updater/install_transaction.cpp
+        src/updater/sha256.cpp
+        src/updater/update_job.cpp
+        src/updater/update_paths.cpp
+        src/updater/update_platform.cpp
+    )
+    target_include_directories(trg-updater PRIVATE src)
+    target_link_libraries(trg-updater PRIVATE shell32)
+    target_link_options(trg-updater PRIVATE -static)
+    set_property(TARGET trg-updater PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    target_compile_options(trg-updater PRIVATE -Wall -Wextra)
+    ssf2t_enable_thinlto(trg-updater)
+    add_dependencies(ssf2t_hd_remix trg-updater)
+endif()
 target_compile_definitions(ssf2t_hd_remix PRIVATE
     SSF2T_PORT_VERSION="${PROJECT_VERSION}"
-    SSF2T_TRG_VERSION="${SSF2T_TRG_VERSION}")
+    SSF2T_TRG_VERSION="${SSF2T_TRG_VERSION}"
+    SSF2T_BUILD_CONFIG="$<CONFIG>")
 
 # Headless regression tests of the patched runtime, not part of the default build (tools/test.ps1):
 #   cmake --build <dir> --target ssf2t_runtime_tests
@@ -161,6 +279,17 @@ endforeach()
 add_executable(ssf2t_window_placement_tests EXCLUDE_FROM_ALL tests/window_placement_tests.cpp)
 target_include_directories(ssf2t_window_placement_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_window_placement_tests)
+
+# Launcher and window behaviour that needs no window: keyboard remapping, Escape not quitting, per-monitor DPI
+# helpers, the input-aware cursor and the window title.
+foreach(_test keyboard launcher_quit dpi window_host)
+    set(_name ssf2t_${_test}_tests)
+    add_executable(${_name} EXCLUDE_FROM_ALL tests/${_test}_tests.cpp)
+    target_include_directories(${_name} PRIVATE src)
+    target_include_directories(${_name} SYSTEM PRIVATE "${SSF2T_SDK_DIR}/include" "${_trg_dir}/include")
+    target_compile_definitions(${_name} PRIVATE SSF2T_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src")
+    add_dependencies(ssf2t_runtime_tests ${_name})
+endforeach()
 
 add_executable(ssf2t_menu_text_tests EXCLUDE_FROM_ALL tests/menu_text_tests.cpp)
 target_include_directories(ssf2t_menu_text_tests PRIVATE src)
@@ -195,6 +324,54 @@ if(NOT WIN32)
 endif()
 add_dependencies(ssf2t_runtime_tests ssf2t_achievement_metadata_tests)
 
+# Runtime patch tests: the patched logic modeled in isolation, and the patch text checked for the changes it must make.
+find_package(Threads REQUIRED)
+foreach(_test guest_clock d3d12_transfer_short_circuit d3d12_sampler_memo shared_memory_fast_path
+        gpu_draw_state_memo d3d12_async_submission)
+    set(_name ssf2t_${_test}_tests)
+    add_executable(${_name} EXCLUDE_FROM_ALL tests/${_test}_tests.cpp)
+    target_include_directories(${_name} PRIVATE src)
+    target_compile_definitions(${_name} PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(${_name} PRIVATE Threads::Threads)
+    ssf2t_enable_thinlto(${_name})
+    add_dependencies(ssf2t_runtime_tests ${_name})
+endforeach()
+
+# Updater logic without the runtime: versions, release JSON, SHA-256, ZIP safety, staging, jobs and rollback.
+add_executable(ssf2t_update_tests EXCLUDE_FROM_ALL
+    tests/update_tests.cpp
+    src/updater/github_release.cpp
+    src/updater/install_transaction.cpp
+    src/updater/json.cpp
+    src/updater/sha256.cpp
+    src/updater/update_job.cpp
+    src/updater/update_paths.cpp
+    src/updater/update_platform.cpp
+    src/updater/update_zip.cpp
+    src/updater/version.cpp
+    src/updater/third_party/miniz/miniz.c
+)
+target_include_directories(ssf2t_update_tests PRIVATE src)
+target_compile_definitions(ssf2t_update_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(ssf2t_update_tests PRIVATE -Wall -Wextra)
+add_dependencies(ssf2t_runtime_tests ssf2t_update_tests)
+if(WIN32)
+    target_link_libraries(ssf2t_update_tests PRIVATE shell32)
+
+    add_executable(ssf2t_update_restart_marker WIN32 EXCLUDE_FROM_ALL tests/update_restart_marker.cpp)
+    target_link_libraries(ssf2t_update_restart_marker PRIVATE shell32)
+    target_link_options(ssf2t_update_restart_marker PRIVATE -static)
+    target_compile_options(ssf2t_update_restart_marker PRIVATE -Wall -Wextra)
+
+    add_executable(ssf2t_update_helper_tests EXCLUDE_FROM_ALL tests/update_helper_tests.cpp)
+    target_compile_options(ssf2t_update_helper_tests PRIVATE -Wall -Wextra)
+    target_compile_definitions(ssf2t_update_helper_tests PRIVATE
+        SSF2T_UPDATER_EXE="$<TARGET_FILE:trg-updater>"
+        SSF2T_RESTART_MARKER_EXE="$<TARGET_FILE:ssf2t_update_restart_marker>")
+    add_dependencies(ssf2t_update_helper_tests trg-updater ssf2t_update_restart_marker)
+    add_dependencies(ssf2t_runtime_tests ssf2t_update_helper_tests)
+endif()
+
 # The runtime reads its cvars from <exe dir>/ssf2t_hd_remix.toml.
 add_custom_command(TARGET ssf2t_hd_remix POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -211,3 +388,73 @@ add_custom_command(TARGET ssf2t_hd_remix POST_BUILD
         "$<TARGET_FILE_DIR:ssf2t_hd_remix>/assets/launcher/header-art.png"
     VERBATIM
 )
+
+# Logging, crash report and diagnostics tests, not part of the default build (tools/test.ps1):
+#   cmake --build <dir> --target ssf2t_runtime_tests
+add_executable(ssf2t_relaunch_tests EXCLUDE_FROM_ALL tests/relaunch_tests.cpp)
+target_include_directories(ssf2t_relaunch_tests PRIVATE src)
+target_compile_definitions(ssf2t_relaunch_tests PRIVATE SSF2T_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src")
+add_dependencies(ssf2t_runtime_tests ssf2t_relaunch_tests)
+
+add_executable(ssf2t_log_path_tests EXCLUDE_FROM_ALL tests/log_path_tests.cpp src/log_path.cpp)
+target_include_directories(ssf2t_log_path_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_log_path_tests)
+
+add_executable(ssf2t_lifecycle_tests EXCLUDE_FROM_ALL tests/lifecycle_tests.cpp)
+target_include_directories(ssf2t_lifecycle_tests PRIVATE src)
+target_compile_definitions(ssf2t_lifecycle_tests PRIVATE SSF2T_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src")
+add_dependencies(ssf2t_runtime_tests ssf2t_lifecycle_tests)
+
+add_executable(ssf2t_diagnostics_tests EXCLUDE_FROM_ALL tests/diagnostics_tests.cpp src/diagnostics.cpp)
+target_include_directories(ssf2t_diagnostics_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_diagnostics_tests)
+
+add_executable(ssf2t_crash_report_tests EXCLUDE_FROM_ALL tests/crash_report_tests.cpp src/crash_report.cpp)
+target_include_directories(ssf2t_crash_report_tests PRIVATE src)
+target_compile_definitions(ssf2t_crash_report_tests PRIVATE
+    SSF2T_PORT_VERSION="${PROJECT_VERSION}"
+    SSF2T_BUILD_CONFIG="RelWithDebInfo")
+if(WIN32)
+    target_link_libraries(ssf2t_crash_report_tests PRIVATE shell32)
+endif()
+add_dependencies(ssf2t_runtime_tests ssf2t_crash_report_tests)
+
+add_executable(ssf2t_active_log_tests EXCLUDE_FROM_ALL tests/active_log_tests.cpp src/active_log.cpp src/log_filter.cpp)
+target_include_directories(ssf2t_active_log_tests PRIVATE src)
+target_include_directories(ssf2t_active_log_tests SYSTEM PRIVATE "${SSF2T_SDK_DIR}/include")
+target_link_libraries(ssf2t_active_log_tests PRIVATE rex::runtime)
+add_custom_command(TARGET ssf2t_active_log_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rex::runtime>" "$<TARGET_FILE_DIR:ssf2t_active_log_tests>"
+    VERBATIM
+)
+if(NOT WIN32)
+    set_target_properties(ssf2t_active_log_tests PROPERTIES BUILD_RPATH "$ORIGIN")
+endif()
+add_dependencies(ssf2t_runtime_tests ssf2t_active_log_tests)
+
+# Detailed logging, the Minimal log filter and the session log handoff.
+add_executable(ssf2t_log_filter_tests EXCLUDE_FROM_ALL
+    tests/log_filter_tests.cpp
+    src/active_log.cpp
+    src/crash_report.cpp
+    src/log_filter.cpp
+    src/session_log.cpp
+)
+target_include_directories(ssf2t_log_filter_tests PRIVATE src)
+target_include_directories(ssf2t_log_filter_tests SYSTEM PRIVATE "${SSF2T_SDK_DIR}/include")
+target_compile_definitions(ssf2t_log_filter_tests PRIVATE
+    SSF2T_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src"
+    SSF2T_PORT_VERSION="${PROJECT_VERSION}"
+    SSF2T_BUILD_CONFIG="RelWithDebInfo")
+target_link_libraries(ssf2t_log_filter_tests PRIVATE rex::runtime)
+if(WIN32)
+    target_link_libraries(ssf2t_log_filter_tests PRIVATE shell32)
+endif()
+add_custom_command(TARGET ssf2t_log_filter_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rex::runtime>" "$<TARGET_FILE_DIR:ssf2t_log_filter_tests>"
+    VERBATIM
+)
+if(NOT WIN32)
+    set_target_properties(ssf2t_log_filter_tests PROPERTIES BUILD_RPATH "$ORIGIN")
+endif()
+add_dependencies(ssf2t_runtime_tests ssf2t_log_filter_tests)

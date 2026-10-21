@@ -124,7 +124,7 @@ try {
 
 Sync-StagedRuntime $SdkRoot $BuildDir $Config
 $suffix = @{ Debug = 'd'; RelWithDebInfo = 'rd'; Release = '' }[$Config]
-$required = @('ssf2t_hd_remix.exe', 'ssf2t_hd_remix.toml') + (Get-RuntimeDllNames $Config)
+$required = @('ssf2t_hd_remix.exe', 'trg-updater.exe', 'ssf2t_hd_remix.toml') + (Get-RuntimeDllNames $Config)
 if ($Config -ne 'Release') { $required += "TracyClient$suffix.dll" }
 foreach ($file in $required) {
     $path = Join-Path $BuildDir $file

@@ -27,6 +27,9 @@ struct GameCheck {
 // The one readiness check: launcher state, install verification and the clean-start decision all use it.
 GameCheck CheckGameFiles(const std::filesystem::path& game_dir);
 
+// A support log line about the game files that carries no folder: name, size, CRC32 and state.
+std::string GameFilesLogText(const GameCheck& check);
+
 enum class InstallStatus {
   kInstalled,
   kCancelled,

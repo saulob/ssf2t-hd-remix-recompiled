@@ -30,7 +30,7 @@ $SdkRoot = Join-Path $Root 'tools\rexglue\win-amd64'
 . (Join-Path $PSScriptRoot 'rexruntime-patch.ps1')
 
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
-$ProgramFiles = @('ssf2t_hd_remix.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'ssf2t_hd_remix.toml')
+$ProgramFiles = @('ssf2t_hd_remix.exe', 'trg-updater.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'ssf2t_hd_remix.toml')
 $LicenseFiles = @('ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt')
 $AssetFiles = @('assets\launcher\header-art.png')
 $CheckFolder = Join-Path $PSScriptRoot 'check-release-folder.ps1'
@@ -145,6 +145,14 @@ foreach ($debugDll in 'ucrtbased.dll', 'vcruntime140d.dll', 'msvcp140d.dll', 're
     if ($exeText.IndexOf($debugDll, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $identity += "ssf2t_hd_remix.exe refers to $debugDll" }
 }
 if ($identity.Count) { Write-Problems $identity; throw 'The executable does not carry the release identity' }
+
+# The update helper runs alone from a temporary folder, so it must not need any runtime library from the installation.
+$helperText = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes((Join-Path $Stage 'trg-updater.exe')))
+$helper = @()
+foreach ($dependency in 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'ucrtbase.dll', 'libc++.dll', 'rexruntime.dll', 'ssf2t_hd_remix.exe') {
+    if ($helperText.IndexOf($dependency, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $helper += "trg-updater.exe refers to $dependency" }
+}
+if ($helper.Count) { Write-Problems $helper; throw 'trg-updater.exe is not self-contained' }
 
 if (-not (Invoke-FolderCheck $Stage)) { throw 'The staging folder holds files that must not be released' }
 

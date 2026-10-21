@@ -8,8 +8,6 @@
 
 #include "window_placement.h"
 
-struct ImGuiIO;
-
 namespace ssf2t {
 
 // TRG Launcher takes UTF-8 paths.
@@ -19,8 +17,15 @@ std::filesystem::path PathFromUtf8(const std::string& utf8);
 // The folder the player sees the port in: the executable's, or the AppImage's.
 std::filesystem::path PortFolder();
 
-// The next free <name>_NNN.log in `folder`, which is created. Empty when it cannot be created.
-std::filesystem::path NextLogFile(const std::filesystem::path& folder, std::string_view name);
+// Windows: caches the current run's log file and installs the unhandled exception filter that appends
+// a CRASH REPORT block to it. A no-op on Linux.
+void InstallCrashReports();
+
+// The architecture this build runs as ("x86-64", "arm64", ...), for the startup log line.
+const char* ArchitectureName();
+
+// The graphics backend the xenos GPU plugin uses here.
+const char* GraphicsBackendName();
 
 struct UiFontFiles {
   std::filesystem::path regular, semibold, bold;
@@ -58,6 +63,7 @@ struct MonitorInfo {
   int work_width = 0, work_height = 0;  // without the taskbar
   float scale = 1.0f;                   // display scaling
   bool primary = false;
+  int refresh_hz = 0;                   // current mode, 0 when unavailable
 };
 
 // In the order ReXGlue's `monitor` setting numbers them: SDL's display order.
@@ -92,20 +98,5 @@ std::optional<PreShowResult> TakePreShowResult();
 
 // Starts a new instance with this run's command line plus `extra_args`.
 bool RelaunchSelf(std::wstring_view extra_args);
-
-// Feeds an Xbox controller to Dear ImGui while the launcher or the in-game cheat menu is open. The runtime's
-// own input system only starts with the game, and the menu keeps the game from reading it.
-class LauncherGamepad {
- public:
-  void Update(ImGuiIO& io);
-  void Release(ImGuiIO& io);
-
- private:
-  int pad_ = -1;
-  double next_scan_ = 0.0;
-#if !defined(_WIN32)
-  bool subsystem_ = false;
-#endif
-};
 
 }  // namespace ssf2t

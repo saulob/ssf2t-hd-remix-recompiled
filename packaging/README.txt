@@ -48,6 +48,15 @@ To repair the game files, use "Reinstall from package..." on the Play page.
 Your settings and saves are kept.
 
 
+UPDATES
+-------
+The launcher checks the project's GitHub releases once per start. When a newer
+release exists, an update banner appears in the header; nothing is installed
+until you choose UPDATE NOW and then RESTART TO UPDATE. The update replaces
+only the port's own program files. The "game" folder, "user_data", saves,
+settings and logs are kept.
+
+
 WINDOWS SMARTSCREEN
 -------------------
 The first time you run ssf2t_hd_remix.exe, Windows SmartScreen may show a
@@ -91,13 +100,17 @@ WHERE THINGS ARE
                   (created the first time it is needed)
 
 Copy the whole program folder to another PC to take your saves, achievements
-and settings with it. To update, extract the new version over the old folder,
+and settings with it. To update by hand, extract the new version over the old folder,
 or move "user_data" (and "game") into the new one: deleting the old folder
 deletes "user_data" with it.
 
 If the game does not start or crashes, please attach the newest file from the
 "logs" folder to a report at
 https://github.com/saulob/ssf2t-hd-remix-recompiled/issues
+The launcher and the game write to the same log for one session, and after a
+crash on Windows the log ends with a CRASH REPORT section. For other problems,
+turn on Detailed logging on the About page, reproduce the problem and attach
+the newest log. "Open logs folder" on the same page opens the folder.
 
 
 LICENSE

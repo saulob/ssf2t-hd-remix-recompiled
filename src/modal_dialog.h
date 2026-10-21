@@ -6,8 +6,8 @@
 
 #include <rex/ui/imgui_dialog.h>
 
+#include "imgui_gamepad.h"
 #include "overlay_rules.h"
-#include "platform.h"
 
 namespace rex::ui {
 class Window;
@@ -41,7 +41,7 @@ class ModalDialog : public rex::ui::ImGuiDialog {
  private:
   void TrackPressedKeys();
 
-  LauncherGamepad gamepad_;
+  ImGuiGamepad gamepad_;
   std::bitset<ImGuiKey_NamedKey_COUNT> pressed_;
   ImGuiConfigFlags saved_nav_flags_ = 0;
   ImGuiBackendFlags saved_has_gamepad_ = 0;

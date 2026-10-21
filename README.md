@@ -16,6 +16,7 @@
 
 - **Native static recompilation**: the game's own code, not an emulator. Windows, plus an experimental Linux AppImage.
 - **TRG launcher** with a game package installer, display and graphics options, and an Achievements page.
+- **Launcher updates**: the launcher checks GitHub releases once per start and installs a newer release only when you choose UPDATE NOW. Game files, saves, settings and logs are kept.
 - **Display**: Windowed or Borderless Fullscreen (**F11**), window size, monitor and VSync. Per-monitor high-DPI support, and the game window opens where and how large you chose.
 - **Presentation**: Letterbox keeps the picture's proportions, Stretch fills the window. Aspect ratios 16:9, 16:10, 21:9, 32:9, 4:3 and 5:4.
 - **Render resolution and Internal render resolution**: Render resolution (1x to 4x) sets the target resolution of the picture. Internal render resolution (100% Native, 75% Performance, 50% Low-end) lowers the resolution the GPU draws at before the picture is scaled up, trading sharpness for performance. Both are separate from the Window size.
@@ -74,12 +75,14 @@ Your choices are saved to `settings.toml` in the `user_data` folder next to the 
 - **Graphics**: Graphics card, Render resolution, Internal render resolution, Anti-aliasing, Multisampling, Texture filtering
 - **Gameplay**: Language, frame rate and render resolution in the title, frame counter
 - **Achievements**: unlocked achievements and gamerscore
-- **Controls**: keyboard on or off and the key layout
-- **About**: versions, folders, **Show settings file** and **Reset all settings**
+- **Controls**: keyboard on or off, every key remappable, and **Keyboard defaults** to restore the standard layout
+- **About**: versions, folders (game, saves and settings, logs), **Show settings file**, **Detailed logging**, **Open logs folder** and **Reset all settings**
+
+During gameplay the mouse cursor follows the last input device: mouse activity shows it, keyboard or controller activity hides it, and mouse-driven overlays always show it.
 
 ## Reporting problems
 
-If the game does not start or crashes, please open an [issue](https://github.com/saulob/ssf2t-hd-remix-recompiled/issues). Attach the newest `ssf2t_hd_remix_*.log` file from the `logs` folder next to the program, and say what you were doing when the problem happened.
+If the game does not start or crashes, please open an [issue](https://github.com/saulob/ssf2t-hd-remix-recompiled/issues). Attach the newest `ssf2t_hd_remix_*.log` file from the `logs` folder next to the program, and say what you were doing when the problem happened. The launcher and the game write to the same log for one application session. After a crash on Windows the log ends with a `CRASH REPORT` section; no separate crash file or minidump is written. For a non-crash problem, turn Detailed logging on in the launcher's About page, reproduce it, and send the newest log. The launcher and the game write to the same log for one application session. After a crash on Windows the log ends with a `CRASH REPORT` section; no separate crash file or minidump is written. For a non-crash problem, turn Detailed logging on in the launcher, reproduce it, and send the newest log.
 
 ## Building it yourself
 

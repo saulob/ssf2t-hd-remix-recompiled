@@ -14,6 +14,7 @@
 #include <vector>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
@@ -21,21 +22,29 @@
 #include <rex/ui/image_decode.h>
 #include <rex/ui/immediate_drawer.h>
 #include <rex/ui/imgui_dialog.h>
+#include <rex/ui/imgui_drawer.h>
 #include <rex/version.h>
 
 #include "trg/launcher.h"
 #include "trg/platform.h"
 
 #include "aspect_ratio.h"
+#include "dpi.h"
 #include "game_files.h"
 #include "graphics_adapters.h"
+#include "imgui_gamepad.h"
 #include "internal_render_scale.h"
+#include "keybinds.h"
 #include "language_setting.h"
 #include "launcher_achievements.h"
+#include "log_filter.h"
 #include "launcher_assets.h"
+#include "launcher_quit.h"
 #include "platform.h"
 #include "presentation_setting.h"
 #include "settings.h"
+#include "update_config.h"
+#include "updater/update_ui.h"
 
 namespace ssf2t {
 namespace {
@@ -48,6 +57,9 @@ constexpr double kLauncherMaxShare = 0.9;
 constexpr double kPlayFeedbackSeconds = 0.4;
 
 constexpr ImGuiConfigFlags kNavFlags = ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
+
+constexpr char kAuthorUrl[] = "https://github.com/saulob";
+constexpr char kRepositoryUrl[] = "https://github.com/saulob/ssf2t-hd-remix-recompiled";
 
 // Street Fighter orange over a dark ember background.
 const ImVec4 kAccent = ImVec4(1.00f, 0.52f, 0.08f, 1.0f);
@@ -79,12 +91,12 @@ trg::HeaderPainter LauncherHeader(ImTextureID art, float art_aspect) {
 std::unique_ptr<rex::ui::ImmediateTexture> LoadHeaderArt(rex::ui::ImmediateDrawer* drawer) {
   const std::filesystem::path path = LauncherHeaderArtPath(rex::filesystem::GetExecutableFolder());
   if (!drawer) {
-    REXLOG_WARN("Launcher header art unavailable without an immediate drawer: {}", Utf8(path));
+    REXLOG_WARN("Launcher header art unavailable without an immediate drawer: {}", Utf8(path.filename()));
     return nullptr;
   }
   std::ifstream in(path, std::ios::binary);
   if (!in) {
-    REXLOG_WARN("Launcher header art not found: {}", Utf8(path));
+    REXLOG_WARN("Launcher header art not found: {}", Utf8(path.filename()));
     return nullptr;
   }
   const std::vector<uint8_t> encoded((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -92,7 +104,7 @@ std::unique_ptr<rex::ui::ImmediateTexture> LoadHeaderArt(rex::ui::ImmediateDrawe
   int height = 0;
   const std::vector<uint8_t> pixels = rex::ui::DecodeImageRGBA(encoded.data(), encoded.size(), width, height);
   if (pixels.empty() || width <= 0 || height <= 0) {
-    REXLOG_WARN("Launcher header art could not be decoded: {}", Utf8(path));
+    REXLOG_WARN("Launcher header art could not be decoded: {}", Utf8(path.filename()));
     return nullptr;
   }
   return drawer->CreateTexture(uint32_t(width), uint32_t(height), rex::ui::ImmediateTextureFilter::kLinear, false,
@@ -100,6 +112,7 @@ std::unique_ptr<rex::ui::ImmediateTexture> LoadHeaderArt(rex::ui::ImmediateDrawe
 }
 
 trg::Fonts g_fonts;
+float g_font_density = 1.0f;
 
 GameFiles CheckAndLogGameFiles(const std::filesystem::path& game_dir) {
   const GameCheck check = CheckGameFiles(game_dir);
@@ -140,22 +153,18 @@ std::vector<trg::Option> RenderResolutionOptions(AspectRatio aspect) {
   return options;
 }
 
+std::string DisplayUrl(const char* url) {
+  const std::string text = url;
+  const size_t scheme = text.find("://");
+  return scheme == std::string::npos ? text : text.substr(scheme + 3);
+}
+
 std::vector<trg::Option> AspectRatioOptions() {
   std::vector<trg::Option> options;
   for (const AspectRatioInfo& info : kAspectRatios) {
     options.push_back({info.key, info.label});
   }
   return options;
-}
-
-std::string KeyList(std::string keys) {
-  if (keys.empty()) {
-    return "None";
-  }
-  for (size_t i = keys.find(','); i != std::string::npos; i = keys.find(',', i)) {
-    keys.replace(i, 1, " or ");
-  }
-  return keys;
 }
 
 class LauncherDialog final : public rex::ui::ImGuiDialog {
@@ -171,6 +180,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         graphics_adapters_(ListGraphicsAdapters()) {
     header_art_ = LoadHeaderArt(paths_.immediate_drawer);
     launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
+    updater_ = std::make_unique<trg::update::UpdateController>(MakeUpdateConfig(PortFolder()));
+    updater_->StartCheck();
     if (WindowFullscreen()) {
       restore_when_windowed_ = true;
       RequestFullscreen(false);
@@ -185,6 +196,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
       return;
     }
     PollInstall();
+    PollUpdate();
     TrackPlacement();
     if (!nav_taken_) {
       saved_nav_flags_ = io.ConfigFlags & kNavFlags;
@@ -208,6 +220,10 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     ImGui::BeginDisabled(starting_);
     const trg::Result result = launcher_->Frame();
     ImGui::EndDisabled();
+    if (result == trg::Result::kNone && !starting_) {
+      HandleUpdateAction(
+          trg::update::DrawUpdateBanner(updater_->snapshot(), launcher_->config().theme, g_fonts));
+    }
     if (starting_) {
       DrawStartingMessage();
     }
@@ -216,7 +232,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         RequestPlay();
         break;
       case trg::Result::kQuit:
-        if (!starting_) {
+        if (!starting_ && LauncherQuitAllowed(ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
           Finish(cb_.quit);
         }
         break;
@@ -268,6 +284,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
 
   // Runs inside the last frame; the in-game overlays share this ImGui context.
   void OnClose() override {
+    ReleaseUpdater();
     ImGuiIO& io = GetIO();
     gamepad_.Release(io);
     io.ConfigFlags = (io.ConfigFlags & ~kNavFlags) | saved_nav_flags_;
@@ -277,10 +294,69 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
  private:
   void Finish(std::function<void()> action) {
     done_ = true;
-    SavePlacement(placement_.Flush());
+    ReleaseUpdater();
+    if (!skip_finish_save_) {
+      SavePlacement(placement_.Flush());
+    }
+    REXLOG_INFO("Launcher closed");
     Close();
     if (action) {
       action();
+    }
+  }
+
+  void ReleaseUpdater() {
+    if (!updater_) {
+      return;
+    }
+    updater_->Cancel();
+    if (updater_->Busy()) {
+      // Do not join a network call on the UI thread when the launcher leaves.
+      updater_.release();
+    }
+  }
+
+  void PollUpdate() {
+    if (updater_) {
+      updater_->Poll();
+    }
+  }
+
+  bool InstallBusy() const { return install_.running(); }
+
+  void HandleUpdateAction(trg::update::UpdateUiAction action) {
+    switch (action) {
+      case trg::update::UpdateUiAction::kDownload:
+        updater_->StartDownload();
+        break;
+      case trg::update::UpdateUiAction::kRetry:
+        if (updater_->RetryNeedsInstall()) {
+          RestartToUpdate([this] { return updater_->Retry(); });
+        } else {
+          updater_->Retry();
+        }
+        break;
+      case trg::update::UpdateUiAction::kRestart:
+        RestartToUpdate([this] { return updater_->BeginInstall(); });
+        break;
+      case trg::update::UpdateUiAction::kNone:
+        break;
+    }
+  }
+
+  template <typename Begin>
+  void RestartToUpdate(Begin begin) {
+    if (InstallBusy()) {
+      launcher_->SetStatus("Wait for the current install to finish.", 5.0);
+      return;
+    }
+    if (!launcher_->Save()) {
+      return;
+    }
+    SavePlacement(placement_.Flush());
+    if (begin()) {
+      skip_finish_save_ = true;
+      Finish(cb_.quit);
     }
   }
 
@@ -392,8 +468,14 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     c.save_on_play = false;
     c.theme = LauncherTheme();
     c.note = "Play applies the changes. Save keeps them without starting.";
+    c.hints = "Enter  Play     Alt+F4  Quit     Ctrl+S  Save";
     c.fonts = g_fonts;
     c.branding.title = "SUPER STREET FIGHTER II TURBO HD REMIX";
+    c.branding.subtitle_segments = {
+        {"PC PORT   \xC2\xB7   ", ""},
+        {"v" SSF2T_PORT_VERSION "   \xC2\xB7   ", ""},
+        {"BY SAULOB", kAuthorUrl},
+    };
     const float art_aspect =
         header_art_ ? float(header_art_->width) / float(header_art_->height) : kHeaderArtAspect;
     c.branding.background = LauncherHeader(
@@ -506,7 +588,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
           return outcome->result.ok() ? std::string() : std::string(DescribeInstall(outcome->result.status).title);
         });
     if (started) {
-      REXLOG_INFO("Installing game files from {}", picked);
+      REXLOG_INFO("Installing game files from {}", PathFromUtf8(picked).filename().string());
     }
   }
 
@@ -773,16 +855,45 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
 
   static void PageControls(trg::Ui& ui) {
     ui.Info("Controller", "Automatic: Xbox controllers work without setup.");
-    ui.Toggle("Keyboard", "Plays as an Xbox 360 controller, together with any connected controller.", "mnk_mode",
-              true, "Disabled", "Enabled");
-    if (ui.Section("Keyboard keys")) {
-      ui.Help("Plain arrow keys are the right stick. Menus use W A S D or Shift + arrow keys.");
-      for (const rex::cvar::FlagEntry& e : rex::cvar::GetRegistry()) {
-        if (e.category == "Input/Keybinds/Controller") {
-          ui.Info(e.description.c_str(), KeyList(e.getter()).c_str());
-        }
+    ui.Toggle("Keyboard", "Use the keyboard for gameplay controls together with the controller.", "mnk_mode", true,
+              "Off", "On");
+    if (ui.ConfirmRow("Keyboard defaults", "Puts the keyboard controls back to their standard layout.",
+                      "Reset to defaults", "Put every key back to its default?", "Reset")) {
+      ResetKeyboardDefaults(ui.settings());
+      ui.SetStatus("Keyboard controls reset to defaults.");
+    }
+    if (ui.Section("Keyboard controls", true)) {
+      ui.Help("Click a key, then press the new one. Esc cancels.");
+      const bool enabled = ui.settings().GetBool("mnk_mode", true);
+      if (!enabled) {
+        ImGui::BeginDisabled();
+      }
+      for (const KeyboardAction& action : kKeyboardActions) {
+        KeyboardRow(ui, action);
+      }
+      if (!enabled) {
+        ImGui::EndDisabled();
       }
     }
+  }
+
+  static void KeyboardRow(trg::Ui& ui, const KeyboardAction& action) {
+    const std::string shown = KeyboardBindingLabel(SavedKeyboardBinding(ui.settings(), action));
+    const std::optional<ImGuiKey> key = ui.KeyBindRow(action.label, nullptr, shown);
+    if (!key) {
+      return;
+    }
+    if (*key == ImGuiKey_Enter || *key == ImGuiKey_KeypadEnter) {
+      // The launcher's Play hotkey reads Enter later in this frame.
+      ImGui::SetKeyOwner(*key, ImGuiKeyOwner_Any, ImGuiInputFlags_LockThisFrame);
+    }
+    const ImGuiIO& io = ImGui::GetIO();
+    const std::string binding = KeyboardBindingFor(*key, io.KeyShift, io.KeyCtrl, io.KeyAlt);
+    if (binding.empty()) {
+      ui.SetStatus("That key cannot be used.");
+      return;
+    }
+    ui.settings().Set(action.key, binding);
   }
 
   void PageAbout(trg::Ui& ui) {
@@ -803,9 +914,30 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
       trg::OpenInFileManager(Utf8(exists ? paths_.settings_file : paths_.user_dir));
     }
     ui.ResetAllRow();
+    ui.Heading("Diagnostics");
+    if (ui.Toggle("Detailed logging", "Keeps logs for normal sessions. Crash diagnostics are always preserved.",
+                  "detailed_logging", true)) {
+      rex::cvar::SetFlagByName("detailed_logging", settings_.Get("detailed_logging", "true"));
+      ApplyDetailedLogging();
+    }
+    if (ui.ButtonRow("Logs folder", "Open the folder containing session and crash logs", "Open logs folder")) {
+      OpenLogsFolder();
+    }
     ui.Info("Port version", SSF2T_PORT_VERSION);
     ui.Info("Libraries", "ReXGlue SDK " REXGLUE_VERSION_STRING "   \xC2\xB7   TRG Launcher " SSF2T_TRG_VERSION);
     ui.Info("Game", "Xbox Live Arcade, title 584108A4, game version 0.0.1.3");
+    ui.Link(DisplayUrl(kRepositoryUrl).c_str(), kRepositoryUrl);
+  }
+
+  void OpenLogsFolder() {
+    std::error_code ec;
+    std::filesystem::path folder = paths_.logs_dir;
+    std::filesystem::create_directories(folder, ec);
+    if (!std::filesystem::is_directory(folder, ec)) {
+      REXLOG_WARN("Could not create the logs folder: {}", ec.message());
+      folder = folder.parent_path();
+    }
+    trg::OpenInFileManager(Utf8(folder));
   }
 
   LauncherPaths paths_;
@@ -816,7 +948,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   std::vector<GraphicsAdapter> graphics_adapters_;
   std::unique_ptr<rex::ui::ImmediateTexture> header_art_;
   std::unique_ptr<trg::Launcher> launcher_;
-  LauncherGamepad gamepad_;
+  ImGuiGamepad gamepad_;
   bool nav_taken_ = false;
   bool starting_ = false;
   double play_started_ = 0.0;
@@ -836,6 +968,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   std::shared_ptr<InstallOutcome> outcome_;
   trg::Task install_;
   std::unique_ptr<LauncherAchievements> achievements_;
+  std::unique_ptr<trg::update::UpdateController> updater_;
+  bool skip_finish_save_ = false;
 };
 
 }  // namespace
@@ -843,6 +977,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
 void LoadLauncherFonts(ImFontAtlas* atlas, float density) {
   // Latin-1 plus General Punctuation.
   static const ImWchar kRanges[] = {0x0020, 0x00FF, 0x2010, 0x205E, 0};
+  density = ValidDpiScale(density);
+  g_font_density = density;
   ImFontConfig config;
   config.RasterizerDensity = density;
   auto load = [&](const std::filesystem::path& path) -> ImFont* {
@@ -856,6 +992,37 @@ void LoadLauncherFonts(ImFontAtlas* atlas, float density) {
   g_fonts.regular = load(fonts.regular);
   g_fonts.semibold = load(fonts.semibold);
   g_fonts.bold = load(fonts.bold);
+}
+
+void UpdateLauncherFonts(rex::ui::ImGuiDrawer* drawer, rex::ui::ImmediateDrawer* immediate_drawer, float density) {
+  if (!drawer || !immediate_drawer || !g_fonts.regular) {
+    return;
+  }
+  density = ValidDpiScale(density);
+  if (std::abs(density - g_font_density) < 0.001f) {
+    return;
+  }
+
+  ImGuiIO& io = drawer->GetIO();
+  for (ImFont* font : {g_fonts.regular, g_fonts.semibold, g_fonts.bold}) {
+    if (!font) {
+      continue;
+    }
+    const ImWchar fallback = font->FallbackChar;
+    const ImWchar ellipsis = font->EllipsisChar;
+    font->ClearOutputData();
+    font->FallbackChar = fallback;
+    font->EllipsisChar = ellipsis;
+    font->CurrentRasterizerDensity = density;
+    for (ImFontConfig* source : font->Sources) {
+      source->RasterizerDensity = density;
+    }
+  }
+  io.Fonts->TexIsBuilt = false;
+  // The drawer holds the uploaded atlas until the immediate drawer is replaced.
+  drawer->SetImmediateDrawer(nullptr);
+  drawer->SetImmediateDrawer(immediate_drawer);
+  g_font_density = density;
 }
 
 ImFont* LauncherRegularFont() {
@@ -893,12 +1060,13 @@ namespace {
 
 std::pair<int, int> LauncherWindowSize() {
   const MonitorInfo primary = MonitorForSetting(1);
-  if (primary.width == 0 || primary.scale <= 0.0f) {
+  if (primary.width == 0) {
     return kLauncherWindowSize;
   }
-  const int max_width = int(primary.work_width * kLauncherMaxShare / primary.scale);
-  const int max_height = int(primary.work_height * kLauncherMaxShare / primary.scale);
-  return {std::min(kLauncherWindowSize.first, max_width), std::min(kLauncherWindowSize.second, max_height)};
+  const DpiWindowSize size = FitWindowToWorkArea(kLauncherWindowSize.first, kLauncherWindowSize.second,
+                                                 primary.work_width, primary.work_height, primary.scale,
+                                                 kLauncherMaxShare);
+  return {size.width, size.height};
 }
 
 }  // namespace

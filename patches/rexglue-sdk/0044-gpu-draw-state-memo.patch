@@ -1,0 +1,116 @@
+diff --git a/include/rex/graphics/pipeline/render_target/cache.h b/include/rex/graphics/pipeline/render_target/cache.h
+index 3a3b187..008ae45 100644
+--- a/include/rex/graphics/pipeline/render_target/cache.h
++++ b/include/rex/graphics/pipeline/render_target/cache.h
+@@ -792,6 +792,15 @@ class RenderTargetCache {
+   // since standard containers use dynamic allocation for elements, though
+   // changes to this throughout a frame are pretty rare.
+   std::map<uint32_t, OwnershipRange> ownership_ranges_;
++  // Incremented on every change of ownership_ranges_.
++  uint64_t ownership_generation_ = 1;
++  // The ownership claims of the last Update that made them, in EDRAM base order, and
++  // ownership_generation_ right after them.
++  uint64_t ownership_memo_generation_ = 0;
++  uint32_t ownership_memo_count_ = 0;
++  RenderTargetKey ownership_memo_keys_[1 + xenos::kMaxColorRenderTargets];
++  uint32_t ownership_memo_start_tiles_[1 + xenos::kMaxColorRenderTargets];
++  uint32_t ownership_memo_length_tiles_[1 + xenos::kMaxColorRenderTargets];
+ 
+   // Render targets actually used by the draw call with the last successful
+   // update. 0 is depth, color starting from 1, nullptr if not bound.
+diff --git a/src/graphics/pipeline/render_target/cache.cpp b/src/graphics/pipeline/render_target/cache.cpp
+index 5f926d7..7a66b21 100644
+--- a/src/graphics/pipeline/render_target/cache.cpp
++++ b/src/graphics/pipeline/render_target/cache.cpp
+@@ -37,6 +37,11 @@ REXCVAR_DEFINE_BOOL(execute_unclipped_draw_vs_on_cpu_for_psi_render_backend, tru
+ REXCVAR_DEFINE_BOOL(snorm16_render_target_full_range, true, "GPU",
+                     "Use full range for SNORM16 render targets");
+ 
++REXCVAR_DEFINE_BOOL(gpu_draw_state_memo, true, "GPU",
++                    "Skip per-draw render target ownership and transfer work when the state it "
++                    "depends on has not changed since the previous draw")
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
+ REXCVAR_DEFINE_BOOL(direct_host_resolve, true, "GPU",
+                     "Resolve from host render targets directly to shared memory when possible")
+     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+@@ -372,6 +377,7 @@ void RenderTargetCache::InitializeCommon() {
+ }
+ 
+ void RenderTargetCache::DestroyAllRenderTargets(bool shutting_down) {
++  ++ownership_generation_;
+   ownership_ranges_.clear();
+   SetEdramTilesDirty(0, xenos::kEdramTileCount, true);
+   if (!shutting_down) {
+@@ -825,16 +831,44 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
+   // draw with whatever contents currently are in the render target in this
+   // case).
+ 
++  // The claimed extents do not overlap (each ends before the next base), so if the previous update
++  // claimed exactly the same ones and the ownership has not changed since, claiming them again
++  // would change nothing and need no transfers.
++  bool ownership_memo_hit = false;
++  if (!interlock_barrier_only && REXCVAR_GET(gpu_draw_state_memo) &&
++      ownership_memo_generation_ == ownership_generation_ &&
++      ownership_memo_count_ == edram_bases_sorted_count) {
++    ownership_memo_hit = true;
++    for (uint32_t i = 0; i < edram_bases_sorted_count; ++i) {
++      if (ownership_memo_keys_[i] != rt_keys[edram_bases_sorted[i].second] ||
++          ownership_memo_start_tiles_[i] != rt_skipped_tiles[i] ||
++          ownership_memo_length_tiles_[i] != rt_lengths_tiles[i] - rt_skipped_tiles[i]) {
++        ownership_memo_hit = false;
++        break;
++      }
++    }
++  }
+   for (uint32_t i = 0; i < edram_bases_sorted_count; ++i) {
+     const std::pair<uint32_t, uint32_t>& rt_base_index = edram_bases_sorted[i];
+     uint32_t rt_bit_index = rt_base_index.second;
+-    ChangeOwnership(rt_keys[rt_bit_index], rt_skipped_tiles[i],
+-                    rt_lengths_tiles[i] - rt_skipped_tiles[i],
+-                    interlock_barrier_only ? nullptr : &last_update_transfers_[rt_bit_index]);
++    if (!ownership_memo_hit) {
++      ChangeOwnership(rt_keys[rt_bit_index], rt_skipped_tiles[i],
++                      rt_lengths_tiles[i] - rt_skipped_tiles[i],
++                      interlock_barrier_only ? nullptr : &last_update_transfers_[rt_bit_index]);
++    }
+     last_update_used_start_tiles_[rt_bit_index] =
+         (rt_keys[rt_bit_index].base_tiles + rt_skipped_tiles[i]) & (xenos::kEdramTileCount - 1);
+     last_update_used_length_tiles_[rt_bit_index] = rt_lengths_tiles[i] - rt_skipped_tiles[i];
+   }
++  if (!interlock_barrier_only && !ownership_memo_hit) {
++    for (uint32_t i = 0; i < edram_bases_sorted_count; ++i) {
++      ownership_memo_keys_[i] = rt_keys[edram_bases_sorted[i].second];
++      ownership_memo_start_tiles_[i] = rt_skipped_tiles[i];
++      ownership_memo_length_tiles_[i] = rt_lengths_tiles[i] - rt_skipped_tiles[i];
++    }
++    ownership_memo_count_ = edram_bases_sorted_count;
++    ownership_memo_generation_ = ownership_generation_;
++  }
+ 
+   if (interlock_barrier_only) {
+     // No copying transfers or render target bindings - only needed the barrier.
+@@ -1461,6 +1495,7 @@ uint32_t RenderTargetCache::GetDrawOverwrittenRenderTargets(
+ void RenderTargetCache::PixelShaderInterlockFullEdramBarrierPlaced() {
+   assert_true(GetPath() == Path::kPixelShaderInterlock);
+   // Clear ownership - any overlap of data written before the barrier is safe.
++  ++ownership_generation_;
+   OwnershipRange empty_range(xenos::kEdramTileCount, RenderTargetKey(), RenderTargetKey(),
+                              RenderTargetKey());
+   if (ownership_ranges_.size() == 1) {
+@@ -1598,6 +1633,7 @@ void RenderTargetCache::ChangeOwnership(RenderTargetKey dest, uint32_t start_til
+       if (it_pre->second.end_tiles > extent_start &&
+           !it_pre->second.IsOwnedBy(dest, host_depth_encoding_different)) {
+         // Different render target overlapping the range - split the head.
++        ++ownership_generation_;
+         ownership_ranges_.emplace(extent_start, it_pre->second);
+         it_pre->second.end_tiles = extent_start;
+         // Let the next loop do the transfer and needed merging and splitting
+@@ -1677,6 +1713,7 @@ void RenderTargetCache::ChangeOwnership(RenderTargetKey dest, uint32_t start_til
+         }
+       }
+       // Claim the current range.
++      ++ownership_generation_;
+       SetEdramTilesDirty(it->first, it->second.end_tiles - it->first, true);
+       it->second.render_target = dest;
+       if (host_depth_encoding_different) {

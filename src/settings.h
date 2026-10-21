@@ -18,6 +18,7 @@ REXCVAR_DECLARE(bool, ssf2t_show_fps);
 REXCVAR_DECLARE(bool, ssf2t_show_render_resolution);
 REXCVAR_DECLARE(bool, ssf2t_show_frame_counter);
 REXCVAR_DECLARE(bool, ssf2t_msaa_compatibility);
+REXCVAR_DECLARE(bool, detailed_logging);
 REXCVAR_DECLARE(std::string, ssf2t_graphics_adapter);
 REXCVAR_DECLARE(std::string, ssf2t_language);
 REXCVAR_DECLARE(int32_t, ssf2t_launcher_x);
@@ -28,6 +29,9 @@ REXCVAR_DECLARE(bool, ssf2t_launcher_maximized);
 REXCVAR_DECLARE(bool, ssf2t_launcher_fullscreen);
 
 namespace ssf2t {
+
+struct MonitorInfo;
+class GameSettings;
 
 // Allowing tearing is VSync Off. Each platform's presenter has its own setting for it.
 #if defined(_WIN32)
@@ -59,6 +63,21 @@ void ApplyInternalRenderPath();
 // Sets d3d12_adapter from the launcher's Graphics card choice. Call once the player settings are loaded and
 // before the graphics device is created; Automatic leaves the SDK's own preference alone.
 void ApplyGraphicsAdapter();
+
+struct StartupWindowInfo {
+  int selected_width = -1;
+  int selected_height = -1;
+  int configured_width = 0;
+  int configured_height = 0;
+  int output_width = 0;
+  int output_height = 0;
+  bool fullscreen = false;
+  std::string controller;
+};
+
+// Logs the launcher's own selections separately from the effective runtime state, plus a crash-safe summary.
+void LogStartupDiagnostics(const GameSettings& settings, const MonitorInfo& display, int monitor,
+                           const std::filesystem::path& game_dir, const StartupWindowInfo& window);
 
 // The launcher window placement loaded from the player file.
 WindowPlacement SavedLauncherPlacement();

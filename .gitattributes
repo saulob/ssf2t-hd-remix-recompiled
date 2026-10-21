@@ -14,3 +14,5 @@ packaging/licenses/* text eol=lf
 # Linux packaging runs on Linux; line endings must stay LF.
 packaging/linux/* text eol=lf
 patches/appimage-runtime/* text eol=lf
+# The TRG Launcher patches are applied to a build-tree copy; keep them byte-stable across checkouts.
+patches/trg-launcher/* text eol=lf

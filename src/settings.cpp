@@ -1,9 +1,12 @@
 #include "settings.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -16,13 +19,21 @@
 
 #include "trg/settings.h"
 
+#include "aspect_ratio.h"
+#include "crash_report.h"
+#include "diagnostics.h"
+#include "game_files.h"
 #include "graphics_adapters.h"
+#include "input_summary.h"
 #include "internal_render_scale.h"
+#include "keybinds.h"
 #include "language_setting.h"
 #include "multisampling.h"
 #include "presentation_setting.h"
 
 #include "platform.h"
+#include "system_info.h"
+#include "updater/sha256.h"
 
 REXCVAR_DEFINE_BOOL(ssf2t_launcher, true, "SSF2T",
                     "Show the launcher before the game starts (hold Shift at start to force it)");
@@ -54,27 +65,38 @@ REXCVAR_DEFINE_BOOL(ssf2t_launcher_fullscreen, false, "SSF2T",
 namespace ssf2t {
 namespace {
 
-const std::vector<std::string> kGameSettingKeys = {
-    "ssf2t_launcher",
-    "fullscreen",
-    "window_width",
-    "window_height",
-    "monitor",
-    kTearingSetting,
-    "ssf2t_graphics_adapter",
-    "ssf2t_aspect_ratio",
-    kLetterboxSetting,
-    "resolution_scale",
-    "ssf2t_internal_render_scale",
-    "swap_post_effect",
-    "ssf2t_msaa_compatibility",
-    "anisotropic_override",
-    kLanguageSetting,
-    "ssf2t_show_fps",
-    "ssf2t_show_render_resolution",
-    "ssf2t_show_frame_counter",
-    "mnk_mode",
-};
+// Every setting the launcher captures, saves, applies and resets. The keyboard bindings come from
+// the launcher's own table so their names live in one place.
+std::vector<std::string> GameSettingKeys() {
+  std::vector<std::string> keys = {
+      "ssf2t_launcher",
+      "fullscreen",
+      "window_width",
+      "window_height",
+      "monitor",
+      kTearingSetting,
+      "ssf2t_graphics_adapter",
+      "ssf2t_aspect_ratio",
+      kLetterboxSetting,
+      "resolution_scale",
+      "ssf2t_internal_render_scale",
+      "swap_post_effect",
+      "ssf2t_msaa_compatibility",
+      "anisotropic_override",
+      kLanguageSetting,
+      "ssf2t_show_fps",
+      "ssf2t_show_render_resolution",
+      "ssf2t_show_frame_counter",
+      "detailed_logging",
+      "mnk_mode",
+  };
+  for (const KeyboardAction& action : kKeyboardActions) {
+    keys.emplace_back(action.key);
+  }
+  return keys;
+}
+
+const std::vector<std::string> kGameSettingKeys = GameSettingKeys();
 
 const std::vector<std::string> kWindowKeys = {
     "window_width",
@@ -138,6 +160,89 @@ trg::TextFileSettings OpenPlayerFile(const std::filesystem::path& path) {
   return trg::TextFileSettings(Utf8(path));
 }
 
+std::string CvarText(std::string_view name, std::string_view fallback) {
+  const std::string value = rex::cvar::GetFlagByName(name);
+  return value.empty() ? std::string(fallback) : value;
+}
+
+std::string OnOff(bool value) {
+  return value ? "On" : "Off";
+}
+
+std::string ChoiceLabel(std::initializer_list<std::pair<std::string_view, std::string_view>> choices,
+                        std::string_view value, std::string_view fallback) {
+  for (const auto& [key, label] : choices) {
+    if (key == value) {
+      return std::string(label);
+    }
+  }
+  return std::string(fallback);
+}
+
+std::string SelectedGraphicsCardLabel(const GameSettings& settings) {
+  const std::string setting = settings.Get("ssf2t_graphics_adapter", kGraphicsAdapterAuto);
+  const std::optional<int> index = ParseGraphicsAdapter(setting);
+  if (!index) {
+    return "Automatic";
+  }
+  const std::vector<GraphicsAdapter> adapters = ListGraphicsAdapters();
+  for (const GraphicsAdapter& adapter : adapters) {
+    if (adapter.index != *index) {
+      continue;
+    }
+    const auto same_name = std::count_if(adapters.begin(), adapters.end(), [&](const GraphicsAdapter& other) {
+      return other.name == adapter.name;
+    });
+    return same_name > 1 ? adapter.name + " (" + std::to_string(adapter.index) + ")" : adapter.name;
+  }
+  return "Graphics card " + setting + " (not found)";
+}
+
+std::string TextureFilteringName(std::string_view value) {
+  if (value == "-1") {
+    return "Game";
+  }
+  if (value == "0") {
+    return "Off";
+  }
+  if (value == "2") {
+    return "2x";
+  }
+  if (value == "3") {
+    return "4x";
+  }
+  if (value == "4") {
+    return "8x";
+  }
+  if (value == "5") {
+    return "16x";
+  }
+  return std::string(value);
+}
+
+std::string InternalRenderLabel(int percent) {
+  switch (NormalizeInternalRenderScale(percent)) {
+    case kInternalRenderScalePerformance:
+      return "75% Performance";
+    case kInternalRenderScaleLowEnd:
+      return "50% Low-end";
+    default:
+      return "100% Native";
+  }
+}
+
+std::string GameStateName(GameFiles state) {
+  switch (state) {
+    case GameFiles::kReady:
+      return "verified";
+    case GameFiles::kUnsupported:
+      return "unsupported version";
+    case GameFiles::kMissing:
+      return "missing";
+  }
+  return "unknown";
+}
+
 }  // namespace
 
 void LoadPlayerSettings(const std::filesystem::path& path) {
@@ -146,7 +251,7 @@ void LoadPlayerSettings(const std::filesystem::path& path) {
     return;
   }
   rex::cvar::LoadConfig(path);
-  REXLOG_INFO("Player settings: {}", Utf8(path));
+  REXLOG_INFO("Player settings: {}", Utf8(path.filename()));
 }
 
 WindowPlacement SavedLauncherPlacement() {
@@ -221,7 +326,7 @@ bool GameSettings::Save() {
     file.Set(key, TomlValue(key, value));
   }
   if (!file.Save()) {
-    REXLOG_ERROR("Cannot write player settings to {}", Utf8(player_file_));
+    REXLOG_ERROR("Cannot write player settings to {}", Utf8(player_file_.filename()));
     return false;
   }
   saved_ = pending_;
@@ -234,7 +339,7 @@ bool GameSettings::SaveNow(const SettingValues& values) {
     file.Set(key, value);
   }
   if (!file.Save()) {
-    REXLOG_ERROR("Cannot write player settings to {}", Utf8(player_file_));
+    REXLOG_ERROR("Cannot write player settings to {}", Utf8(player_file_.filename()));
     return false;
   }
   return true;
@@ -245,7 +350,7 @@ void GameSettings::ResetToDefaults() {
   try {
     shipped = toml::parse_file(Utf8(shipped_config_));
   } catch (const toml::parse_error& e) {
-    REXLOG_WARN("Cannot read {}: {}", Utf8(shipped_config_), e.what());
+    REXLOG_WARN("Cannot read {}: {}", Utf8(shipped_config_.filename()), e.what());
   }
   for (const std::string& key : kGameSettingKeys) {
     const rex::cvar::FlagEntry* info = rex::cvar::GetFlagInfo(key);
@@ -327,6 +432,129 @@ bool GameSettings::WindowChanged() const {
     }
   }
   return false;
+}
+
+void LogStartupDiagnostics(const GameSettings& settings, const MonitorInfo& display, int monitor,
+                           const std::filesystem::path& game_dir, const StartupWindowInfo& window) {
+  const AspectRatio aspect = ParseAspectRatio(settings.Get("ssf2t_aspect_ratio", "16:9"));
+  const int scale = std::max(1, std::atoi(rex::cvar::GetFlagByName("resolution_scale").c_str()));
+  const int percent = NormalizeInternalRenderScale(
+      std::atoi(rex::cvar::GetFlagByName("ssf2t_internal_render_scale").c_str()));
+  const InternalRenderSplit split = SplitInternalRenderScale(scale, percent);
+  const std::string selected_card = SelectedGraphicsCardLabel(settings);
+  const bool selected_fullscreen = settings.GetBool("fullscreen", false);
+  const bool selected_tearing = settings.GetBool(kTearingSetting, true);
+  const bool runtime_tearing = CvarText(kTearingSetting, "true") == "true";
+
+  StartupDiagnostics diagnostics;
+  diagnostics.launcher_display.mode = selected_fullscreen ? "Borderless Fullscreen" : "Windowed";
+  const int selected_width = window.selected_width >= 0 ? window.selected_width : window.configured_width;
+  const int selected_height = window.selected_height >= 0 ? window.selected_height : window.configured_height;
+  diagnostics.launcher_display.window_size =
+      selected_width > 0 && selected_height > 0
+          ? std::to_string(selected_width) + "x" + std::to_string(selected_height)
+          : "Default";
+  diagnostics.launcher_display.monitor =
+      monitor > 0 ? "Display " + std::to_string(monitor) : "Default (primary)";
+  diagnostics.launcher_display.aspect_ratio = InfoFor(aspect).label;
+  diagnostics.launcher_display.presentation = settings.GetBool(kLetterboxSetting, true) ? "Letterbox" : "Stretch";
+  diagnostics.launcher_display.vsync = selected_tearing ? "Off" : "On";
+
+  diagnostics.launcher_gameplay.language = LanguageFor(settings.Get(kLanguageSetting, kDefaultLanguage)).label;
+  diagnostics.launcher_gameplay.frame_rate_in_title = OnOff(settings.GetBool("ssf2t_show_fps", true));
+  diagnostics.launcher_gameplay.render_resolution_in_title =
+      OnOff(settings.GetBool("ssf2t_show_render_resolution", false));
+  diagnostics.launcher_gameplay.frame_counter =
+      settings.GetBool("ssf2t_show_frame_counter", false) ? "Shown" : "Hidden";
+
+  diagnostics.launcher_graphics.graphics_card = selected_card;
+  diagnostics.launcher_graphics.render_resolution =
+      (scale == 1 ? std::string("Original") : std::to_string(scale) + "x") + " (" +
+      std::to_string(GuestWidth(aspect) * scale) + "x" + std::to_string(kGuestHeight * scale) + ")";
+  diagnostics.launcher_graphics.internal_render_resolution =
+      InternalRenderLabel(std::atoi(rex::cvar::GetFlagByName("ssf2t_internal_render_scale").c_str()));
+  diagnostics.launcher_graphics.anti_aliasing =
+      ChoiceLabel({{"none", "Off"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA Extreme"}},
+                  settings.Get("swap_post_effect", "none"), "Off");
+  diagnostics.launcher_graphics.multisampling =
+      settings.GetBool("ssf2t_msaa_compatibility", false) ? "4x MSAA (Compatibility)" : "2x MSAA";
+  diagnostics.launcher_graphics.texture_filtering =
+      TextureFilteringName(settings.Get("anisotropic_override", "3"));
+
+  diagnostics.system.os = OsDescription();
+  diagnostics.system.cpu = CpuDescription();
+  diagnostics.system.logical_processors = LogicalProcessorCount();
+
+  diagnostics.gpu.selected = selected_card;
+  const GraphicsAdapterDetails adapter =
+      EffectiveGraphicsAdapter(std::atoi(CvarText("d3d12_adapter", "-1").c_str()));
+  diagnostics.gpu.resolved = adapter.name;
+  diagnostics.gpu.adapter = adapter.index;
+  diagnostics.gpu.vendor_id = adapter.vendor_id;
+  diagnostics.gpu.device_id = adapter.device_id;
+  diagnostics.gpu.resolved_known = adapter.known;
+
+  diagnostics.display.monitor = monitor;
+  diagnostics.display.width = display.width;
+  diagnostics.display.height = display.height;
+  diagnostics.display.refresh_hz = display.refresh_hz;
+  diagnostics.display.scale_percent = int(std::lround(display.scale * 100.0f));
+  diagnostics.display.fullscreen = window.fullscreen;
+  diagnostics.display.configured_width = window.configured_width;
+  diagnostics.display.configured_height = window.configured_height;
+  diagnostics.display.output_width = window.output_width;
+  diagnostics.display.output_height = window.output_height;
+  diagnostics.display.aspect = InfoFor(aspect).key;
+
+  const GameCheck game = CheckGameFiles(game_dir);
+  diagnostics.game.title_id = kTitleId;
+  diagnostics.game.executable = "default.xex";
+  std::error_code size_ec;
+  const std::uintmax_t file_size = std::filesystem::file_size(game_dir / "default.xex", size_ec);
+  diagnostics.game.size = size_ec ? 0 : file_size;
+  if (game.xex_crc32 != 0) {
+    char crc[16];
+    std::snprintf(crc, sizeof(crc), "crc32:%08X", game.xex_crc32);
+    diagnostics.game.fingerprint = crc;
+  }
+  diagnostics.game.status = GameStateName(game.state);
+  std::string hash_error;
+  if (game.state == GameFiles::kReady) {
+    diagnostics.game.sha256 = trg::update::Sha256FileHex(game_dir / "default.xex", hash_error);
+  }
+
+  diagnostics.gameplay.simulation = "60Hz";
+  diagnostics.gameplay.present = PresentationText(runtime_tearing);
+
+  diagnostics.graphics.render_percent = percent;
+  diagnostics.graphics.render_width = InternalRenderWidth(scale, percent, GuestWidth(aspect));
+  diagnostics.graphics.render_height = InternalRenderHeight(scale, percent);
+  diagnostics.graphics.guest_width = GuestWidth(aspect);
+  diagnostics.graphics.guest_height = kGuestHeight;
+  diagnostics.graphics.host_quarters = split.host_quarters;
+  diagnostics.graphics.resolve_scale = split.resolve_scale;
+  diagnostics.graphics.msaa = settings.GetBool("ssf2t_msaa_compatibility", false) ? "4x compatibility" : "2x native";
+  diagnostics.graphics.anti_aliasing = diagnostics.launcher_graphics.anti_aliasing;
+  diagnostics.graphics.texture_filtering = diagnostics.launcher_graphics.texture_filtering;
+  diagnostics.graphics.render_target_path = CvarText("render_target_path_d3d12", "default");
+
+  diagnostics.input.keyboard_mode = settings.GetBool("mnk_mode", true) ? "On" : "Off";
+  diagnostics.input.controller = window.controller;
+
+  for (const std::string& line : FormatStartupDiagnostics(diagnostics)) {
+    REXLOG_INFO("{}", line);
+  }
+  SetCrashRuntimeState(diagnostics.gpu.resolved_known ? diagnostics.gpu.resolved.c_str() : "unknown",
+                       (std::to_string(display.width) + "x" + std::to_string(display.height) + " | window=" +
+                        std::to_string(window.configured_width) + "x" + std::to_string(window.configured_height) +
+                        " | output=" + std::to_string(window.output_width) + "x" +
+                        std::to_string(window.output_height))
+                           .c_str(),
+                       diagnostics.gameplay.present.c_str(),
+                       ("render=" + std::to_string(percent) + "% " + std::to_string(diagnostics.graphics.render_width) +
+                        "x" + std::to_string(diagnostics.graphics.render_height) + " | msaa=" +
+                        diagnostics.graphics.msaa)
+                           .c_str());
 }
 
 }  // namespace ssf2t

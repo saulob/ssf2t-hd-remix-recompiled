@@ -271,7 +271,7 @@ void TestWindowCloseHardExits() {
   const size_t start = app.find("void OnClosing(");
   CHECK(start != std::string::npos);
   const std::string body = app.substr(start, app.find("\n  }\n", start) - start);
-  CHECK(Has(body, "rex::FlushLogging();"));
+  CHECK(Has(body, "PrepareHardExit();"));
   CHECK(Has(body, "std::_Exit(0);"));
   CHECK(!Has(body, "TerminateTitle"));
   CHECK(!Has(body, "OnShutdown"));
