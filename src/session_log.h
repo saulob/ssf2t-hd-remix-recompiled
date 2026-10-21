@@ -14,6 +14,11 @@ void InstallSessionLogCleanup();
 // already contains a CRASH REPORT. Call only on the normal exit through atexit, when no thread can still log.
 void FinalizeSessionLog();
 
+// The same policy for the window close, where guest threads still log: logging stays up, and on Windows, where the
+// open log cannot be deleted, the next start removes it.
+void DiscardSessionLogBeforeHardExit();
+void RemoveDiscardedSessionLogs();
+
 // Flushes before a hard exit. Loggers stay alive: a thread still running may log until the process ends.
 void PrepareHardExit();
 

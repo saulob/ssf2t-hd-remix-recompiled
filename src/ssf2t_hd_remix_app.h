@@ -97,6 +97,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
     LoadPlayerSettings(PlayerSettingsPath(user_data_root()));
     ApplyDetailedLogging();
     InstallSessionLogCleanup();
+    RemoveDiscardedSessionLogs();
     const ApplicationIdentity identity{
         .product = "Super Street Fighter II Turbo HD Remix",
         .version = SSF2T_PORT_VERSION,
@@ -253,6 +254,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
   // Window close ends the process without teardown: the guest main thread may be inside D3D code that never waits.
   void OnClosing(rex::ui::UIEvent&) override {
     REXLOG_INFO("Window closing, hard-exiting process.");
+    DiscardSessionLogBeforeHardExit();
     PrepareHardExit();
     std::_Exit(0);
   }

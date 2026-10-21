@@ -107,6 +107,7 @@ void TestSessionLogFinalizationWiring() {
 
   const std::string closing =
       Between(app, "void OnClosing(", "std::unique_ptr<rex::ui::ImGuiDialog> CreateAchievementsOverlay");
+  CHECK(Has(closing, "DiscardSessionLogBeforeHardExit();"));
   CHECK(Has(closing, "PrepareHardExit();"));
   CHECK(Has(closing, "std::_Exit(0);"));
   CHECK(!Has(closing, "FinalizeSessionLog"));
