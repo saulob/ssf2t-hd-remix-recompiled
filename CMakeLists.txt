@@ -327,7 +327,7 @@ add_dependencies(ssf2t_runtime_tests ssf2t_achievement_metadata_tests)
 # Runtime patch tests: the patched logic modeled in isolation, and the patch text checked for the changes it must make.
 find_package(Threads REQUIRED)
 foreach(_test guest_clock d3d12_transfer_short_circuit d3d12_sampler_memo shared_memory_fast_path
-        gpu_draw_state_memo d3d12_async_submission)
+        gpu_draw_state_memo d3d12_async_submission gpu_register_wake)
     set(_name ssf2t_${_test}_tests)
     add_executable(${_name} EXCLUDE_FROM_ALL tests/${_test}_tests.cpp)
     target_include_directories(${_name} PRIVATE src)

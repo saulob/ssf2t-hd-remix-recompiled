@@ -1796,9 +1796,9 @@ Crackdown ReXGlue patches
 Source: https://github.com/Unowa001/crackdown-recomp (patches/sdk)
 License: BSD 3-Clause
 Used in: the rexruntime.dll and rexgpu-xenos.dll patches in patches/rexglue-sdk
-that are adapted from that project (0041 to 0045: D3D12 transfer short-circuit,
-sampler memoization, shared-memory and draw-state fast paths, and asynchronous
-command submission), and in the Linux libraries for the common ones.
+that are adapted from that project (0041 to 0045, 0050 and 0052: D3D12 transfer short-circuit,
+sampler memoization, shared-memory and draw-state fast paths, asynchronous
+command submission, bulk register writes and host thread affinity), and in the Linux libraries for the common ones.
 
 Copyright (c) 2026, Jerrod (Unowa001)
 All rights reserved.

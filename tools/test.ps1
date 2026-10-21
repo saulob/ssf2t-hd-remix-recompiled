@@ -109,6 +109,7 @@ Invoke-Step 'D3D12 sampler memo' { & (Join-Path $BuildDir 'ssf2t_d3d12_sampler_m
 Invoke-Step 'shared memory fast path' { & (Join-Path $BuildDir 'ssf2t_shared_memory_fast_path_tests.exe') }
 Invoke-Step 'GPU draw state memo' { & (Join-Path $BuildDir 'ssf2t_gpu_draw_state_memo_tests.exe') }
 Invoke-Step 'D3D12 async submission' { & (Join-Path $BuildDir 'ssf2t_d3d12_async_submission_tests.exe') }
+Invoke-Step 'GPU register wake' { & (Join-Path $BuildDir 'ssf2t_gpu_register_wake_tests.exe') }
 Invoke-Step 'log path' { & (Join-Path $BuildDir 'ssf2t_log_path_tests.exe') }
 Invoke-Step 'diagnostics' { & (Join-Path $BuildDir 'ssf2t_diagnostics_tests.exe') }
 Invoke-Step 'crash report' { & (Join-Path $BuildDir 'ssf2t_crash_report_tests.exe') }
