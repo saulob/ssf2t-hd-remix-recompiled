@@ -4,8 +4,10 @@
 license_mask = 1
 gpu_plugin = "xenos"
 
-# Keyboard emulates the Xbox 360 pad next to a connected controller, with ReXGlue's default bindings.
+# Keyboard emulates an Xbox 360 pad, with ReXGlue's default bindings.
 mnk_mode = true
+# The keyboard keeps player 1 and controllers start at player 2, so the keyboard and a pad can play Local Match together.
+input_keyboard_own_user = true
 # Empty skips the optional gamecontrollerdb.txt load; SDL's built-in mappings still apply.
 hid_mappings_file = ""
 

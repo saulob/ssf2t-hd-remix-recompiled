@@ -376,6 +376,16 @@ void TestHotkeySeparation() {
   }
 }
 
+void TestLocalPlayerSlots() {
+  std::printf("keyboard and controllers take separate local players\n");
+  CHECK(Has(ReadSource("../config/ssf2t_hd_remix.toml"), "input_keyboard_own_user = true"));
+  const std::string patch = ReadSource("../patches/rexglue-sdk/0053-local-player-slots-and-guest-signin.patch");
+  CHECK(Has(patch, "REXCVAR_DEFINE_BOOL(input_keyboard_own_user, false"));
+  CHECK(Has(patch, "bool IsGuestUser(uint32_t user_index)"));
+  CHECK(Has(patch, "bool InputSystem::IsUserConnected(uint32_t user_index)"));
+  CHECK(!Has(patch, "DEBUG_SAULO"));
+}
+
 }  // namespace
 
 int main() {
@@ -392,6 +402,7 @@ int main() {
   TestSources();
   TestKeyboardToggle();
   TestHotkeySeparation();
+  TestLocalPlayerSlots();
   std::printf("%d checks, %d failures\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;
 }
