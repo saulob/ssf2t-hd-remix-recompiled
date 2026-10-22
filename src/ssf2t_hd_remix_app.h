@@ -26,6 +26,8 @@
 #include "frame_counter.h"
 #include "game_files.h"
 #include "guest_functions.h"
+#include "infinite_time.h"
+#include "infinite_time_ui.h"
 #include "input_summary.h"
 #include "internal_render_scale.h"
 #include "launcher.h"
@@ -149,6 +151,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
       ApplyInternalRenderPath();
       ApplyLanguage();
       ApplyFightArea();
+      ApplyInfiniteTime();
       return defaults;
     }
     if (!imgui_drawer()) {
@@ -211,6 +214,13 @@ class SuperStreetFighterApp : public rex::ReXApp {
     startup_window.output_height = drawable.height;
     startup_window.controller = ControllerSummary();
     LogStartupDiagnostics(game_settings_, MonitorForSetting(monitor), monitor, game_data_root(), startup_window);
+    SetInfiniteTimeXexSupported(InfiniteTimeXexSupported(game_data_root()));
+    if (window()) {
+      AttachInfiniteTimeKey(window(), [this] {
+        ShowInfiniteTimeNotice(ToggleInfiniteTime(game_settings_), kInfiniteTimeToggleNoticeSeconds);
+      });
+    }
+    QueueStartupInfiniteTimeNotice(REXCVAR_GET(ssf2t_infinite_time));
     ReXApp::LaunchModule();
   }
 
@@ -231,6 +241,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
     }
     if (window() && imgui_drawer()) {
       CreateFrameCounter(imgui_drawer());
+      CreateInfiniteTimeNotice(imgui_drawer());
       CreateCursorSync(imgui_drawer());
       ModalDialog::AttachEscapeKey(window());
       // Replaces ReXApp's own callback, which would let the controller through while the overlay is open.
@@ -247,6 +258,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
       input->Shutdown();
     }
     ModalDialog::DetachEscapeKey();
+    DetachInfiniteTimeKey();
     delete achievements_;
     DetachWindowHost();
     REXLOG_INFO("{}", FormatCleanExit(ProcessUptimeText()));

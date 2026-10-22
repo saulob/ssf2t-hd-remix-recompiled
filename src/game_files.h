@@ -14,6 +14,7 @@ inline constexpr uint32_t kGameContentType = 0x000D0000;
 // The default.xex the code was recompiled from (XBLA game version 0.0.1.3, see tools/codegen.ps1).
 inline constexpr uint64_t kXexSize = 3932160;
 inline constexpr uint32_t kXexCrc32 = 0xB734F075;
+inline constexpr char kXexSha256[] = "6e1c2f9ed7d1102a311a5f5626563527eda5f85b2fbe8db8405b866ded3f31ee";
 inline constexpr char kAssetArchive[] = "flog_x360.fpg";
 inline constexpr uint64_t kAssetArchiveSize = 378257408;
 

@@ -34,6 +34,7 @@
 #include "game_files.h"
 #include "graphics_adapters.h"
 #include "imgui_gamepad.h"
+#include "infinite_time.h"
 #include "internal_render_scale.h"
 #include "keybinds.h"
 #include "language_setting.h"
@@ -819,6 +820,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
               "ssf2t_show_render_resolution", false, "Off", "On");
     ui.Toggle("Frame counter", "Shows the game's frame rate in the corner. F2 toggles it while playing.",
               "ssf2t_show_frame_counter", false, "Hidden", "Shown");
+    ui.Toggle(kInfiniteTimeLabel, kInfiniteTimeHelp, kInfiniteTimeSetting, kDefaultInfiniteTime, "Off", "On");
   }
 
   void PageAchievements(trg::Ui& ui) {

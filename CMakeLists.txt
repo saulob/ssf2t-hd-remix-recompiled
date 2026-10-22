@@ -125,6 +125,8 @@ set(SSF2T_SOURCES
     src/graphics_adapters.cpp
     src/imgui_gamepad.cpp
     src/guest_functions.cpp
+    src/infinite_time.cpp
+    src/infinite_time_ui.cpp
     src/input_summary.cpp
     src/menu_text_hook.cpp
     src/launcher.cpp
@@ -305,6 +307,14 @@ add_executable(ssf2t_fight_area_tests EXCLUDE_FROM_ALL tests/fight_area_tests.cp
 target_include_directories(ssf2t_fight_area_tests PRIVATE src)
 target_compile_definitions(ssf2t_fight_area_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_dependencies(ssf2t_runtime_tests ssf2t_fight_area_tests)
+
+# Infinite Time: the setting, the F10 toggle, the notice and the timer hook decision. Headless.
+add_executable(ssf2t_infinite_time_tests EXCLUDE_FROM_ALL tests/infinite_time_tests.cpp
+    src/updater/sha256.cpp src/updater/update_paths.cpp)
+target_include_directories(ssf2t_infinite_time_tests PRIVATE src)
+target_link_libraries(ssf2t_infinite_time_tests PRIVATE trg::launcher)
+target_compile_definitions(ssf2t_infinite_time_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_infinite_time_tests)
 
 add_executable(ssf2t_achievement_tests EXCLUDE_FROM_ALL tests/achievement_tests.cpp)
 target_include_directories(ssf2t_achievement_tests PRIVATE src "${SSF2T_SDK_DIR}/include")

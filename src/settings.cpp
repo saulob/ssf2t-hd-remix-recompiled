@@ -25,6 +25,7 @@
 #include "fight_area.h"
 #include "game_files.h"
 #include "graphics_adapters.h"
+#include "infinite_time.h"
 #include "input_summary.h"
 #include "internal_render_scale.h"
 #include "keybinds.h"
@@ -64,6 +65,8 @@ REXCVAR_DEFINE_INT32(ssf2t_launcher_height, 0, "SSF2T",
 REXCVAR_DEFINE_BOOL(ssf2t_launcher_maximized, false, "SSF2T", "Launcher window was maximized when closed");
 REXCVAR_DEFINE_BOOL(ssf2t_launcher_fullscreen, false, "SSF2T",
                     "Launcher was left in its own F11 fullscreen, written by the launcher");
+REXCVAR_DEFINE_BOOL(ssf2t_infinite_time, false, "SSF2T",
+                    "Prevents the fight timer from decreasing (F10 toggles it)");
 
 namespace ssf2t {
 namespace {
@@ -82,6 +85,7 @@ std::vector<std::string> GameSettingKeys() {
       "ssf2t_aspect_ratio",
       kLetterboxSetting,
       kFightAreaSetting,
+      kInfiniteTimeSetting,
       "resolution_scale",
       "ssf2t_internal_render_scale",
       "swap_post_effect",
@@ -374,6 +378,7 @@ void GameSettings::Apply() const {
   ApplyMultisampling();
   ApplyLanguage();
   ApplyFightArea();
+  ApplyInfiniteTime();
 }
 
 void ApplyLanguage() {
@@ -384,6 +389,19 @@ void ApplyLanguage() {
 
 void ApplyFightArea() {
   SetFightAreaFill(FightAreaFills(REXCVAR_GET(ssf2t_fight_area)));
+}
+
+void ApplyInfiniteTime() {
+  SetInfiniteTimeEnabled(REXCVAR_GET(ssf2t_infinite_time));
+}
+
+bool ToggleInfiniteTime(GameSettings& settings) {
+  const bool enabled = ToggledInfiniteTime(REXCVAR_GET(ssf2t_infinite_time));
+  const std::string value = enabled ? "true" : "false";
+  rex::cvar::SetFlagByName(kInfiniteTimeSetting, value);
+  ApplyInfiniteTime();
+  settings.SaveNow({{kInfiniteTimeSetting, value}});
+  return enabled;
 }
 
 // Also replaces a native_2x_msaa = false written by launchers that labelled it Off.

@@ -27,6 +27,7 @@ REXCVAR_DECLARE(int32_t, ssf2t_launcher_width);
 REXCVAR_DECLARE(int32_t, ssf2t_launcher_height);
 REXCVAR_DECLARE(bool, ssf2t_launcher_maximized);
 REXCVAR_DECLARE(bool, ssf2t_launcher_fullscreen);
+REXCVAR_DECLARE(bool, ssf2t_infinite_time);
 
 namespace ssf2t {
 
@@ -58,6 +59,9 @@ void ApplyLanguage();
 
 // Sets the guest hook for ssf2t_fight_area. Call with ApplyLanguage.
 void ApplyFightArea();
+
+// Sets the guest timer hook from ssf2t_infinite_time. Call with ApplyFightArea.
+void ApplyInfiniteTime();
 
 // Windows: makes the D3D12 render target path the host one when Internal render resolution is below 100%. Call
 // once the launcher choices are applied and before the command processor is created.
@@ -124,5 +128,8 @@ class GameSettings final : public trg::SettingsStore {
   std::map<std::string, std::string> window_created_;
   std::set<std::string> unregistered_;
 };
+
+// Flips ssf2t_infinite_time, applies it and saves it to the player file, where the launcher reads it.
+bool ToggleInfiniteTime(GameSettings& settings);
 
 }  // namespace ssf2t
