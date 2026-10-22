@@ -1,0 +1,310 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e8ac308..1a66e86 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -60,6 +60,7 @@ add_library(trg_launcher STATIC
+   src/headers.cpp
+   src/settings.cpp
+   src/platform.cpp
++  src/file_dialog.cpp
+   src/xbox360.cpp
+   src/download.cpp
+   src/shader_pack.cpp
+diff --git a/include/trg/file_dialog.h b/include/trg/file_dialog.h
+new file mode 100644
+index 0000000..a3b5dac
+--- /dev/null
++++ b/include/trg/file_dialog.h
+@@ -0,0 +1,32 @@
++// Backend-independent pieces of the Linux file dialogs: portal option and
++// reply handling, and the portal -> zenity -> kdialog fallback order.
++#pragma once
++
++#include <functional>
++#include <string>
++#include <vector>
++
++#include "trg/platform.h"
++
++namespace trg::dialog {
++
++enum class Outcome { kSelected, kCancelled, kUnavailable };
++
++struct Result {
++  Outcome outcome = Outcome::kUnavailable;
++  std::string path;
++};
++
++// "file:///a%20b" -> "/a b". Empty for other schemes, remote hosts or bad escapes.
++std::string PathFromFileUri(const std::string& uri);
++
++// GVariant text for the portal's OpenFile/options dictionary.
++std::string PortalOptions(const std::string& handle_token, const std::vector<FileFilter>& filters, bool folder);
++
++// Reads the Request.Response line printed by `gdbus monitor`.
++Result ParsePortalResponse(const std::string& line);
++
++// Tries each backend in order until one is available.
++Result RunBackends(const std::vector<std::function<Result()>>& backends);
++
++}  // namespace trg::dialog
+diff --git a/include/trg/platform.h b/include/trg/platform.h
+index c692e3c..9c2b2f3 100644
+--- a/include/trg/platform.h
++++ b/include/trg/platform.h
+@@ -26,12 +26,16 @@ struct FileFilter {
+   std::string patterns;  // "*.iso;*.gcm;*.ciso"
+ };
+ 
+-// The desktop's "open file" dialog: Windows' own, zenity or kdialog on Linux,
+-// AppleScript on macOS. Empty when cancelled or unavailable. An "All files"
+-// filter is always added at the end.
++// The desktop's "open file" dialog: Windows' own, the XDG desktop portal then
++// zenity then kdialog on Linux, AppleScript on macOS. Empty when cancelled or
++// unavailable. An "All files" filter is always added at the end.
+ std::string BrowseForFile(const std::string& title, const std::vector<FileFilter>& filters = {});
+ std::string BrowseForFolder(const std::string& title);
+ 
++// True when the last BrowseForFile/BrowseForFolder found no dialog to open, as
++// opposed to the player cancelling it.
++bool FileDialogUnavailable();
++
+ // Shows a folder (or the folder holding a file, with it selected) in Explorer,
+ // Finder or the Linux file manager.
+ void OpenInFileManager(const std::string& utf8_path);
+diff --git a/src/file_dialog.cpp b/src/file_dialog.cpp
+new file mode 100644
+index 0000000..048aa26
+--- /dev/null
++++ b/src/file_dialog.cpp
+@@ -0,0 +1,108 @@
++#include "trg/file_dialog.h"
++
++#include <cstdlib>
++
++namespace trg::dialog {
++namespace {
++
++int HexValue(char c) {
++  if (c >= '0' && c <= '9') return c - '0';
++  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
++  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
++  return -1;
++}
++
++std::string VariantString(const std::string& s) {
++  std::string q = "'";
++  for (char c : s) {
++    if (c == '\'' || c == '\\') q += '\\';
++    q += c;
++  }
++  return q + "'";
++}
++
++std::vector<std::string> SplitPatterns(const std::string& patterns) {
++  std::vector<std::string> out;
++  std::string cur;
++  for (char c : patterns) {
++    if (c == ';' || c == ' ') {
++      if (!cur.empty()) out.push_back(cur);
++      cur.clear();
++    } else {
++      cur += c;
++    }
++  }
++  if (!cur.empty()) out.push_back(cur);
++  return out;
++}
++
++std::string FilterVariant(const std::string& name, const std::vector<std::string>& patterns) {
++  std::string v = "(" + VariantString(name) + ", [";
++  for (size_t i = 0; i < patterns.size(); ++i) v += (i ? ", (0, " : "(0, ") + VariantString(patterns[i]) + ")";
++  return v + "])";
++}
++
++}  // namespace
++
++std::string PathFromFileUri(const std::string& uri) {
++  static const std::string kScheme = "file://";
++  if (uri.compare(0, kScheme.size(), kScheme) != 0) return {};
++  size_t i = kScheme.size();
++  if (uri.compare(i, 10, "localhost/") == 0) i += 9;
++  if (i >= uri.size() || uri[i] != '/') return {};
++  std::string path;
++  for (; i < uri.size(); ++i) {
++    if (uri[i] != '%') {
++      path += uri[i];
++      continue;
++    }
++    const int hi = i + 2 < uri.size() ? HexValue(uri[i + 1]) : -1;
++    const int lo = hi >= 0 ? HexValue(uri[i + 2]) : -1;
++    if (lo < 0 || (hi == 0 && lo == 0)) return {};
++    path += char(hi * 16 + lo);
++    i += 2;
++  }
++  return path;
++}
++
++std::string PortalOptions(const std::string& handle_token, const std::vector<FileFilter>& filters, bool folder) {
++  std::string opts = "{'handle_token': <" + VariantString(handle_token) + ">, 'modal': <true>";
++  if (folder) {
++    opts += ", 'directory': <true>";
++  } else {
++    opts += ", 'filters': <[";
++    for (const FileFilter& f : filters) {
++      const auto patterns = SplitPatterns(f.patterns);
++      if (!patterns.empty()) opts += FilterVariant(f.name, patterns) + ", ";
++    }
++    opts += FilterVariant("All files", {"*"}) + "]>";
++  }
++  return opts + "}";
++}
++
++Result ParsePortalResponse(const std::string& line) {
++  static const std::string kMarker = "(uint32 ";
++  const size_t at = line.find(kMarker);
++  if (at == std::string::npos) return {};
++  const size_t code_at = at + kMarker.size();
++  const int code = std::atoi(line.c_str() + code_at);
++  if (code == 1) return {Outcome::kCancelled, {}};
++  if (code != 0) return {};
++
++  const size_t key = line.find("'uris'", code_at);
++  const size_t open = key == std::string::npos ? key : line.find('\'', key + 6);
++  const size_t close = open == std::string::npos ? open : line.find('\'', open + 1);
++  if (close == std::string::npos) return {};
++  const std::string path = PathFromFileUri(line.substr(open + 1, close - open - 1));
++  return path.empty() ? Result{} : Result{Outcome::kSelected, path};
++}
++
++Result RunBackends(const std::vector<std::function<Result()>>& backends) {
++  for (const auto& run : backends) {
++    const Result r = run();
++    if (r.outcome != Outcome::kUnavailable) return r;
++  }
++  return {};
++}
++
++}  // namespace trg::dialog
+diff --git a/src/platform.cpp b/src/platform.cpp
+index a42c0e7..768fbca 100644
+--- a/src/platform.cpp
++++ b/src/platform.cpp
+@@ -1,10 +1,13 @@
+ #include "trg/platform.h"
+ 
++#include <atomic>
+ #include <cstdlib>
+ #include <cstring>
+ #include <filesystem>
+ #include <vector>
+ 
++#include "trg/file_dialog.h"
++
+ #if defined(_WIN32)
+ #ifndef WIN32_LEAN_AND_MEAN
+ #define WIN32_LEAN_AND_MEAN
+@@ -18,6 +21,7 @@
+ #include <shlobj.h>
+ #else
+ #include <climits>
++#include <sys/wait.h>
+ #include <unistd.h>
+ #endif
+ 
+@@ -61,6 +65,56 @@ std::string RunDialog(const std::string& cmd, bool& ran) {
+   ran = rc == 0 || rc == 256;  // 1 = cancelled; 127 = not installed
+   return got && rc == 0 ? s : std::string();
+ }
++
++dialog::Result CommandDialog(const std::string& cmd) {
++  bool ran = false;
++  const std::string s = RunDialog(cmd, ran);
++  if (!ran) return {};
++  return {s.empty() ? dialog::Outcome::kCancelled : dialog::Outcome::kSelected, s};
++}
++#endif
++
++std::atomic<bool> g_dialog_unavailable{false};
++
++#if !defined(_WIN32) && !defined(__APPLE__)
++// Exit 10: gdbus or stdbuf missing. Exit 11: the portal could not be reached.
++const char kPortalScript[] =
++    "command -v gdbus >/dev/null 2>&1 && command -v stdbuf >/dev/null 2>&1 || exit 10\n"
++    "out=$(mktemp) || exit 11\n"
++    "stdbuf -oL gdbus monitor --session --dest org.freedesktop.portal.Desktop >\"$out\" 2>/dev/null &\n"
++    "mon=$!\n"
++    "trap 'kill $mon 2>/dev/null; rm -f \"$out\"' EXIT\n"
++    "n=0\n"
++    "while [ ! -s \"$out\" ]; do\n"
++    "  kill -0 $mon 2>/dev/null && [ $n -lt 50 ] || exit 11\n"
++    "  n=$((n+1)); sleep 0.1\n"
++    "done\n"
++    "gdbus call --session --dest org.freedesktop.portal.Desktop --object-path /org/freedesktop/portal/desktop"
++    " --method org.freedesktop.portal.FileChooser.OpenFile '' \"$1\" \"$2\" >/dev/null 2>&1 || exit 11\n"
++    "while kill -0 $mon 2>/dev/null; do\n"
++    "  line=$(grep -m1 \"/$3: org.freedesktop.portal.Request.Response\" \"$out\") && { printf '%s\n' \"$line\"; exit 0; }\n"
++    "  sleep 0.2\n"
++    "done\n"
++    "exit 11\n";
++
++dialog::Result PortalDialog(const std::string& title, const std::vector<FileFilter>& filters, bool folder) {
++  static std::atomic<unsigned> counter{0};
++  const std::string token = "trg" + std::to_string(getpid()) + "_" + std::to_string(counter++);
++  const std::string cmd = "sh -c " + ShellQuote(kPortalScript) + " trg-portal " + ShellQuote(title) + " " +
++                          ShellQuote(dialog::PortalOptions(token, filters, folder)) + " " + ShellQuote(token);
++  FILE* p = popen(cmd.c_str(), "r");
++  if (!p) return {};
++  char buf[8192] = "";
++  const bool got = fgets(buf, sizeof buf, p) != nullptr;
++  const int status = pclose(p);
++  if (!got || !WIFEXITED(status) || WEXITSTATUS(status) != 0) return {};
++  return dialog::ParsePortalResponse(buf);
++}
++
++std::string Selected(const dialog::Result& r) {
++  g_dialog_unavailable = r.outcome == dialog::Outcome::kUnavailable;
++  return r.outcome == dialog::Outcome::kSelected ? r.path : std::string();
++}
+ #endif
+ 
+ }  // namespace
+@@ -151,12 +205,11 @@ std::string BrowseForFile(const std::string& title, const std::vector<FileFilter
+     kpatterns += (kpatterns.empty() ? "" : " ") + pats;
+   }
+   zenity += " --file-filter=" + ShellQuote("All files | *") + " 2>/dev/null";
+-  bool ran = false;
+-  std::string s = RunDialog(zenity, ran);
+-  if (ran) return s;
+-  return RunDialog("kdialog --title " + ShellQuote(title) + " --getopenfilename . " +
+-                       ShellQuote(kpatterns.empty() ? "*" : kpatterns) + " 2>/dev/null",
+-                   ran);
++  const std::string kdialog = "kdialog --title " + ShellQuote(title) + " --getopenfilename . " +
++                              ShellQuote(kpatterns.empty() ? "*" : kpatterns) + " 2>/dev/null";
++  return Selected(dialog::RunBackends({[&] { return PortalDialog(title, filters, false); },
++                                       [&] { return CommandDialog(zenity); },
++                                       [&] { return CommandDialog(kdialog); }}));
+ #endif
+ }
+ 
+@@ -179,13 +232,16 @@ std::string BrowseForFolder(const std::string& title) {
+                        " 2>/dev/null",
+                    ran);
+ #else
+-  bool ran = false;
+-  std::string s = RunDialog("zenity --file-selection --directory --title=" + ShellQuote(title) + " 2>/dev/null", ran);
+-  if (ran) return s;
+-  return RunDialog("kdialog --title " + ShellQuote(title) + " --getexistingdirectory . 2>/dev/null", ran);
++  const std::string zenity = "zenity --file-selection --directory --title=" + ShellQuote(title) + " 2>/dev/null";
++  const std::string kdialog = "kdialog --title " + ShellQuote(title) + " --getexistingdirectory . 2>/dev/null";
++  return Selected(dialog::RunBackends({[&] { return PortalDialog(title, {}, true); },
++                                       [&] { return CommandDialog(zenity); },
++                                       [&] { return CommandDialog(kdialog); }}));
+ #endif
+ }
+ 
++bool FileDialogUnavailable() { return g_dialog_unavailable; }
++
+ void OpenInFileManager(const std::string& utf8_path) {
+   std::error_code ec;
+   const auto p = std::filesystem::u8path(utf8_path);

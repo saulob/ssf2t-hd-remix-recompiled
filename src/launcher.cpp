@@ -563,6 +563,9 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     const std::string picked = trg::BrowseForFile("Select your Super Street Fighter II Turbo HD Remix Xbox Live Arcade package",
                                                   {{"Xbox Live Arcade package", "*"}});
     if (picked.empty()) {
+      if (trg::FileDialogUnavailable()) {
+        launcher_->SetStatus("Could not open the file picker. Install xdg-desktop-portal, zenity, or kdialog.", 8.0);
+      }
       return;
     }
     install_failure_.clear();

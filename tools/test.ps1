@@ -111,6 +111,7 @@ Invoke-Step 'GPU draw state memo' { & (Join-Path $BuildDir 'ssf2t_gpu_draw_state
 Invoke-Step 'D3D12 async submission' { & (Join-Path $BuildDir 'ssf2t_d3d12_async_submission_tests.exe') }
 Invoke-Step 'GPU register wake' { & (Join-Path $BuildDir 'ssf2t_gpu_register_wake_tests.exe') }
 Invoke-Step 'log path' { & (Join-Path $BuildDir 'ssf2t_log_path_tests.exe') }
+Invoke-Step 'file dialog' { & (Join-Path $BuildDir 'ssf2t_file_dialog_tests.exe') }
 Invoke-Step 'diagnostics' { & (Join-Path $BuildDir 'ssf2t_diagnostics_tests.exe') }
 Invoke-Step 'crash report' { & (Join-Path $BuildDir 'ssf2t_crash_report_tests.exe') }
 Invoke-Step 'active log' { & (Join-Path $BuildDir 'ssf2t_active_log_tests.exe') }

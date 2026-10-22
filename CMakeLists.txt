@@ -396,6 +396,10 @@ target_include_directories(ssf2t_relaunch_tests PRIVATE src)
 target_compile_definitions(ssf2t_relaunch_tests PRIVATE SSF2T_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src")
 add_dependencies(ssf2t_runtime_tests ssf2t_relaunch_tests)
 
+add_executable(ssf2t_file_dialog_tests EXCLUDE_FROM_ALL tests/file_dialog_tests.cpp "${_trg_patched_dir}/src/file_dialog.cpp")
+target_include_directories(ssf2t_file_dialog_tests PRIVATE "${_trg_patched_dir}/include")
+add_dependencies(ssf2t_runtime_tests ssf2t_file_dialog_tests)
+
 add_executable(ssf2t_log_path_tests EXCLUDE_FROM_ALL tests/log_path_tests.cpp src/log_path.cpp)
 target_include_directories(ssf2t_log_path_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_log_path_tests)
