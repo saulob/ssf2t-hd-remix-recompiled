@@ -19,6 +19,7 @@
 - **Launcher updates**: the launcher checks GitHub releases once per start and installs a newer release only when you choose UPDATE NOW. Game files, saves, settings and logs are kept.
 - **Display**: Windowed or Borderless Fullscreen (**F11**), window size, monitor and VSync. Per-monitor high-DPI support, and the game window opens where and how large you chose.
 - **Presentation**: Letterbox keeps the picture's proportions, Stretch fills the window. Aspect ratios 16:9, 16:10, 21:9, 32:9, 4:3 and 5:4.
+- **Fight Area**: Original keeps the fight's original framing, Fill 16:9 removes the black bars at the sides of the fight.
 - **Render resolution and Internal render resolution**: Render resolution (1x to 4x) sets the target resolution of the picture. Internal render resolution (100% Native, 75% Performance, 50% Low-end) lowers the resolution the GPU draws at before the picture is scaled up, trading sharpness for performance. Both are separate from the Window size.
 - **Graphics card selection**: Automatic (recommended) or a specific compatible GPU.
 - **Anti-aliasing, multisampling and texture filtering** choices.
@@ -71,7 +72,7 @@ Windows may warn the first time you run the program, because the release is not 
 Your choices are saved to `settings.toml` in the `user_data` folder next to the program. To turn the launcher off, set **Show this launcher** to **Off** on the Play page. Hold **Shift** while starting to bring it back.
 
 - **Play**: package install and reinstall, status
-- **Display**: Display mode, Window size, Monitor, Aspect Ratio, VSync and Presentation (Letterbox or Stretch)
+- **Display**: Display mode, Window size, Monitor, Aspect Ratio, VSync, Presentation (Letterbox or Stretch) and Fight Area (Original or Fill 16:9)
 - **Graphics**: Graphics card, Render resolution, Internal render resolution, Anti-aliasing, Multisampling, Texture filtering
 - **Gameplay**: Language, frame rate and render resolution in the title, frame counter
 - **Achievements**: unlocked achievements and gamerscore

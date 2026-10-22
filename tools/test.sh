@@ -35,6 +35,7 @@ cmake --build "$BUILD" --target ssf2t_runtime_tests
 run "window placement" "$BUILD/ssf2t_window_placement_tests"
 run "menu text" "$BUILD/ssf2t_menu_text_tests"
 run "launcher settings" "$BUILD/ssf2t_launcher_settings_tests"
+run "fight area" "$BUILD/ssf2t_fight_area_tests"
 run "keyboard remapping" "$BUILD/ssf2t_keyboard_tests"
 run "launcher quit" "$BUILD/ssf2t_launcher_quit_tests"
 run "display scaling" "$BUILD/ssf2t_dpi_tests"

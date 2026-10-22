@@ -22,6 +22,7 @@
 #include "aspect_ratio.h"
 #include "crash_report.h"
 #include "diagnostics.h"
+#include "fight_area.h"
 #include "game_files.h"
 #include "graphics_adapters.h"
 #include "input_summary.h"
@@ -49,6 +50,8 @@ REXCVAR_DEFINE_BOOL(ssf2t_msaa_compatibility, false, "SSF2T",
                     "native 2x MSAA misrenders (sets native_2x_msaa)");
 REXCVAR_DEFINE_STRING(ssf2t_aspect_ratio, "16:9", "SSF2T",
                       "Aspect ratio chosen in the launcher: 16:9, 16:10, 21:9, 32:9, 4:3 or 5:4");
+REXCVAR_DEFINE_STRING(ssf2t_fight_area, "original", "SSF2T",
+                      "Fight area chosen in the launcher: original or fill_16_9 (removes the fight's side bars)");
 REXCVAR_DEFINE_STRING(ssf2t_graphics_adapter, "auto", "SSF2T",
                       "Graphics card: auto, or the index d3d12_adapter takes (applied at start)");
 REXCVAR_DEFINE_STRING(ssf2t_language, "en-US", "SSF2T",
@@ -78,6 +81,7 @@ std::vector<std::string> GameSettingKeys() {
       "ssf2t_graphics_adapter",
       "ssf2t_aspect_ratio",
       kLetterboxSetting,
+      kFightAreaSetting,
       "resolution_scale",
       "ssf2t_internal_render_scale",
       "swap_post_effect",
@@ -369,12 +373,17 @@ void GameSettings::Apply() const {
   ApplyInternalRenderPath();
   ApplyMultisampling();
   ApplyLanguage();
+  ApplyFightArea();
 }
 
 void ApplyLanguage() {
   const GameLanguage& language = LanguageFor(REXCVAR_GET(ssf2t_language));
   rex::cvar::SetFlagByName("user_language", std::to_string(language.xconfig_language));
   REXLOG_INFO("Language: {} (user_language {})", language.label, language.xconfig_language);
+}
+
+void ApplyFightArea() {
+  SetFightAreaFill(FightAreaFills(REXCVAR_GET(ssf2t_fight_area)));
 }
 
 // Also replaces a native_2x_msaa = false written by launchers that labelled it Off.

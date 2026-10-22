@@ -30,6 +30,7 @@
 
 #include "aspect_ratio.h"
 #include "dpi.h"
+#include "fight_area.h"
 #include "game_files.h"
 #include "graphics_adapters.h"
 #include "imgui_gamepad.h"
@@ -648,6 +649,13 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
       const bool letterbox = settings_.GetBool(kLetterboxSetting, true);
       if (int i = ui.Segmented("presentation", {"Letterbox", "Stretch"}, LetterboxSegment(letterbox)); i >= 0) {
         settings_.SetBool(kLetterboxSetting, LetterboxFromSegment(i));
+      }
+    }
+    ui.Row(kFightAreaLabel, kFightAreaHelp);
+    {
+      const bool fill = FightAreaFills(settings_.Get(kFightAreaSetting, kDefaultFightArea));
+      if (int i = ui.Segmented("fight_area", {"Original", "Fill 16:9"}, FightAreaSegment(fill)); i >= 0) {
+        settings_.Set(kFightAreaSetting, FightAreaValue(i));
       }
     }
   }

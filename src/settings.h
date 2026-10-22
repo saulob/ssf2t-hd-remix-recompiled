@@ -56,6 +56,9 @@ void ApplyAspectRatio();
 // Sets the SDK's user_language, which the title reads once at startup, from ssf2t_language.
 void ApplyLanguage();
 
+// Sets the guest hook for ssf2t_fight_area. Call with ApplyLanguage.
+void ApplyFightArea();
+
 // Windows: makes the D3D12 render target path the host one when Internal render resolution is below 100%. Call
 // once the launcher choices are applied and before the command processor is created.
 void ApplyInternalRenderPath();

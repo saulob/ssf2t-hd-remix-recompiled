@@ -119,6 +119,7 @@ set(SSF2T_SOURCES
     src/aspect_render.cpp
     src/crash_report.cpp
     src/diagnostics.cpp
+    src/fight_area_hook.cpp
     src/frame_counter.cpp
     src/game_files.cpp
     src/graphics_adapters.cpp
@@ -299,6 +300,11 @@ add_dependencies(ssf2t_runtime_tests ssf2t_menu_text_tests)
 add_executable(ssf2t_launcher_settings_tests EXCLUDE_FROM_ALL tests/launcher_settings_tests.cpp)
 target_include_directories(ssf2t_launcher_settings_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_launcher_settings_tests)
+
+add_executable(ssf2t_fight_area_tests EXCLUDE_FROM_ALL tests/fight_area_tests.cpp)
+target_include_directories(ssf2t_fight_area_tests PRIVATE src)
+target_compile_definitions(ssf2t_fight_area_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_fight_area_tests)
 
 add_executable(ssf2t_achievement_tests EXCLUDE_FROM_ALL tests/achievement_tests.cpp)
 target_include_directories(ssf2t_achievement_tests PRIVATE src "${SSF2T_SDK_DIR}/include")
