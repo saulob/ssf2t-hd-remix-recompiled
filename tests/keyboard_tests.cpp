@@ -383,6 +383,9 @@ void TestLocalPlayerSlots() {
   CHECK(Has(patch, "REXCVAR_DEFINE_BOOL(input_keyboard_own_user, false"));
   CHECK(Has(patch, "bool IsGuestUser(uint32_t user_index)"));
   CHECK(Has(patch, "bool InputSystem::IsUserConnected(uint32_t user_index)"));
+  CHECK(Has(patch, "uint32_t InputSystem::PlayerNumber(uint32_t user_index)"));
+  CHECK(Has(patch, "std::to_string(input->PlayerNumber(user_index))"));
+  CHECK(!Has(patch, "std::to_string(user_index + 1)"));
   CHECK(!Has(patch, "DEBUG_SAULO"));
 }
 

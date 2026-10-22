@@ -14,8 +14,9 @@ diff --git a/include/rex/input/device_assignment.h b/include/rex/input/device_as
 index a318f2c..2178737 100644
 --- a/include/rex/input/device_assignment.h
 +++ b/include/rex/input/device_assignment.h
-@@ -28,13 +28,18 @@ class DeviceAssignment {
+@@ -28,13 +28,21 @@ class DeviceAssignment {
    virtual void DevicesForUser(uint32_t user_index, std::vector<DeviceId>& out) const = 0;
++  virtual uint32_t PadUserOffset() const { return 0; }
  };
  
 -/// Device ordinal N feeds guest user N. Synthetic devices feed user 0.
@@ -28,9 +29,11 @@ index a318f2c..2178737 100644
 +
    void OnDevicesChanged(const std::vector<DeviceInfo>& devices) override;
    void DevicesForUser(uint32_t user_index, std::vector<DeviceId>& out) const override;
- 
++  uint32_t PadUserOffset() const override { return first_pad_user_; }
+
   private:
 +  bool keyboard_own_user_;
++  uint32_t first_pad_user_ = 0;
    std::vector<std::vector<DeviceId>> users_ = std::vector<std::vector<DeviceId>>(kMaxGuestUsers);
  };
  
@@ -46,12 +49,14 @@ index 340c463..1e5f5de 100644
  #include <vector>
  
  #include <rex/input/device_assignment.h>
-@@ -48,15 +49,20 @@ class InputSystem : public system::IInputSystem {
+@@ -48,15 +49,22 @@ class InputSystem : public system::IInputSystem {
    X_RESULT SetState(uint32_t user_index, X_INPUT_VIBRATION* vibration);
    X_RESULT GetKeystroke(uint32_t user_index, uint32_t flags, X_INPUT_KEYSTROKE* out_keystroke);
  
 +  /// True when a pad or the keyboard is assigned to the guest user.
 +  bool IsUserConnected(uint32_t user_index);
++  /// Player number shown for a guest user; controllers count from 1 regardless of the keyboard user.
++  uint32_t PlayerNumber(uint32_t user_index);
 +
   private:
    /// Re-enumerates every driver and notifies the assignment when the set
@@ -80,13 +85,14 @@ index 52e0073..9333682 100644
  namespace rex::input {
  
  void SlotAssignment::OnDevicesChanged(const std::vector<DeviceInfo>& devices) {
-@@ -18,13 +20,17 @@ void SlotAssignment::OnDevicesChanged(const std::vector<DeviceInfo>& devices) {
+@@ -18,13 +20,18 @@ void SlotAssignment::OnDevicesChanged(const std::vector<DeviceInfo>& devices) {
      user.clear();
    }
  
 +  const bool keyboard_present =
 +      std::any_of(devices.begin(), devices.end(), [](const DeviceInfo& d) { return d.keyboard; });
 +  const uint32_t first_pad_user = keyboard_own_user_ && keyboard_present ? 1 : 0;
++  first_pad_user_ = first_pad_user;
 +
    // Key off the ordinal rather than list position, so unplugging pad one does
    // not promote pad two to player one.
@@ -170,7 +176,7 @@ index e46f4b3..281e670 100644
    if (!assignment_) {
      return X_ERROR_DEVICE_NOT_CONNECTED;
    }
-@@ -354,6 +364,34 @@ X_RESULT InputSystem::GetKeystroke(uint32_t user_index, uint32_t flags,
+@@ -354,6 +364,44 @@ X_RESULT InputSystem::GetKeystroke(uint32_t user_index, uint32_t flags,
    return any_connected ? X_ERROR_EMPTY : X_ERROR_DEVICE_NOT_CONNECTED;
  }
  
@@ -187,6 +193,16 @@ index e46f4b3..281e670 100644
 +    const DeviceInfo* info = DeviceInfoFor(id);
 +    return info && (!info->synthetic || info->keyboard);
 +  });
++}
++
++uint32_t InputSystem::PlayerNumber(uint32_t user_index) {
++  std::lock_guard lock(mutex_);
++  if (!assignment_) {
++    return user_index + 1;
++  }
++
++  RefreshDevices();
++  return user_index + 1 - assignment_->PadUserOffset();
 +}
 +
 +void InputSystem::LogAssignment() {
@@ -239,7 +255,7 @@ index 8778066..08108e2 100644
  #include <rex/kernel/xam/private.h>
  #include <rex/logging.h>
  #include <rex/math.h>
-@@ -36,6 +37,23 @@ namespace xam {
+@@ -36,6 +37,24 @@ namespace xam {
  using namespace rex::system;
  using namespace rex::system::xam;
  
@@ -257,7 +273,8 @@ index 8778066..08108e2 100644
 +}
 +
 +std::string GuestName(uint32_t user_index) {
-+  return "Player " + std::to_string(user_index + 1);
++  auto* input = static_cast<rex::input::InputSystem*>(REX_KERNEL_STATE()->emulator()->input_system());
++  return "Player " + std::to_string(input->PlayerNumber(user_index));
 +}
 +
  i32 XamUserGetXUID_entry(u32 user_index, u32 type_mask, mapped_u64 xuid_ptr) {
@@ -367,7 +384,7 @@ index 096238d..c7a3ff5 100644
      devices_.push_back(info);
      states_[static_cast<DeviceId>(id)] = {};
    }
-@@ -236,3 +250,208 @@ TEST_CASE("A synthetic device does not push the first pad off guest user 0", "[i
+@@ -236,3 +250,231 @@ TEST_CASE("A synthetic device does not push the first pad off guest user 0", "[i
    REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == X_INPUT_GAMEPAD_B);
    REQUIRE(system->GetState(1, &state) == X_ERROR_DEVICE_NOT_CONNECTED);
  }
@@ -575,4 +592,27 @@ index 096238d..c7a3ff5 100644
 +  REQUIRE(!system->IsUserConnected(1));
 +  X_INPUT_STATE state = {};
 +  REQUIRE(system->GetState(0, &state) == X_ERROR_SUCCESS);
++}
++
++TEST_CASE("Player numbers count from one at the first controller user", "[input]") {
++  FakeDriver* driver = nullptr;
++  auto plain = SlotSystem(&driver, false);
++  driver->Add(1);
++  for (uint32_t user = 0; user < 4; user++) {
++    REQUIRE(plain->PlayerNumber(user) == user + 1);
++  }
++
++  auto with_keyboard = SlotSystem(&driver, true);
++  driver->Add(100, true, true);
++  driver->Add(1);
++  driver->Add(2);
++  REQUIRE(with_keyboard->PlayerNumber(1) == 1);
++  REQUIRE(with_keyboard->PlayerNumber(2) == 2);
++  REQUIRE(with_keyboard->PlayerNumber(3) == 3);
++
++  auto no_keyboard = SlotSystem(&driver, true);
++  driver->Add(1);
++  driver->Add(2);
++  REQUIRE(no_keyboard->PlayerNumber(0) == 1);
++  REQUIRE(no_keyboard->PlayerNumber(1) == 2);
 +}
