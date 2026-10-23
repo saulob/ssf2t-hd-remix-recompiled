@@ -1,0 +1,140 @@
+Three independent per-draw D3D12 loop optimizations, ported from the known-good Geometry Wars Retro
+Evolved 2 Recompiled (5f4c05c) and Hard Corps Uprising Recompiled (8d03c63) commits. No behavioral
+change in any of the three; only how the same result is computed.
+
+Vertex buffer residency: InvalidateVertexBufferResidencyRange cleared vertex_buffers_in_sync_ one
+fetch bit at a time. It now clears each 64-bit word it touches with one mask (built from the first and
+last bit of the range within that word), handling a single-word range, a multi-word range, and bit 63
+of a word the same way as the old per-bit loop did.
+
+Float constant uploads: CopyUsedFloatConstants replaces one bit-scan-forward + one 16-byte memcpy per
+used float constant with one memcpy per run of consecutive used constants (scanning the bitmap with
+countr_zero/countr_one), applied to both the vertex and pixel float constant buffers. The resulting
+constant buffer layout and ordering are unchanged.
+
+Stencil bits: GetStencilBits/AddStencilBits looped tile-by-tile with `& (kEdramTileCount - 1)`
+wraparound masking on every tile. They now normalize the start tile and clamp the length to the EDRAM
+size up front, then process one contiguous run up to the end of the EDRAM and, only if the range
+wraps, a second contiguous run from tile 0 - same OR semantics, no change to EDRAM ownership or
+dirty-tile tracking.
+
+diff --git a/include/rex/graphics/d3d12/render_target_cache.h b/include/rex/graphics/d3d12/render_target_cache.h
+--- a/include/rex/graphics/d3d12/render_target_cache.h
++++ b/include/rex/graphics/d3d12/render_target_cache.h
+@@ -248,16 +248,29 @@
+     uint32_t GetTileStencilBits(uint32_t tile) const {
+       return stencil_tile_bits_[tile & (xenos::kEdramTileCount - 1)];
+     }
++    // Split where the range wraps, so each run vectorizes.
+     uint32_t GetStencilBits(uint32_t start_tiles, uint32_t length_tiles) const {
+-      uint32_t bits = 0;
+-      for (uint32_t i = 0; i < length_tiles; ++i) {
+-        bits |= GetTileStencilBits(start_tiles + i);
++      start_tiles &= xenos::kEdramTileCount - 1;
++      length_tiles = std::min(length_tiles, xenos::kEdramTileCount);
++      uint32_t first_run = std::min(length_tiles, xenos::kEdramTileCount - start_tiles);
++      uint8_t bits = 0;
++      for (uint32_t i = 0; i < first_run; ++i) {
++        bits |= stencil_tile_bits_[start_tiles + i];
++      }
++      for (uint32_t i = 0; i < length_tiles - first_run; ++i) {
++        bits |= stencil_tile_bits_[i];
+       }
+       return bits;
+     }
+     void AddStencilBits(uint32_t start_tiles, uint32_t length_tiles, uint32_t bits) {
+-      for (uint32_t i = 0; i < length_tiles; ++i) {
+-        stencil_tile_bits_[(start_tiles + i) & (xenos::kEdramTileCount - 1)] |= uint8_t(bits);
++      start_tiles &= xenos::kEdramTileCount - 1;
++      length_tiles = std::min(length_tiles, xenos::kEdramTileCount);
++      uint32_t first_run = std::min(length_tiles, xenos::kEdramTileCount - start_tiles);
++      for (uint32_t i = 0; i < first_run; ++i) {
++        stencil_tile_bits_[start_tiles + i] |= uint8_t(bits);
++      }
++      for (uint32_t i = 0; i < length_tiles - first_run; ++i) {
++        stencil_tile_bits_[i] |= uint8_t(bits);
+       }
+     }
+     void SetTileStencilBits(uint32_t tile, uint32_t bits) {
+diff --git a/src/graphics/d3d12/command_processor.cpp b/src/graphics/d3d12/command_processor.cpp
+--- a/src/graphics/d3d12/command_processor.cpp
++++ b/src/graphics/d3d12/command_processor.cpp
+@@ -104,6 +104,21 @@
+   return difference != 0;
+ }
+
++// Copies the used float constants (4 x 64 bitmap, 4 registers each), a run of consecutive ones per memcpy.
++uint8_t* CopyUsedFloatConstants(uint8_t* dest, const uint32_t* first_register, const uint64_t* bitmap) {
++  for (uint32_t i = 0; i < 4; ++i) {
++    uint64_t bits = bitmap[i];
++    while (bits) {
++      uint32_t first = uint32_t(std::countr_zero(bits));
++      uint32_t run = uint32_t(std::countr_one(bits >> first));
++      std::memcpy(dest, first_register + (i << 8) + (first << 2), run * 4 * sizeof(float));
++      dest += run * 4 * sizeof(float);
++      bits = first + run >= 64 ? 0 : bits & (~uint64_t(0) << (first + run));
++    }
++  }
++  return dest;
++}
++
+ }  // namespace
+
+ // Generated with `xb buildshaders`.
+@@ -200,8 +215,12 @@
+     return;
+   }
+   last_vfetch = std::min(last_vfetch, uint32_t(vertex_buffer_states_.size() - 1));
+-  for (uint32_t vfetch_index = first_vfetch; vfetch_index <= last_vfetch; ++vfetch_index) {
+-    InvalidateVertexBufferResidency(vfetch_index);
++  for (uint32_t word = first_vfetch >> 6; word <= (last_vfetch >> 6); ++word) {
++    uint32_t first_bit = word == (first_vfetch >> 6) ? (first_vfetch & 63) : 0;
++    uint32_t last_bit = word == (last_vfetch >> 6) ? (last_vfetch & 63) : 63;
++    uint64_t mask = (last_bit == 63 ? ~uint64_t(0) : ((uint64_t(1) << (last_bit + 1)) - 1)) &
++                    ~((uint64_t(1) << first_bit) - 1);
++    vertex_buffers_in_sync_[word] &= ~mask;
+   }
+ }
+
+@@ -4375,18 +4394,8 @@
+     if (float_constants == nullptr) {
+       return false;
+     }
+-    for (uint32_t i = 0; i < 4; ++i) {
+-      uint64_t float_constant_map_entry = float_constant_map_vertex.float_bitmap[i];
+-      uint32_t float_constant_index;
+-      while (rex::bit_scan_forward(float_constant_map_entry, &float_constant_index)) {
+-        float_constant_map_entry &= ~(1ull << float_constant_index);
+-        std::memcpy(
+-            float_constants,
+-            &regs[XE_GPU_REG_SHADER_CONSTANT_000_X + (i << 8) + (float_constant_index << 2)],
+-            4 * sizeof(float));
+-        float_constants += 4 * sizeof(float);
+-      }
+-    }
++    CopyUsedFloatConstants(float_constants, &regs[XE_GPU_REG_SHADER_CONSTANT_000_X],
++                           float_constant_map_vertex.float_bitmap);
+     cbuffer_binding_float_vertex_.up_to_date = true;
+     current_graphics_root_up_to_date_ &= ~(1u << root_parameter_float_constants_vertex);
+   }
+@@ -4401,18 +4410,8 @@
+     if (pixel_shader != nullptr) {
+       const Shader::ConstantRegisterMap& float_constant_map_pixel =
+           pixel_shader->constant_register_map();
+-      for (uint32_t i = 0; i < 4; ++i) {
+-        uint64_t float_constant_map_entry = float_constant_map_pixel.float_bitmap[i];
+-        uint32_t float_constant_index;
+-        while (rex::bit_scan_forward(float_constant_map_entry, &float_constant_index)) {
+-          float_constant_map_entry &= ~(1ull << float_constant_index);
+-          std::memcpy(
+-              float_constants,
+-              &regs[XE_GPU_REG_SHADER_CONSTANT_256_X + (i << 8) + (float_constant_index << 2)],
+-              4 * sizeof(float));
+-          float_constants += 4 * sizeof(float);
+-        }
+-      }
++      CopyUsedFloatConstants(float_constants, &regs[XE_GPU_REG_SHADER_CONSTANT_256_X],
++                             float_constant_map_pixel.float_bitmap);
+     }
+     cbuffer_binding_float_pixel_.up_to_date = true;
+     current_graphics_root_up_to_date_ &= ~(1u << root_parameter_float_constants_pixel);

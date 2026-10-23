@@ -1,0 +1,23 @@
+rexgpu-xenos ThinLTO: the plugin DLL is built as its own standalone cmake configure
+(tools/build-patched-rexruntime.ps1), separate from this project's own ssf2t_enable_thinlto(), so the
+game executable already getting ThinLTO does not give the GPU plugin any cross-translation-unit
+inlining across the per-draw D3D12 command processor path. Same scope as the known-good Geometry Wars
+Retro Evolved 2 Recompiled (5f4c05c) and Hard Corps Uprising Recompiled (8d03c63) commits: Release only
+(RelWithDebInfo keeps full symbols for crash dumps), Clang/lld only, and only this one target.
+
+diff --git a/src/graphics/CMakeLists.txt b/src/graphics/CMakeLists.txt
+--- a/src/graphics/CMakeLists.txt
++++ b/src/graphics/CMakeLists.txt
+@@ -113,6 +113,12 @@
+
+ target_compile_options(rexgpu-xenos PRIVATE -Wno-unused-variable)
+
++# ThinLTO lets the command processor's per-draw path inline across the plugin's translation units.
++if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
++    target_compile_options(rexgpu-xenos PRIVATE $<$<CONFIG:Release>:-flto=thin>)
++    target_link_options(rexgpu-xenos PRIVATE $<$<CONFIG:Release>:-flto=thin> $<$<CONFIG:Release>:LINKER:/opt:lldlto=3>)
++endif()
++
+ rex_target_pch(rexgpu-xenos
+     <mutex>
+     <unordered_map>
