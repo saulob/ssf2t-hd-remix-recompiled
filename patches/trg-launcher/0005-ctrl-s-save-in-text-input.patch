@@ -1,0 +1,28 @@
+diff --git a/src/launcher.cpp b/src/launcher.cpp
+index 849c466..e70e6f2 100644
+--- a/src/launcher.cpp
++++ b/src/launcher.cpp
+@@ -1007,7 +1007,13 @@ void Launcher::DrawPlayButton(ImVec2 size, bool can_play) {
+ 
+ void Launcher::HandleHotkeys() {
+   const ImGuiIO& io = ImGui::GetIO();
+-  if (capturing_key() || io.WantTextInput || ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) return;
++  if (capturing_key() || ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) return;
++  const bool ctrl = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
++  if (ctrl && ImGui::IsKeyPressed(ImGuiKey_S, false)) {
++    Save();
++    return;
++  }
++  if (io.WantTextInput) return;
+   if (ImGui::IsKeyPressed(ImGuiKey_GamepadStart, false)) {
+     want_play_ = true;
+   } else if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) {
+@@ -1015,8 +1021,6 @@ void Launcher::HandleHotkeys() {
+     if (!io.NavVisible && !ImGui::IsAnyItemActive()) want_play_ = true;
+   } else if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+     want_quit_ = true;
+-  } else if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false)) {
+-    Save();
+   }
+ }
+ 

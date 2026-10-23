@@ -389,6 +389,27 @@ void TestLocalPlayerSlots() {
   CHECK(!Has(patch, "DEBUG_SAULO"));
 }
 
+void TestLauncherCtrlSSave() {
+  std::printf("Ctrl+S saves through the launcher Save path, also with text input focused\n");
+  const std::string patch = ReadSource("../patches/trg-launcher/0005-ctrl-s-save-in-text-input.patch");
+  CHECK(Has(patch, "+  if (capturing_key() || ImGui::IsPopupOpen(\"\", ImGuiPopupFlags_AnyPopupId)) return;"));
+  CHECK(Has(patch, "+  if (ctrl && ImGui::IsKeyPressed(ImGuiKey_S, false)) {"));
+  CHECK(Has(patch, "+  const bool ctrl = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl);"));
+  CHECK(Has(patch, "+    Save();"));
+  CHECK(!Has(patch, "+  if (io.KeyCtrl"));
+  CHECK(!Has(patch, "DEBUG_SAULO"));
+  CHECK(!Has(patch, "status_"));
+  CHECK(Has(patch, "+  if (io.WantTextInput) return;"));
+  CHECK(Has(patch, "-  } else if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false)) {"));
+  const std::string cmake = ReadSource("../CMakeLists.txt");
+  CHECK(Has(cmake, "does not handle Ctrl+S before the text-input guard"));
+  CHECK(Has(cmake, "\"${_trg_patched_dir}/src/launcher.cpp\""));
+  const std::string sdk = ReadSource("../third_party/trg-launcher/src/launcher.cpp");
+  CHECK(Has(sdk, "SetStatus(ok ? \"Settings saved.\""));
+  CHECK(Has(sdk, "if (ImGui::Button(\"Save\", ImVec2(bw, bh))) Save();"));
+  CHECK(Has(sdk, "ImGui::IsKeyPressed(ImGuiKey_Enter, false)"));
+}
+
 }  // namespace
 
 int main() {
@@ -406,6 +427,7 @@ int main() {
   TestKeyboardToggle();
   TestHotkeySeparation();
   TestLocalPlayerSlots();
+  TestLauncherCtrlSSave();
   std::printf("%d checks, %d failures\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;
 }

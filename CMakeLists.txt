@@ -98,6 +98,16 @@ set(_trg_patched_dir "${CMAKE_BINARY_DIR}/trg-launcher-patched")
 ssf2t_prepare_patched_trg_launcher("${_trg_dir}" "${_trg_patched_dir}")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_trg_dir}/CMakeLists.txt")
 
+file(READ "${_trg_patched_dir}/src/launcher.cpp" _trg_launcher_source)
+string(FIND "${_trg_launcher_source}" "void Launcher::HandleHotkeys() {" _hotkeys_pos)
+string(SUBSTRING "${_trg_launcher_source}" ${_hotkeys_pos} -1 _hotkeys_source)
+string(FIND "${_hotkeys_source}" "ctrl && ImGui::IsKeyPressed(ImGuiKey_S, false)" _ctrl_s_pos)
+string(FIND "${_hotkeys_source}" "io.WantTextInput) return;" _text_guard_pos)
+if(_hotkeys_pos EQUAL -1 OR _ctrl_s_pos EQUAL -1 OR _text_guard_pos EQUAL -1 OR _ctrl_s_pos GREATER _text_guard_pos)
+    message(FATAL_ERROR "TRG Launcher: the staged HandleHotkeys does not handle Ctrl+S before the text-input guard (${_trg_patched_dir}/src/launcher.cpp)")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_trg_patched_dir}/src/launcher.cpp")
+
 # The launcher draws inside the runtime's own Dear ImGui frame, so it must use the ImGui compiled into rexruntime.
 add_library(ssf2t_imgui INTERFACE)
 target_link_libraries(ssf2t_imgui INTERFACE rex::runtime)
