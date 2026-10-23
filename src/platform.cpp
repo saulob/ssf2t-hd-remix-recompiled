@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include <SDL3/SDL.h>
+#include <imgui.h>
 #endif
 
 #include <rex/filesystem.h>

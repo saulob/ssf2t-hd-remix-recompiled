@@ -14,7 +14,7 @@
   .\tools\package-release.ps1              # incremental Release build, then package
   .\tools\package-release.ps1 -Clean       # clean Release build first
   .\tools\package-release.ps1 -SkipBuild   # package the existing build-release\ output
-  .\tools\package-release.ps1 -VerifyOnly dist\SSF2THDRemix-v0.1.0-windows-x64.zip   # check a staged folder or a ZIP
+  .\tools\package-release.ps1 -VerifyOnly dist\SSF2THDRemix-v0.2.0-windows-x64.zip   # check a staged folder or a ZIP
 #>
 param(
     [switch]$Clean,

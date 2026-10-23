@@ -51,7 +51,7 @@ The launcher checks the Title ID when you pick the package and checks `default.x
 
 ## Installing
 
-1. Download **SSF2THDRemix-v0.1.0-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
+1. Download **SSF2THDRemix-v0.2.0-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
 2. Run **ssf2t_hd_remix.exe**. The launcher opens.
 3. On the **Play** page click **Install from package...** and pick your package. It is one file with a long hexadecimal name and no extension. On an Xbox 360 drive it is in `Content\0000000000000000\584108A4\000D0000\`.
 4. Wait until **Ready to play** appears. The game files (about 370 MB) are copied into the `game` folder next to the program.
@@ -61,7 +61,7 @@ The launcher checks the Title ID when you pick the package and checks `default.x
 
 ### Linux AppImage (experimental)
 
-Download **SSF2THDRemix-v0.1.0-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
+Download **SSF2THDRemix-v0.2.0-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
 
 ### Windows SmartScreen
 
@@ -83,7 +83,7 @@ During gameplay the mouse cursor follows the last input device: mouse activity s
 
 ## Reporting problems
 
-If the game does not start or crashes, please open an [issue](https://github.com/saulob/ssf2t-hd-remix-recompiled/issues). Attach the newest `ssf2t_hd_remix_*.log` file from the `logs` folder next to the program, and say what you were doing when the problem happened. The launcher and the game write to the same log for one application session. After a crash on Windows the log ends with a `CRASH REPORT` section; no separate crash file or minidump is written. For a non-crash problem, turn Detailed logging on in the launcher's About page, reproduce it, and send the newest log. The launcher and the game write to the same log for one application session. After a crash on Windows the log ends with a `CRASH REPORT` section; no separate crash file or minidump is written. For a non-crash problem, turn Detailed logging on in the launcher, reproduce it, and send the newest log.
+If the game does not start or crashes, please open an [issue](https://github.com/saulob/ssf2t-hd-remix-recompiled/issues). Attach the newest `ssf2t_hd_remix_*.log` file from the `logs` folder next to the program, and say what you were doing when the problem happened. The launcher and the game write to the same log for one application session. After a crash on Windows the log ends with a `CRASH REPORT` section; no separate crash file or minidump is written. For a non-crash problem, turn Detailed logging on in the launcher's About page, reproduce it, and send the newest log.
 
 ## Building it yourself
 
