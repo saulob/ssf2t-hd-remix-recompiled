@@ -12,11 +12,6 @@ namespace {
 constexpr char kPortableFolder[] = "user_data";
 constexpr char kStagingSuffix[] = ".migrating";
 
-std::string Narrow(const fs::path& path) {
-  const std::u8string text = path.u8string();
-  return std::string(text.begin(), text.end());
-}
-
 std::string Reason(const char* step, const std::error_code& ec) {
   return ec ? std::string(step) + ": " + ec.message() : std::string(step);
 }
@@ -197,28 +192,23 @@ UserDataSelection SelectUserData(const UserDataRequest& request, const UserDataF
 }
 
 UserDataMessage DescribeUserData(const UserDataSelection& selection) {
-  const std::string root = Narrow(selection.root);
-  const std::string portable = Narrow(selection.portable);
-  const std::string system = Narrow(selection.system);
   switch (selection.outcome) {
     case UserDataOutcome::kPortable:
-      return {false, "User data: portable path selected: " + root};
+      return {false, "User data: portable path selected"};
     case UserDataOutcome::kMigrated:
-      return {false, "User data: migrated legacy data from " + system + " to " + root};
+      return {false, "User data: migrated legacy data into user_data"};
     case UserDataOutcome::kMigratedLegacyKept:
-      return {true, "User data: migrated legacy data to " + root + ", but the old folder " + system +
-                        " was not removed (" + selection.detail + ")"};
+      return {true, "User data: migrated legacy data into user_data; the old folder was not removed (" +
+                        selection.detail + ")"};
     case UserDataOutcome::kBothExist:
-      return {true, "User data: portable and legacy data both exist; portable data selected: " + root +
-                        " (legacy folder left in place: " + system + ")"};
+      return {true, "User data: portable and legacy data both exist; portable data selected"};
     case UserDataOutcome::kMigrationFailed:
-      return {true, "User data: migrating legacy data to " + portable + " failed (" + selection.detail +
-                        "); using legacy path for this run: " + system};
+      return {true, "User data: migrating legacy data into user_data failed (" + selection.detail +
+                        "); using the legacy folder for this run"};
     case UserDataOutcome::kPortableUnavailable:
-      return {true, "User data: portable path unavailable (" + portable +
-                        "), using legacy system path for this run: " + system};
+      return {true, "User data: portable path unavailable; using the legacy folder for this run"};
     case UserDataOutcome::kExplicit:
-      return {false, "User data: --user_data_root selected: " + root};
+      return {false, "User data: --user_data_root selected"};
   }
   return {};
 }

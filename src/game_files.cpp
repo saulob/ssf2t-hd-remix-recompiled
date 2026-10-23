@@ -181,6 +181,22 @@ GameCheck CheckGameFiles(const std::filesystem::path& game_dir) {
   return check;
 }
 
+std::string GameFilesLogText(const GameCheck& check) {
+  const char* state = "missing";
+  if (check.state == GameFiles::kReady) {
+    state = "valid";
+  } else if (check.state == GameFiles::kUnsupported) {
+    state = "unsupported version";
+  }
+  std::string text = std::string("Game files: ") + state + " (default.xex";
+  if (check.xex_crc32 != 0) {
+    char crc[16];
+    std::snprintf(crc, sizeof(crc), "%08X", check.xex_crc32);
+    text += std::string(", size ") + std::to_string(kXexSize) + ", CRC32 " + crc;
+  }
+  return text + ")";
+}
+
 InstallResult InstallFromPackage(const std::filesystem::path& package, const std::filesystem::path& game_dir,
                                  const InstallHooks& hooks) {
   const auto phase = [&](const char* text) {

@@ -18,6 +18,7 @@ REXCVAR_DECLARE(bool, ssf2t_show_fps);
 REXCVAR_DECLARE(bool, ssf2t_show_render_resolution);
 REXCVAR_DECLARE(bool, ssf2t_show_frame_counter);
 REXCVAR_DECLARE(bool, ssf2t_msaa_compatibility);
+REXCVAR_DECLARE(bool, detailed_logging);
 REXCVAR_DECLARE(std::string, ssf2t_graphics_adapter);
 REXCVAR_DECLARE(std::string, ssf2t_language);
 REXCVAR_DECLARE(int32_t, ssf2t_launcher_x);
@@ -26,8 +27,14 @@ REXCVAR_DECLARE(int32_t, ssf2t_launcher_width);
 REXCVAR_DECLARE(int32_t, ssf2t_launcher_height);
 REXCVAR_DECLARE(bool, ssf2t_launcher_maximized);
 REXCVAR_DECLARE(bool, ssf2t_launcher_fullscreen);
+REXCVAR_DECLARE(bool, ssf2t_infinite_time);
+REXCVAR_DECLARE(std::string, ssf2t_player_1_name);
+REXCVAR_DECLARE(std::string, ssf2t_player_2_name);
 
 namespace ssf2t {
+
+struct MonitorInfo;
+class GameSettings;
 
 // Allowing tearing is VSync Off. Each platform's presenter has its own setting for it.
 #if defined(_WIN32)
@@ -52,6 +59,15 @@ void ApplyAspectRatio();
 // Sets the SDK's user_language, which the title reads once at startup, from ssf2t_language.
 void ApplyLanguage();
 
+// Sets the SDK's local_player_N_name cvars from ssf2t_player_N_name. Call with ApplyLanguage.
+void ApplyPlayerNames();
+
+// Sets the guest hook for ssf2t_fight_area. Call with ApplyLanguage.
+void ApplyFightArea();
+
+// Sets the guest timer hook from ssf2t_infinite_time. Call with ApplyFightArea.
+void ApplyInfiniteTime();
+
 // Windows: makes the D3D12 render target path the host one when Internal render resolution is below 100%. Call
 // once the launcher choices are applied and before the command processor is created.
 void ApplyInternalRenderPath();
@@ -59,6 +75,21 @@ void ApplyInternalRenderPath();
 // Sets d3d12_adapter from the launcher's Graphics card choice. Call once the player settings are loaded and
 // before the graphics device is created; Automatic leaves the SDK's own preference alone.
 void ApplyGraphicsAdapter();
+
+struct StartupWindowInfo {
+  int selected_width = -1;
+  int selected_height = -1;
+  int configured_width = 0;
+  int configured_height = 0;
+  int output_width = 0;
+  int output_height = 0;
+  bool fullscreen = false;
+  std::string controller;
+};
+
+// Logs the launcher's own selections separately from the effective runtime state, plus a crash-safe summary.
+void LogStartupDiagnostics(const GameSettings& settings, const MonitorInfo& display, int monitor,
+                           const std::filesystem::path& game_dir, const StartupWindowInfo& window);
 
 // The launcher window placement loaded from the player file.
 WindowPlacement SavedLauncherPlacement();
@@ -102,5 +133,8 @@ class GameSettings final : public trg::SettingsStore {
   std::map<std::string, std::string> window_created_;
   std::set<std::string> unregistered_;
 };
+
+// Flips ssf2t_infinite_time, applies it and saves it to the player file, where the launcher reads it.
+bool ToggleInfiniteTime(GameSettings& settings);
 
 }  // namespace ssf2t

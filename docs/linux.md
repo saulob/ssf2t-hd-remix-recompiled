@@ -32,7 +32,7 @@ is older than GCC 13.
    copied into a `game` folder next to the AppImage.
 5. Wait for **Ready to play**, then press **PLAY**.
 
-Steam Deck is not a tested target for v0.1.0. Adding the AppImage as a non-Steam game should work, but nobody has tried it.
+Steam Deck is not a tested target for v0.2.0. Adding the AppImage as a non-Steam game should work, but nobody has tried it.
 
 ### If the AppImage does not start
 
@@ -81,7 +81,7 @@ Run on Linux or WSL, after `tools/codegen.ps1` has generated `generated/default`
 ```sh
 tools/package-linux.sh            # incremental Release build, then package
 tools/package-linux.sh --clean    # clean Release build first
-tools/package-linux.sh --verify-only dist/SSF2THDRemix-v0.1.0-x86_64.AppImage
+tools/package-linux.sh --verify-only dist/SSF2THDRemix-v0.2.0-x86_64.AppImage
 tools/test.sh                     # headless tests, after tools/build.sh
 ```
 

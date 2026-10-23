@@ -1,0 +1,49 @@
+diff --git a/include/rex/graphics/flags.h b/include/rex/graphics/flags.h
+index 0f12f19..1e4e6e2 100644
+--- a/include/rex/graphics/flags.h
++++ b/include/rex/graphics/flags.h
+@@ -102,6 +102,7 @@ REXCVAR_DECLARE(int32_t, d3d12_pipeline_creation_threads);
+ REXCVAR_DECLARE(bool, d3d12_tessellation_wireframe);
+ REXCVAR_DECLARE(bool, d3d12_tiled_shared_memory);
+ REXCVAR_DECLARE(std::string, render_target_path_d3d12);
++REXCVAR_DECLARE(bool, ssf2t_d3d12_transfer_short_circuit);
+ // Legacy backend compatibility aliases for shared readback controls.
+ REXCVAR_DECLARE(bool, d3d12_readback_memexport);
+ REXCVAR_DECLARE(bool, d3d12_readback_resolve);
+diff --git a/src/graphics/d3d12/render_target_cache.cpp b/src/graphics/d3d12/render_target_cache.cpp
+index 1519943..d30c78b 100644
+--- a/src/graphics/d3d12/render_target_cache.cpp
++++ b/src/graphics/d3d12/render_target_cache.cpp
+@@ -47,6 +47,11 @@ REXCVAR_DEFINE_STRING(render_target_path_d3d12, "", "GPU/D3D12",
+ 
+ REXCVAR_DEFINE_BOOL(native_stencil_value_output, true, "GPU", "Enable native stencil value output");
+ 
++REXCVAR_DEFINE_BOOL(ssf2t_d3d12_transfer_short_circuit, true, "GPU/D3D12",
++                    "Skip the render target transfer pass of a draw that has no transfers and no "
++                    "resolve clear")
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
+ namespace rex::graphics::d3d12 {
+ 
+ // Generated with `xb buildshaders`.
+@@ -3915,6 +3920,20 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
+     const Transfer::Rectangle* resolve_clear_rectangle, uint32_t cutout_render_targets,
+     bool depth_only_cutout) {
+   assert_true(GetPath() == Path::kHostRenderTargets);
++  // The usual draw has no transfers and no clear, and nothing below would be recorded for it.
++  if (REXCVAR_GET(ssf2t_d3d12_transfer_short_circuit) &&
++      !(render_target_resolve_clear_values && resolve_clear_rectangle)) {
++    bool any_transfers = false;
++    for (uint32_t i = 0; i < render_target_count; ++i) {
++      if (render_targets[i] && !render_target_transfers[i].empty()) {
++        any_transfers = true;
++        break;
++      }
++    }
++    if (!any_transfers) {
++      return;
++    }
++  }
+   auto get_cutout = [&](uint32_t render_target_index,
+                         bool stencil) -> const Transfer::Rectangle* {
+     if (!(cutout_render_targets & (uint32_t(1) << render_target_index)) ||

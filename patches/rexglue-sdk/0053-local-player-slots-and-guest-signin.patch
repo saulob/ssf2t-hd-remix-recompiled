@@ -1,0 +1,618 @@
+diff --git a/include/rex/input/device.h b/include/rex/input/device.h
+index 7b67ceb..4166ee4 100644
+--- a/include/rex/input/device.h
++++ b/include/rex/input/device.h
+@@ -28,6 +28,7 @@ struct DeviceInfo {
+   std::string name;
+   std::string guid;
+   bool synthetic = false;  // keyboard/mouse emulation or the NOP stand-in
++  bool keyboard = false;   // the keyboard/mouse emulation device
+ };
+ 
+ }  // namespace rex::input
+diff --git a/include/rex/input/device_assignment.h b/include/rex/input/device_assignment.h
+index a318f2c..2178737 100644
+--- a/include/rex/input/device_assignment.h
++++ b/include/rex/input/device_assignment.h
+@@ -28,13 +28,21 @@ class DeviceAssignment {
+   virtual void DevicesForUser(uint32_t user_index, std::vector<DeviceId>& out) const = 0;
++  virtual uint32_t PadUserOffset() const { return 0; }
+ };
+ 
+-/// Device ordinal N feeds guest user N. Synthetic devices feed user 0.
++/// Device ordinal N feeds guest user N. Synthetic devices feed user 0. With
++/// keyboard_own_user, an enabled keyboard keeps user 0 and pads start at user 1.
+ class SlotAssignment final : public DeviceAssignment {
+  public:
++  explicit SlotAssignment(bool keyboard_own_user = false)
++      : keyboard_own_user_(keyboard_own_user) {}
++
+   void OnDevicesChanged(const std::vector<DeviceInfo>& devices) override;
+   void DevicesForUser(uint32_t user_index, std::vector<DeviceId>& out) const override;
++  uint32_t PadUserOffset() const override { return first_pad_user_; }
+
+  private:
++  bool keyboard_own_user_;
++  uint32_t first_pad_user_ = 0;
+   std::vector<std::vector<DeviceId>> users_ = std::vector<std::vector<DeviceId>>(kMaxGuestUsers);
+ };
+ 
+diff --git a/include/rex/input/input_system.h b/include/rex/input/input_system.h
+index 340c463..1e5f5de 100644
+--- a/include/rex/input/input_system.h
++++ b/include/rex/input/input_system.h
+@@ -12,6 +12,7 @@
+ 
+ #include <functional>
+ #include <memory>
++#include <mutex>
+ #include <vector>
+ 
+ #include <rex/input/device_assignment.h>
+@@ -48,15 +49,22 @@ class InputSystem : public system::IInputSystem {
+   X_RESULT SetState(uint32_t user_index, X_INPUT_VIBRATION* vibration);
+   X_RESULT GetKeystroke(uint32_t user_index, uint32_t flags, X_INPUT_KEYSTROKE* out_keystroke);
+ 
++  /// True when a pad or the keyboard is assigned to the guest user.
++  bool IsUserConnected(uint32_t user_index);
++  /// Player number shown for a guest user; controllers count from 1 regardless of the keyboard user.
++  uint32_t PlayerNumber(uint32_t user_index);
++
+  private:
+   /// Re-enumerates every driver and notifies the assignment when the set
+   /// changed.
+   void RefreshDevices();
+   InputDriver* DriverForDevice(DeviceId id);
+   const DeviceInfo* DeviceInfoFor(DeviceId id) const;
++  void LogAssignment();
+ 
+   rex::ui::Window* window_ = nullptr;
+ 
++  std::mutex mutex_;
+   std::vector<std::unique_ptr<InputDriver>> drivers_;
+ 
+   std::unique_ptr<DeviceAssignment> assignment_;
+diff --git a/src/input/device_assignment.cpp b/src/input/device_assignment.cpp
+index 52e0073..9333682 100644
+--- a/src/input/device_assignment.cpp
++++ b/src/input/device_assignment.cpp
+@@ -11,6 +11,8 @@
+ 
+ #include <rex/input/device_assignment.h>
+ 
++#include <algorithm>
++
+ namespace rex::input {
+ 
+ void SlotAssignment::OnDevicesChanged(const std::vector<DeviceInfo>& devices) {
+@@ -18,13 +20,18 @@ void SlotAssignment::OnDevicesChanged(const std::vector<DeviceInfo>& devices) {
+     user.clear();
+   }
+ 
++  const bool keyboard_present =
++      std::any_of(devices.begin(), devices.end(), [](const DeviceInfo& d) { return d.keyboard; });
++  const uint32_t first_pad_user = keyboard_own_user_ && keyboard_present ? 1 : 0;
++  first_pad_user_ = first_pad_user;
++
+   // Key off the ordinal rather than list position, so unplugging pad one does
+   // not promote pad two to player one.
+   for (const auto& device : devices) {
+     if (device.synthetic) {
+       users_[0].push_back(device.id);
+-    } else if (device.ordinal < kMaxGuestUsers) {
+-      users_[device.ordinal].push_back(device.id);
++    } else if (device.ordinal < kMaxGuestUsers - first_pad_user) {
++      users_[device.ordinal + first_pad_user].push_back(device.id);
+     }
+   }
+ }
+diff --git a/src/input/input_system.cpp b/src/input/input_system.cpp
+index e46f4b3..281e670 100644
+--- a/src/input/input_system.cpp
++++ b/src/input/input_system.cpp
+@@ -31,6 +31,9 @@ REXCVAR_DEFINE_STRING(input_backend, "sdl", "Input", "Input backend: sdl, xinput
+     .allowed({"sdl", "xinput"});
+ 
+ REXCVAR_DEFINE_BOOL(guide_button, false, "Input", "Enable guide button pass-through");
++
++REXCVAR_DEFINE_BOOL(input_keyboard_own_user, false, "Input",
++                    "Keyboard keeps guest user 0 and controllers start at guest user 1");
+ namespace rex::input {
+ 
+ namespace {
+@@ -72,6 +75,7 @@ X_STATUS InputSystem::Setup() {
+ }
+ 
+ void InputSystem::Shutdown() {
++  std::lock_guard lock(mutex_);
+   // device_owners_ holds raw driver pointers.
+   devices_.clear();
+   device_owners_.clear();
+@@ -103,6 +107,7 @@ void SetInputActivityCallback(
+ }
+ 
+ void InputSystem::SetDeviceAssignment(std::unique_ptr<DeviceAssignment> assignment) {
++  std::lock_guard lock(mutex_);
+   assignment_ = std::move(assignment);
+   if (assignment_) {
+     assignment_->OnDevicesChanged(devices_);
+@@ -195,6 +200,7 @@ void InputSystem::RefreshDevices() {
+ 
+   if (changed && assignment_) {
+     assignment_->OnDevicesChanged(devices_);
++    LogAssignment();
+   }
+ }
+ 
+@@ -219,6 +225,7 @@ const DeviceInfo* InputSystem::DeviceInfoFor(DeviceId id) const {
+ X_RESULT InputSystem::GetCapabilities(uint32_t user_index, uint32_t flags,
+                                       X_INPUT_CAPABILITIES* out_caps) {
+   SCOPE_profile_cpu_f("hid");
++  std::lock_guard lock(mutex_);
+   if (!out_caps || !assignment_) {
+     return X_ERROR_DEVICE_NOT_CONNECTED;
+   }
+@@ -246,6 +253,7 @@ X_RESULT InputSystem::GetCapabilities(uint32_t user_index, uint32_t flags,
+ 
+ X_RESULT InputSystem::GetState(uint32_t user_index, X_INPUT_STATE* out_state) {
+   SCOPE_profile_cpu_f("hid");
++  std::lock_guard lock(mutex_);
+   if (!assignment_) {
+     return X_ERROR_DEVICE_NOT_CONNECTED;
+   }
+@@ -286,6 +294,7 @@ X_RESULT InputSystem::GetState(uint32_t user_index, X_INPUT_STATE* out_state) {
+ 
+ X_RESULT InputSystem::SetState(uint32_t user_index, X_INPUT_VIBRATION* vibration) {
+   SCOPE_profile_cpu_f("hid");
++  std::lock_guard lock(mutex_);
+   if (!assignment_) {
+     return X_ERROR_DEVICE_NOT_CONNECTED;
+   }
+@@ -328,6 +337,7 @@ X_RESULT InputSystem::SetState(uint32_t user_index, X_INPUT_VIBRATION* vibration
+ X_RESULT InputSystem::GetKeystroke(uint32_t user_index, uint32_t flags,
+                                    X_INPUT_KEYSTROKE* out_keystroke) {
+   SCOPE_profile_cpu_f("hid");
++  std::lock_guard lock(mutex_);
+   if (!assignment_) {
+     return X_ERROR_DEVICE_NOT_CONNECTED;
+   }
+@@ -354,6 +364,44 @@ X_RESULT InputSystem::GetKeystroke(uint32_t user_index, uint32_t flags,
+   return any_connected ? X_ERROR_EMPTY : X_ERROR_DEVICE_NOT_CONNECTED;
+ }
+ 
++bool InputSystem::IsUserConnected(uint32_t user_index) {
++  std::lock_guard lock(mutex_);
++  if (!assignment_) {
++    return false;
++  }
++
++  RefreshDevices();
++  std::vector<DeviceId> ids;
++  assignment_->DevicesForUser(user_index, ids);
++  return std::any_of(ids.begin(), ids.end(), [&](DeviceId id) {
++    const DeviceInfo* info = DeviceInfoFor(id);
++    return info && (!info->synthetic || info->keyboard);
++  });
++}
++
++uint32_t InputSystem::PlayerNumber(uint32_t user_index) {
++  std::lock_guard lock(mutex_);
++  if (!assignment_) {
++    return user_index + 1;
++  }
++
++  RefreshDevices();
++  return user_index + 1 - assignment_->PadUserOffset();
++}
++
++void InputSystem::LogAssignment() {
++  std::vector<DeviceId> ids;
++  for (uint32_t user = 0; user < kMaxGuestUsers; user++) {
++    assignment_->DevicesForUser(user, ids);
++    for (DeviceId id : ids) {
++      const DeviceInfo* info = DeviceInfoFor(id);
++      if (info && (!info->synthetic || info->keyboard)) {
++        REXLOG_INFO("Local input slot {}: {}", user, info->name);
++      }
++    }
++  }
++}
++
+ std::unique_ptr<InputSystem> CreateDefaultInputSystem(bool tool_mode) {
+   auto input = std::make_unique<InputSystem>(nullptr);
+ 
+@@ -384,7 +422,7 @@ std::unique_ptr<InputSystem> CreateDefaultInputSystem(bool tool_mode) {
+   // NOP driver (primary in tool mode, fallback otherwise)
+   uint8_t nop_index = tool_mode ? 0 : 1;
+   input->AddDriver(std::make_unique<nop::NopInputDriver>(nullptr, nop_index));
+-  input->SetDeviceAssignment(std::make_unique<SlotAssignment>());
++  input->SetDeviceAssignment(std::make_unique<SlotAssignment>(REXCVAR_GET(input_keyboard_own_user)));
+   return input;
+ }
+ 
+diff --git a/src/input/mnk/mnk_input_driver.cpp b/src/input/mnk/mnk_input_driver.cpp
+index 3f9422d..7f009f4 100644
+--- a/src/input/mnk/mnk_input_driver.cpp
++++ b/src/input/mnk/mnk_input_driver.cpp
+@@ -228,6 +228,7 @@ void MnkInputDriver::EnumerateDevices(std::vector<DeviceInfo>& out) {
+   info.id = kMnkDevice;
+   info.name = "Keyboard and Mouse";
+   info.synthetic = true;
++  info.keyboard = true;
+   out.push_back(info);
+ }
+ 
+diff --git a/src/kernel/xam/xam_user.cpp b/src/kernel/xam/xam_user.cpp
+index 8778066..08108e2 100644
+--- a/src/kernel/xam/xam_user.cpp
++++ b/src/kernel/xam/xam_user.cpp
+@@ -15,6 +15,8 @@
+ #include <cstring>
+ 
+ #include <rex/cvar.h>
++#include <rex/input/input_system.h>
++#include <rex/runtime.h>
+ #include <rex/kernel/xam/private.h>
+ #include <rex/logging.h>
+ #include <rex/math.h>
+@@ -36,6 +37,24 @@ namespace xam {
+ using namespace rex::system;
+ using namespace rex::system::xam;
+ 
++// Guest users 1-3 exist while a pad is assigned to them, as offline local players.
++bool IsGuestUser(uint32_t user_index) {
++  if (user_index == 0 || user_index >= rex::input::kMaxGuestUsers) {
++    return false;
++  }
++  auto* input = static_cast<rex::input::InputSystem*>(REX_KERNEL_STATE()->emulator()->input_system());
++  return input && input->IsUserConnected(user_index);
++}
++
++uint64_t GuestXuid(uint32_t user_index) {
++  return REX_KERNEL_STATE()->user_profile()->xuid() + user_index;
++}
++
++std::string GuestName(uint32_t user_index) {
++  auto* input = static_cast<rex::input::InputSystem*>(REX_KERNEL_STATE()->emulator()->input_system());
++  return "Player " + std::to_string(input->PlayerNumber(user_index));
++}
++
+ i32 XamUserGetXUID_entry(u32 user_index, u32 type_mask, mapped_u64 xuid_ptr) {
+   assert_true(type_mask == 1 || type_mask == 2 || type_mask == 3 || type_mask == 4 ||
+               type_mask == 7);
+@@ -57,6 +75,9 @@ i32 XamUserGetXUID_entry(u32 user_index, u32 type_mask, mapped_u64 xuid_ptr) {
+         xuid = user_profile->xuid();
+         result = X_E_SUCCESS;
+       }
++    } else if ((type_mask & 1) && IsGuestUser(user_index)) {
++      xuid = GuestXuid(user_index);
++      result = X_E_SUCCESS;
+     }
+   } else {
+     result = X_E_INVALIDARG;
+@@ -71,6 +92,8 @@ u32 XamUserGetSigninState_entry(u32 user_index) {
+     if (user_index == 0) {
+       const auto& user_profile = REX_KERNEL_STATE()->user_profile();
+       signin_state = user_profile->signin_state();
++    } else if (IsGuestUser(user_index)) {
++      signin_state = 1;
+     }
+   }
+   return signin_state;
+@@ -93,7 +116,13 @@ i32 XamUserGetSigninInfo_entry(u32 user_index, u32 flags, ppc_ptr_t<X_USER_SIGNI
+ 
+   std::memset(info, 0, sizeof(X_USER_SIGNIN_INFO));
+   if (user_index) {
+-    return X_E_NO_SUCH_USER;
++    if (!IsGuestUser(user_index)) {
++      return X_E_NO_SUCH_USER;
++    }
++    info->xuid = GuestXuid(user_index);
++    info->signin_state = 1;
++    rex::string::copy_truncating(info->name, GuestName(user_index), rex::countof(info->name));
++    return X_E_SUCCESS;
+   }
+ 
+   const auto& user_profile = REX_KERNEL_STATE()->user_profile();
+@@ -109,7 +138,11 @@ u32 XamUserGetName_entry(u32 user_index, mapped_string buffer, u32 buffer_len) {
+   }
+ 
+   if (user_index) {
+-    return X_E_NO_SUCH_USER;
++    if (!IsGuestUser(user_index)) {
++      return X_E_NO_SUCH_USER;
++    }
++    rex::string::copy_truncating(buffer, GuestName(user_index), std::min(buffer_len, uint32_t(16)));
++    return X_E_SUCCESS;
+   }
+ 
+   const auto& user_profile = REX_KERNEL_STATE()->user_profile();
+@@ -211,8 +244,8 @@ uint32_t XamUserReadProfileSettingsEx(uint32_t title_id, uint32_t user_index, ui
+   // Title ID = 0 means us.
+   // 0xfffe07d1 = profile?
+ 
+-  if (!xuids && user_index) {
+-    // Only support user 0.
++  if (!xuids && user_index && !IsGuestUser(user_index)) {
++    // Only user 0 and assigned guests.
+     if (overlapped) {
+       REX_KERNEL_STATE()->CompleteOverlappedImmediate(
+           REX_KERNEL_MEMORY()->HostToGuestVirtual(overlapped), X_ERROR_NO_SUCH_USER);
+@@ -377,7 +410,7 @@ u32 XamUserCheckPrivilege_entry(u32 user_index, u32 mask, mapped_u32 out_value)
+       return X_ERROR_INVALID_PARAMETER;
+     }
+ 
+-    if (user_index) {
++    if (user_index && !IsGuestUser(user_index)) {
+       return X_ERROR_NO_SUCH_USER;
+     }
+   }
+diff --git a/tests/unit/input/input_assignment_test.cpp b/tests/unit/input/input_assignment_test.cpp
+index 096238d..c7a3ff5 100644
+--- a/tests/unit/input/input_assignment_test.cpp
++++ b/tests/unit/input/input_assignment_test.cpp
+@@ -36,6 +36,19 @@ DeviceInfo Pad(uint64_t id, uint32_t ordinal) {
+   return info;
+ }
+ 
++DeviceInfo Keyboard(uint64_t id) {
++  DeviceInfo info;
++  info.id = static_cast<DeviceId>(id);
++  info.ordinal = UINT32_MAX;
++  info.synthetic = true;
++  info.keyboard = true;
++  return info;
++}
++
++DeviceId Id(uint64_t id) {
++  return static_cast<DeviceId>(id);
++}
++
+ std::vector<DeviceId> For(const DeviceAssignment& a, uint32_t user) {
+   std::vector<DeviceId> out;
+   a.DevicesForUser(user, out);
+@@ -49,10 +62,11 @@ class FakeDriver final : public InputDriver {
+ 
+   X_STATUS Setup() override { return X_STATUS_SUCCESS; }
+ 
+-  void Add(uint64_t id, bool synthetic = false) {
++  void Add(uint64_t id, bool synthetic = false, bool keyboard = false) {
+     DeviceInfo info;
+     info.id = static_cast<DeviceId>(id);
+     info.synthetic = synthetic;
++    info.keyboard = keyboard;
+     devices_.push_back(info);
+     states_[static_cast<DeviceId>(id)] = {};
+   }
+@@ -236,3 +250,231 @@ TEST_CASE("A synthetic device does not push the first pad off guest user 0", "[i
+   REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == X_INPUT_GAMEPAD_B);
+   REQUIRE(system->GetState(1, &state) == X_ERROR_DEVICE_NOT_CONNECTED);
+ }
++
++TEST_CASE("Two controllers occupy guest users 0 and 1", "[input]") {
++  SlotAssignment slots;
++  slots.OnDevicesChanged({Pad(10, 0), Pad(11, 1)});
++
++  REQUIRE(For(slots, 0) == std::vector<DeviceId>{Id(10)});
++  REQUIRE(For(slots, 1) == std::vector<DeviceId>{Id(11)});
++  REQUIRE(For(slots, 2).empty());
++}
++
++TEST_CASE("By default the keyboard shares guest user 0 with the first controller", "[input]") {
++  SlotAssignment slots;
++  slots.OnDevicesChanged({Pad(10, 0), Pad(11, 1), Keyboard(20)});
++
++  REQUIRE(For(slots, 0) == std::vector<DeviceId>{Id(10), Id(20)});
++  REQUIRE(For(slots, 1) == std::vector<DeviceId>{Id(11)});
++}
++
++TEST_CASE("A keyboard that owns its user moves controllers up one user", "[input]") {
++  SlotAssignment slots(true);
++  slots.OnDevicesChanged({Pad(10, 0), Pad(11, 1), Keyboard(20)});
++
++  REQUIRE(For(slots, 0) == std::vector<DeviceId>{Id(20)});
++  REQUIRE(For(slots, 1) == std::vector<DeviceId>{Id(10)});
++  REQUIRE(For(slots, 2) == std::vector<DeviceId>{Id(11)});
++  REQUIRE(For(slots, 3).empty());
++}
++
++TEST_CASE("Without a keyboard the controllers start at guest user 0", "[input]") {
++  SlotAssignment slots(true);
++  slots.OnDevicesChanged({Pad(10, 0), Pad(11, 1)});
++
++  REQUIRE(For(slots, 0) == std::vector<DeviceId>{Id(10)});
++  REQUIRE(For(slots, 1) == std::vector<DeviceId>{Id(11)});
++}
++
++TEST_CASE("Controllers past the last guest user are dropped", "[input]") {
++  SlotAssignment slots(true);
++  slots.OnDevicesChanged({Pad(10, 0), Pad(11, 1), Pad(12, 2), Pad(13, 3), Keyboard(20)});
++
++  REQUIRE(For(slots, 3) == std::vector<DeviceId>{Id(12)});
++  for (uint32_t user = 0; user < 4; user++) {
++    for (DeviceId id : For(slots, user)) {
++      REQUIRE(id != Id(13));
++    }
++  }
++}
++
++namespace {
++
++std::unique_ptr<InputSystem> SlotSystem(FakeDriver** out_driver, bool keyboard_own_user) {
++  auto driver = std::make_unique<FakeDriver>();
++  *out_driver = driver.get();
++  auto system = std::make_unique<InputSystem>(nullptr);
++  system->AddDriver(std::move(driver));
++  system->SetDeviceAssignment(std::make_unique<SlotAssignment>(keyboard_own_user));
++  return system;
++}
++
++}  // namespace
++
++TEST_CASE("Each controller reaches only its own guest user", "[input]") {
++  FakeDriver* driver = nullptr;
++  auto system = SlotSystem(&driver, false);
++  driver->Add(1);
++  driver->Add(2);
++  driver->SetButtons(1, X_INPUT_GAMEPAD_A);
++  driver->SetButtons(2, X_INPUT_GAMEPAD_B);
++
++  X_INPUT_STATE state = {};
++  REQUIRE(system->GetState(0, &state) == X_ERROR_SUCCESS);
++  REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == X_INPUT_GAMEPAD_A);
++  REQUIRE(system->GetState(1, &state) == X_ERROR_SUCCESS);
++  REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == X_INPUT_GAMEPAD_B);
++  REQUIRE(system->GetState(2, &state) == X_ERROR_DEVICE_NOT_CONNECTED);
++}
++
++TEST_CASE("Capabilities for guest user 1 come from the second controller", "[input]") {
++  FakeDriver* driver = nullptr;
++  auto system = SlotSystem(&driver, false);
++  driver->Add(1);
++  driver->Add(2);
++
++  X_INPUT_CAPABILITIES caps = {};
++  REQUIRE(system->GetCapabilities(0, 0, &caps) == X_ERROR_SUCCESS);
++  REQUIRE(caps.sub_type == 1);
++  REQUIRE(system->GetCapabilities(1, 0, &caps) == X_ERROR_SUCCESS);
++  REQUIRE(caps.sub_type == 2);
++  REQUIRE(system->GetCapabilities(2, 0, &caps) == X_ERROR_DEVICE_NOT_CONNECTED);
++}
++
++TEST_CASE("A second controller connected later takes guest user 1", "[input]") {
++  FakeDriver* driver = nullptr;
++  auto system = SlotSystem(&driver, false);
++  driver->Add(1);
++
++  X_INPUT_STATE state = {};
++  REQUIRE(system->GetState(1, &state) == X_ERROR_DEVICE_NOT_CONNECTED);
++  REQUIRE(!system->IsUserConnected(1));
++
++  driver->Add(2);
++  driver->SetButtons(2, X_INPUT_GAMEPAD_B);
++  REQUIRE(system->IsUserConnected(1));
++  REQUIRE(system->GetState(1, &state) == X_ERROR_SUCCESS);
++  REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == X_INPUT_GAMEPAD_B);
++}
++
++TEST_CASE("A reconnected second controller returns to guest user 1", "[input]") {
++  FakeDriver* driver = nullptr;
++  auto system = SlotSystem(&driver, false);
++  driver->Add(1);
++  driver->Add(2);
++  REQUIRE(system->IsUserConnected(1));
++
++  driver->Remove(2);
++  REQUIRE(!system->IsUserConnected(1));
++  X_INPUT_STATE state = {};
++  REQUIRE(system->GetState(0, &state) == X_ERROR_SUCCESS);
++
++  driver->Add(3);
++  driver->SetButtons(3, X_INPUT_GAMEPAD_B);
++  REQUIRE(system->IsUserConnected(1));
++  REQUIRE(system->GetState(1, &state) == X_ERROR_SUCCESS);
++  REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == X_INPUT_GAMEPAD_B);
++}
++
++TEST_CASE("Unplugging the first controller leaves the second on guest user 1", "[input]") {
++  FakeDriver* driver = nullptr;
++  auto system = SlotSystem(&driver, false);
++  driver->Add(1);
++  driver->Add(2);
++  driver->SetButtons(2, X_INPUT_GAMEPAD_B);
++
++  X_INPUT_STATE state = {};
++  REQUIRE(system->GetState(1, &state) == X_ERROR_SUCCESS);
++  driver->Remove(1);
++  REQUIRE(system->GetState(0, &state) == X_ERROR_DEVICE_NOT_CONNECTED);
++  REQUIRE(system->GetState(1, &state) == X_ERROR_SUCCESS);
++  REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == X_INPUT_GAMEPAD_B);
++}
++
++TEST_CASE("Keyboard and one controller play as separate local users", "[input]") {
++  FakeDriver* driver = nullptr;
++  auto system = SlotSystem(&driver, true);
++  driver->Add(100, true, true);
++  driver->Add(1);
++  driver->SetButtons(100, X_INPUT_GAMEPAD_A);
++  driver->SetButtons(1, X_INPUT_GAMEPAD_B);
++
++  X_INPUT_STATE state = {};
++  REQUIRE(system->GetState(0, &state) == X_ERROR_SUCCESS);
++  REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == X_INPUT_GAMEPAD_A);
++  REQUIRE(system->GetState(1, &state) == X_ERROR_SUCCESS);
++  REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == X_INPUT_GAMEPAD_B);
++  REQUIRE(system->IsUserConnected(1));
++  REQUIRE(!system->IsUserConnected(2));
++}
++
++TEST_CASE("Keyboard and two controllers fill guest users 0 to 2", "[input]") {
++  FakeDriver* driver = nullptr;
++  auto system = SlotSystem(&driver, true);
++  driver->Add(100, true, true);
++  driver->Add(1);
++  driver->Add(2);
++  driver->SetButtons(1, X_INPUT_GAMEPAD_A);
++  driver->SetButtons(2, X_INPUT_GAMEPAD_B);
++
++  X_INPUT_STATE state = {};
++  REQUIRE(system->GetState(1, &state) == X_ERROR_SUCCESS);
++  REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == X_INPUT_GAMEPAD_A);
++  REQUIRE(system->GetState(2, &state) == X_ERROR_SUCCESS);
++  REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == X_INPUT_GAMEPAD_B);
++  REQUIRE(system->GetState(0, &state) == X_ERROR_SUCCESS);
++  REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == 0);
++}
++
++TEST_CASE("A lone keyboard keeps guest user 0 and a controller then joins user 1", "[input]") {
++  FakeDriver* driver = nullptr;
++  auto system = SlotSystem(&driver, true);
++  driver->Add(100, true, true);
++  driver->SetButtons(100, X_INPUT_GAMEPAD_A);
++
++  X_INPUT_STATE state = {};
++  REQUIRE(system->GetState(0, &state) == X_ERROR_SUCCESS);
++  REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == X_INPUT_GAMEPAD_A);
++  REQUIRE(!system->IsUserConnected(1));
++
++  driver->Add(1);
++  driver->SetButtons(1, X_INPUT_GAMEPAD_B);
++  REQUIRE(system->GetState(1, &state) == X_ERROR_SUCCESS);
++  REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == X_INPUT_GAMEPAD_B);
++  REQUIRE(system->GetState(0, &state) == X_ERROR_SUCCESS);
++  REQUIRE(static_cast<uint16_t>(state.gamepad.buttons) == X_INPUT_GAMEPAD_A);
++}
++
++TEST_CASE("The NOP stand-in alone never makes a guest user", "[input]") {
++  FakeDriver* driver = nullptr;
++  auto system = SlotSystem(&driver, true);
++  driver->Add(50, true);
++
++  REQUIRE(!system->IsUserConnected(0));
++  REQUIRE(!system->IsUserConnected(1));
++  X_INPUT_STATE state = {};
++  REQUIRE(system->GetState(0, &state) == X_ERROR_SUCCESS);
++}
++
++TEST_CASE("Player numbers count from one at the first controller user", "[input]") {
++  FakeDriver* driver = nullptr;
++  auto plain = SlotSystem(&driver, false);
++  driver->Add(1);
++  for (uint32_t user = 0; user < 4; user++) {
++    REQUIRE(plain->PlayerNumber(user) == user + 1);
++  }
++
++  auto with_keyboard = SlotSystem(&driver, true);
++  driver->Add(100, true, true);
++  driver->Add(1);
++  driver->Add(2);
++  REQUIRE(with_keyboard->PlayerNumber(1) == 1);
++  REQUIRE(with_keyboard->PlayerNumber(2) == 2);
++  REQUIRE(with_keyboard->PlayerNumber(3) == 3);
++
++  auto no_keyboard = SlotSystem(&driver, true);
++  driver->Add(1);
++  driver->Add(2);
++  REQUIRE(no_keyboard->PlayerNumber(0) == 1);
++  REQUIRE(no_keyboard->PlayerNumber(1) == 2);
++}

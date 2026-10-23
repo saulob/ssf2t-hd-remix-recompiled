@@ -14,7 +14,7 @@
   .\tools\package-release.ps1              # incremental Release build, then package
   .\tools\package-release.ps1 -Clean       # clean Release build first
   .\tools\package-release.ps1 -SkipBuild   # package the existing build-release\ output
-  .\tools\package-release.ps1 -VerifyOnly dist\SSF2THDRemix-v0.1.0-windows-x64.zip   # check a staged folder or a ZIP
+  .\tools\package-release.ps1 -VerifyOnly dist\SSF2THDRemix-v0.2.0-windows-x64.zip   # check a staged folder or a ZIP
 #>
 param(
     [switch]$Clean,
@@ -30,8 +30,9 @@ $SdkRoot = Join-Path $Root 'tools\rexglue\win-amd64'
 . (Join-Path $PSScriptRoot 'rexruntime-patch.ps1')
 
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
-$ProgramFiles = @('ssf2t_hd_remix.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'ssf2t_hd_remix.toml')
+$ProgramFiles = @('ssf2t_hd_remix.exe', 'trg-updater.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'ssf2t_hd_remix.toml')
 $LicenseFiles = @('ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt')
+$AssetFiles = @('assets\launcher\header-art.png')
 $CheckFolder = Join-Path $PSScriptRoot 'check-release-folder.ps1'
 $ZipTimestamp = [DateTimeOffset]::new(2026, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
 
@@ -111,6 +112,11 @@ if (Test-Path -LiteralPath $Stage) { Remove-Item -LiteralPath $Stage -Recurse -F
 New-Item -ItemType Directory $Stage, (Join-Path $Stage 'licenses') | Out-Null
 
 foreach ($leaf in $ProgramFiles) { Copy-Item (Join-Path $ReleaseBuild $leaf) $Stage }
+$AssetDir = Join-Path $Stage 'assets\launcher'
+New-Item -ItemType Directory -Force $AssetDir | Out-Null
+foreach ($asset in $AssetFiles) {
+    Copy-Item -LiteralPath (Join-Path $Root $asset) $AssetDir
+}
 foreach ($leaf in @('rexruntime.dll', 'rexgpu-xenos.dll')) {
     $staged = Get-FileSha256 (Join-Path $Stage $leaf)
     if ($staged -ne (Get-FileSha256 (Join-Path $SdkRoot "bin\$leaf"))) { throw "$leaf is not the file installed in tools\rexglue" }
@@ -139,6 +145,14 @@ foreach ($debugDll in 'ucrtbased.dll', 'vcruntime140d.dll', 'msvcp140d.dll', 're
     if ($exeText.IndexOf($debugDll, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $identity += "ssf2t_hd_remix.exe refers to $debugDll" }
 }
 if ($identity.Count) { Write-Problems $identity; throw 'The executable does not carry the release identity' }
+
+# The update helper runs alone from a temporary folder, so it must not need any runtime library from the installation.
+$helperText = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes((Join-Path $Stage 'trg-updater.exe')))
+$helper = @()
+foreach ($dependency in 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'ucrtbase.dll', 'libc++.dll', 'rexruntime.dll', 'ssf2t_hd_remix.exe') {
+    if ($helperText.IndexOf($dependency, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $helper += "trg-updater.exe refers to $dependency" }
+}
+if ($helper.Count) { Write-Problems $helper; throw 'trg-updater.exe is not self-contained' }
 
 if (-not (Invoke-FolderCheck $Stage)) { throw 'The staging folder holds files that must not be released' }
 

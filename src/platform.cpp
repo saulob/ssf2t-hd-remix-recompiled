@@ -9,7 +9,6 @@
 #if defined(_WIN32)
 #include <windows.h>
 #include <shellscalingapi.h>
-#include <xinput.h>
 
 #include "trg/platform.h"
 #else
@@ -19,15 +18,17 @@
 #include <unistd.h>
 
 #include <SDL3/SDL.h>
-#endif
-
-#include <fmt/format.h>
 #include <imgui.h>
+#endif
 
 #include <rex/filesystem.h>
 #include <rex/logging.h>
 
+#include "active_log.h"
+#include "crash_report.h"
+#include "dpi.h"
 #include "relaunch_command.h"
+#include "session_log.h"
 #include "window_host.h"
 
 #if defined(_WIN32)
@@ -45,7 +46,7 @@ namespace {
 #if defined(_WIN32)
 
 BOOL CALLBACK AddMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM user) {
-  MONITORINFO info{};
+  MONITORINFOEXW info{};
   info.cbSize = sizeof(info);
   if (!GetMonitorInfoW(monitor, &info)) {
     return TRUE;
@@ -58,10 +59,15 @@ BOOL CALLBACK AddMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM user) {
   found.work_width = info.rcWork.right - info.rcWork.left;
   found.work_height = info.rcWork.bottom - info.rcWork.top;
   found.primary = (info.dwFlags & MONITORINFOF_PRIMARY) != 0;
+  DEVMODEW mode{};
+  mode.dmSize = sizeof(mode);
+  if (EnumDisplaySettingsW(info.szDevice, ENUM_CURRENT_SETTINGS, &mode) && mode.dmDisplayFrequency > 1) {
+    found.refresh_hz = int(mode.dmDisplayFrequency);
+  }
   UINT dpi_x = 0;
   UINT dpi_y = 0;
-  if (SUCCEEDED(GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y)) && dpi_x) {
-    found.scale = float(dpi_x) / 96.0f;
+  if (SUCCEEDED(GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y))) {
+    found.scale = DpiScaleFromDpi(dpi_x);
   }
   reinterpret_cast<std::vector<MonitorInfo>*>(user)->push_back(found);
   return TRUE;
@@ -105,94 +111,7 @@ LRESULT CALLBACK PreShowProc(int code, WPARAM wparam, LPARAM lparam) {
   return CallNextHookEx(g_hook, code, wparam, lparam);
 }
 
-using XInputGetStateFn = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
-
-XInputGetStateFn LoadXInput() {
-  for (const wchar_t* name : {L"xinput1_4.dll", L"xinput1_3.dll", L"xinput9_1_0.dll"}) {
-    if (HMODULE dll = LoadLibraryW(name)) {
-      if (FARPROC proc = GetProcAddress(dll, "XInputGetState")) {
-        return reinterpret_cast<XInputGetStateFn>(reinterpret_cast<void*>(proc));
-      }
-    }
-  }
-  return nullptr;
-}
-
-DWORD GetPadState(DWORD pad, XINPUT_STATE* state) {
-  static const XInputGetStateFn get_state = LoadXInput();
-  return get_state ? get_state(pad, state) : ERROR_DEVICE_NOT_CONNECTED;
-}
-
-struct ButtonKey {
-  ImGuiKey key;
-  WORD mask;
-};
-constexpr ButtonKey kButtonKeys[] = {
-    {ImGuiKey_GamepadStart, XINPUT_GAMEPAD_START},
-    {ImGuiKey_GamepadBack, XINPUT_GAMEPAD_BACK},
-    {ImGuiKey_GamepadFaceDown, XINPUT_GAMEPAD_A},
-    {ImGuiKey_GamepadFaceRight, XINPUT_GAMEPAD_B},
-    {ImGuiKey_GamepadFaceLeft, XINPUT_GAMEPAD_X},
-    {ImGuiKey_GamepadFaceUp, XINPUT_GAMEPAD_Y},
-    {ImGuiKey_GamepadDpadLeft, XINPUT_GAMEPAD_DPAD_LEFT},
-    {ImGuiKey_GamepadDpadRight, XINPUT_GAMEPAD_DPAD_RIGHT},
-    {ImGuiKey_GamepadDpadUp, XINPUT_GAMEPAD_DPAD_UP},
-    {ImGuiKey_GamepadDpadDown, XINPUT_GAMEPAD_DPAD_DOWN},
-};
-
-struct StickKey {
-  ImGuiKey key;
-  bool horizontal;
-  int dead_zone;
-  int full;
-};
-constexpr StickKey kStickKeys[] = {
-    {ImGuiKey_GamepadLStickLeft, true, -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE, -32768},
-    {ImGuiKey_GamepadLStickRight, true, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE, 32767},
-    {ImGuiKey_GamepadLStickUp, false, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE, 32767},
-    {ImGuiKey_GamepadLStickDown, false, -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE, -32768},
-};
-
 #else
-
-struct ButtonKey {
-  ImGuiKey key;
-  SDL_GamepadButton button;
-};
-constexpr ButtonKey kButtonKeys[] = {
-    {ImGuiKey_GamepadStart, SDL_GAMEPAD_BUTTON_START},
-    {ImGuiKey_GamepadBack, SDL_GAMEPAD_BUTTON_BACK},
-    {ImGuiKey_GamepadFaceDown, SDL_GAMEPAD_BUTTON_SOUTH},
-    {ImGuiKey_GamepadFaceRight, SDL_GAMEPAD_BUTTON_EAST},
-    {ImGuiKey_GamepadFaceLeft, SDL_GAMEPAD_BUTTON_WEST},
-    {ImGuiKey_GamepadFaceUp, SDL_GAMEPAD_BUTTON_NORTH},
-    {ImGuiKey_GamepadDpadLeft, SDL_GAMEPAD_BUTTON_DPAD_LEFT},
-    {ImGuiKey_GamepadDpadRight, SDL_GAMEPAD_BUTTON_DPAD_RIGHT},
-    {ImGuiKey_GamepadDpadUp, SDL_GAMEPAD_BUTTON_DPAD_UP},
-    {ImGuiKey_GamepadDpadDown, SDL_GAMEPAD_BUTTON_DPAD_DOWN},
-};
-
-// The left stick dead zone XInput uses. SDL's Y axis points down.
-constexpr int kStickDeadZone = 7849;
-struct StickKey {
-  ImGuiKey key;
-  SDL_GamepadAxis axis;
-  int direction;
-};
-constexpr StickKey kStickKeys[] = {
-    {ImGuiKey_GamepadLStickLeft, SDL_GAMEPAD_AXIS_LEFTX, -1},
-    {ImGuiKey_GamepadLStickRight, SDL_GAMEPAD_AXIS_LEFTX, 1},
-    {ImGuiKey_GamepadLStickUp, SDL_GAMEPAD_AXIS_LEFTY, -1},
-    {ImGuiKey_GamepadLStickDown, SDL_GAMEPAD_AXIS_LEFTY, 1},
-};
-
-SDL_Gamepad* OpenFirstGamepad() {
-  int count = 0;
-  SDL_JoystickID* ids = SDL_GetGamepads(&count);
-  SDL_Gamepad* pad = ids && count > 0 ? SDL_OpenGamepad(ids[0]) : nullptr;
-  SDL_free(ids);
-  return pad;
-}
 
 struct FontFamily {
   const char* regular;
@@ -256,21 +175,38 @@ std::filesystem::path PortFolder() {
   return rex::filesystem::GetExecutableFolder();
 }
 
-std::filesystem::path NextLogFile(const std::filesystem::path& folder, std::string_view name) {
+const char* ArchitectureName() {
+#if defined(_M_ARM64)
+  return "arm64";
+#elif defined(_M_X64) || defined(__x86_64__)
+  return "x86-64";
+#elif defined(_M_IX86) || defined(__i386__)
+  return "x86";
+#else
+  return "unknown";
+#endif
+}
+
+const char* GraphicsBackendName() {
+#if defined(_WIN32)
+  return "Direct3D 12";
+#else
+  return "Vulkan";
+#endif
+}
+
+void InstallCrashReports() {
+#if defined(_WIN32)
+  const std::filesystem::path file = ActiveLogFile();
+  if (file.empty()) {
+    REXLOG_WARN("Windows crash reporting disabled: the current log file could not be resolved");
+    return;
+  }
   std::error_code ec;
-  std::filesystem::create_directories(folder, ec);
-  if (!std::filesystem::is_directory(folder, ec)) {
-    return {};
-  }
-  const std::string prefix = std::string(name) + "_";
-  int last = 0;
-  for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
-    const std::string file = entry.path().filename().string();
-    if (file.starts_with(prefix) && file.ends_with(".log")) {
-      last = std::max(last, std::atoi(file.c_str() + prefix.size()));
-    }
-  }
-  return folder / fmt::format("{}{:03d}.log", prefix, last + 1);
+  const std::filesystem::path absolute = std::filesystem::absolute(file, ec);
+  InstallCrashReporting(Utf8(ec ? file : absolute).c_str());
+  REXLOG_INFO("Windows crash reporting enabled for current log.");
+#endif
 }
 
 UiFontFiles FindUiFonts() {
@@ -334,6 +270,9 @@ std::vector<MonitorInfo> ListMonitors() {
     }
     if (const float scale = SDL_GetDisplayContentScale(displays[i]); scale > 0.0f) {
       found.scale = scale;
+    }
+    if (const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(displays[i])) {
+      found.refresh_hz = int(mode->refresh_rate + 0.5f);
     }
     found.primary = displays[i] == primary;
     monitors.push_back(found);
@@ -440,11 +379,13 @@ void CheckWindowDisplay(void* native_window, int monitor) {
 }
 
 bool RelaunchSelf(std::wstring_view extra_args) {
+  BeginSessionLogHandoff();
   std::wstring command_line = GetCommandLineW();
   command_line += L' ';
   command_line += extra_args;
   wchar_t exe[MAX_PATH];
   if (!GetModuleFileNameW(nullptr, exe, MAX_PATH)) {
+    CancelSessionLogHandoff();
     return false;
   }
   STARTUPINFOW startup{};
@@ -453,51 +394,12 @@ bool RelaunchSelf(std::wstring_view extra_args) {
   if (!CreateProcessW(exe, command_line.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup,
                       &process)) {
     REXLOG_ERROR("Relaunch failed ({})", GetLastError());
+    CancelSessionLogHandoff();
     return false;
   }
   CloseHandle(process.hThread);
   CloseHandle(process.hProcess);
   return true;
-}
-
-void LauncherGamepad::Update(ImGuiIO& io) {
-  XINPUT_STATE state{};
-  if (pad_ < 0 || GetPadState(DWORD(pad_), &state) != ERROR_SUCCESS) {
-    pad_ = -1;
-    // Polling an empty slot is slow, so look for a controller once a second.
-    if (ImGui::GetTime() < next_scan_) {
-      return;
-    }
-    next_scan_ = ImGui::GetTime() + 1.0;
-    for (DWORD i = 0; i < XUSER_MAX_COUNT && pad_ < 0; ++i) {
-      if (GetPadState(i, &state) == ERROR_SUCCESS) {
-        pad_ = int(i);
-      }
-    }
-    if (pad_ < 0) {
-      return;
-    }
-  }
-  io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
-  const XINPUT_GAMEPAD& pad = state.Gamepad;
-  for (const ButtonKey& b : kButtonKeys) {
-    io.AddKeyEvent(b.key, (pad.wButtons & b.mask) != 0);
-  }
-  for (const StickKey& s : kStickKeys) {
-    const int value = s.horizontal ? pad.sThumbLX : pad.sThumbLY;
-    const float amount = std::clamp(float(value - s.dead_zone) / float(s.full - s.dead_zone), 0.0f, 1.0f);
-    io.AddKeyAnalogEvent(s.key, amount > 0.1f, amount);
-  }
-}
-
-void LauncherGamepad::Release(ImGuiIO& io) {
-  for (const ButtonKey& b : kButtonKeys) {
-    io.AddKeyEvent(b.key, false);
-  }
-  for (const StickKey& s : kStickKeys) {
-    io.AddKeyAnalogEvent(s.key, false, 0.0f);
-  }
-  pad_ = -1;
 }
 
 #else
@@ -791,9 +693,7 @@ void RunLauncherWithoutGraphics(const GraphicsFallbackInfo& info) {
         open = false;
         break;
       case SDL_EVENT_KEY_DOWN:
-        if (event.key.key == SDLK_ESCAPE) {
-          open = false;
-        } else if (event.key.key == SDLK_RETURN || event.key.key == SDLK_KP_ENTER) {
+        if (event.key.key == SDLK_RETURN || event.key.key == SDLK_KP_ENTER) {
           pressed = FallbackButton::kPlay;
         }
         break;
@@ -893,6 +793,7 @@ std::optional<PreShowResult> TakePreShowResult() {
 void CheckWindowDisplay(void*, int) {}
 
 bool RelaunchSelf(std::wstring_view extra_args) {
+  BeginSessionLogHandoff();
   std::vector<std::string> args;
   std::ifstream cmdline("/proc/self/cmdline", std::ios::binary);
   for (std::string arg; std::getline(cmdline, arg, '\0');) {
@@ -907,6 +808,7 @@ bool RelaunchSelf(std::wstring_view extra_args) {
   std::optional<RelaunchCommand> command = MakeRelaunchCommand(std::move(args), std::getenv("APPIMAGE"), self, extra);
   if (!command) {
     REXLOG_ERROR("Relaunch failed: cannot read this process's command line");
+    CancelSessionLogHandoff();
     return false;
   }
   std::vector<char*> argv;
@@ -918,60 +820,10 @@ bool RelaunchSelf(std::wstring_view extra_args) {
   if (const int error = posix_spawn(&pid, command->executable.c_str(), nullptr, nullptr, argv.data(), environ);
       error != 0) {
     REXLOG_ERROR("Relaunch failed ({})", error);
+    CancelSessionLogHandoff();
     return false;
   }
   return true;
-}
-
-void LauncherGamepad::Update(ImGuiIO& io) {
-  SDL_Gamepad* pad = pad_ >= 0 ? SDL_GetGamepadFromID(SDL_JoystickID(pad_)) : nullptr;
-  if (!pad || !SDL_GamepadConnected(pad)) {
-    if (pad) {
-      SDL_CloseGamepad(pad);
-    }
-    pad_ = -1;
-    if (ImGui::GetTime() < next_scan_) {
-      return;
-    }
-    next_scan_ = ImGui::GetTime() + 1.0;
-    // Started here and quit in Release; SDL counts the starts, so the game's own input is unaffected.
-    if (!subsystem_ && !(subsystem_ = SDL_InitSubSystem(SDL_INIT_GAMEPAD))) {
-      return;
-    }
-    pad = OpenFirstGamepad();
-    if (!pad) {
-      return;
-    }
-    pad_ = int(SDL_GetGamepadID(pad));
-  }
-  io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
-  for (const ButtonKey& b : kButtonKeys) {
-    io.AddKeyEvent(b.key, SDL_GetGamepadButton(pad, b.button));
-  }
-  for (const StickKey& s : kStickKeys) {
-    const int value = s.direction * int(SDL_GetGamepadAxis(pad, s.axis));
-    const float amount = std::clamp(float(value - kStickDeadZone) / float(32767 - kStickDeadZone), 0.0f, 1.0f);
-    io.AddKeyAnalogEvent(s.key, amount > 0.1f, amount);
-  }
-}
-
-void LauncherGamepad::Release(ImGuiIO& io) {
-  for (const ButtonKey& b : kButtonKeys) {
-    io.AddKeyEvent(b.key, false);
-  }
-  for (const StickKey& s : kStickKeys) {
-    io.AddKeyAnalogEvent(s.key, false, 0.0f);
-  }
-  if (pad_ >= 0) {
-    if (SDL_Gamepad* pad = SDL_GetGamepadFromID(SDL_JoystickID(pad_))) {
-      SDL_CloseGamepad(pad);
-    }
-  }
-  pad_ = -1;
-  if (subsystem_) {
-    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
-    subsystem_ = false;
-  }
 }
 
 #endif

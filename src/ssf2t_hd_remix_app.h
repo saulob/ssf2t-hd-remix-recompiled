@@ -13,21 +13,32 @@
 #include <rex/logging.h>
 #include <rex/rex_app.h>
 #include <rex/runtime.h>
+#include <rex/version.h>
 #include <rex/system/kernel_state.h>
 #include <rex/ui/flags.h>
 #include <rex/ui/windowed_app_context.h>
 
 #include "achievement_ui.h"
 #include "achievements_overlay.h"
+#include "active_log.h"
 #include "aspect_ratio.h"
+#include "diagnostics.h"
 #include "frame_counter.h"
 #include "game_files.h"
+#include "guest_functions.h"
+#include "infinite_time.h"
+#include "infinite_time_ui.h"
+#include "input_summary.h"
 #include "internal_render_scale.h"
 #include "launcher.h"
+#include "log_filter.h"
+#include "log_path.h"
 #include "modal_dialog.h"
 #include "overlay_rules.h"
 #include "platform.h"
+#include "session_log.h"
 #include "settings.h"
+#include "system_info.h"
 #include "trg/game_helpers.h"
 #include "user_data.h"
 #include "window_host.h"
@@ -40,6 +51,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
 
   static std::unique_ptr<rex::ui::WindowedApp> Create(rex::ui::WindowedAppContext& ctx) {
     SetApplicationId();
+    InstallGuestFunctionTable(PPCImageConfig.func_mappings);
     return std::unique_ptr<SuperStreetFighterApp>(
         new SuperStreetFighterApp(ctx, "ssf2t_hd_remix", PPCImageConfig));
   }
@@ -52,13 +64,16 @@ class SuperStreetFighterApp : public rex::ReXApp {
       paths.game_data_root = port_folder / "game";
     }
     ChooseUserData(paths, port_folder);
+    if (const auto inherited = TakeInheritedSessionLog({port_folder / "logs", paths.user_data_root / "logs"})) {
+      rex::cvar::SetFlagFromCommandLine("log_file", Utf8(*inherited));
+      InstallCrashReports();
+    }
     // ReXGlue writes its logs beside the executable, which is read-only inside an AppImage.
-    if (port_folder != rex::filesystem::GetExecutableFolder() && rex::cvar::GetFlagByName("log_file").empty()) {
-      for (const auto& logs : {port_folder / "logs", paths.user_data_root / "logs"}) {
-        if (const std::filesystem::path file = NextLogFile(logs, "ssf2t_hd_remix"); !file.empty()) {
-          rex::cvar::SetFlagByName("log_file", Utf8(file));
-          break;
-        }
+    const bool appimage = port_folder != rex::filesystem::GetExecutableFolder();
+    if (appimage && rex::cvar::GetFlagByName("log_file").empty()) {
+      const std::filesystem::path logs = LogsFolder(port_folder, paths.user_data_root, {}, appimage);
+      if (const std::filesystem::path file = NextLogFile(logs, "ssf2t_hd_remix"); !file.empty()) {
+        rex::cvar::SetFlagByName("log_file", Utf8(file));
       }
     }
   }
@@ -73,6 +88,8 @@ class SuperStreetFighterApp : public rex::ReXApp {
   }
 
   void OnPostInitLogging() override {
+    InitializeProcessUptime();
+    InstallCrashReports();
     const UserDataMessage message = DescribeUserData(user_data_);
     if (message.warning) {
       REXLOG_WARN("{}", message.text);
@@ -80,6 +97,20 @@ class SuperStreetFighterApp : public rex::ReXApp {
       REXLOG_INFO("{}", message.text);
     }
     LoadPlayerSettings(PlayerSettingsPath(user_data_root()));
+    ApplyDetailedLogging();
+    InstallSessionLogCleanup();
+    RemoveDiscardedSessionLogs();
+    const ApplicationIdentity identity{
+        .product = "Super Street Fighter II Turbo HD Remix",
+        .version = SSF2T_PORT_VERSION,
+        .build_config = BuildConfigurationName(),
+        .architecture = ArchitectureName(),
+        .sdk = REXGLUE_VERSION_STRING,
+        .backend = GraphicsBackendName(),
+    };
+    REXLOG_INFO("{}", FormatApplicationVersion(identity));
+    REXLOG_INFO("{}", FormatBuildIdentity(identity));
+    REXLOG_INFO("{}", GameFilesLogText(CheckGameFiles(game_data_root())));
     ApplyGraphicsAdapter();
   }
 
@@ -89,6 +120,10 @@ class SuperStreetFighterApp : public rex::ReXApp {
 
   void OnConfigureStyle(ImGuiStyle&, rex::ui::Style& ui_style) override {
     ApplyAchievementsStyle(ui_style.achievements);
+  }
+
+  void OnDpiScaleChanged(float scale) override {
+    UpdateLauncherFonts(imgui_drawer(), immediate_drawer(), scale);
   }
 
   void OnPreSetup(rex::RuntimeConfig&) override {
@@ -115,6 +150,9 @@ class SuperStreetFighterApp : public rex::ReXApp {
       ApplyAspectRatio();
       ApplyInternalRenderPath();
       ApplyLanguage();
+      ApplyPlayerNames();
+      ApplyFightArea();
+      ApplyInfiniteTime();
       return defaults;
     }
     if (!imgui_drawer()) {
@@ -126,6 +164,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
     callbacks.play = [this, resume, defaults] {
       app_context().CallInUIThreadDeferred([this, resume, defaults] {
         game_settings_.Apply();
+        ApplyDetailedLogging();
         resume(defaults);
       });
     };
@@ -134,7 +173,11 @@ class SuperStreetFighterApp : public rex::ReXApp {
       if (!RelaunchSelf(L"--ssf2t_skip_launcher=true")) {
         return false;
       }
-      app_context().CallInUIThreadDeferred([this] { app_context().QuitFromUIThread(); });
+      app_context().CallInUIThreadDeferred([] {
+        REXLOG_INFO("Restarted in a new window; hard-exiting this process.");
+        PrepareHardExit();
+        std::_Exit(0);
+      });
       return true;
     };
     callbacks.quit = [this] { app_context().CallInUIThreadDeferred([this] { app_context().QuitFromUIThread(); }); };
@@ -145,11 +188,41 @@ class SuperStreetFighterApp : public rex::ReXApp {
         window()->SetFullscreen(fullscreen);
       }
     };
+    const std::filesystem::path port_folder = PortFolder();
+    const std::filesystem::path logs_dir = LogsFolder(port_folder, defaults.user_data_root, ActiveLogFile(),
+                                                      port_folder != rex::filesystem::GetExecutableFolder());
     ShowLauncher(imgui_drawer(),
                  {defaults.game_data_root, defaults.user_data_root, PlayerSettingsPath(defaults.user_data_root),
-                  user_data_.outcome, immediate_drawer()},
+                  logs_dir, user_data_.outcome, immediate_drawer()},
                  game_settings_, std::move(callbacks));
     return std::nullopt;
+  }
+
+  void LaunchModule() override {
+    const int monitor = game_settings_.GetInt("monitor", std::atoi(rex::cvar::GetFlagByName("monitor").c_str()));
+    StartupWindowInfo startup_window;
+    startup_window.fullscreen = window() != nullptr && window()->IsFullscreen();
+    startup_window.selected_width =
+        game_settings_.GetInt("window_width", std::atoi(rex::cvar::GetFlagByName("window_width").c_str()));
+    startup_window.selected_height =
+        game_settings_.GetInt("window_height", std::atoi(rex::cvar::GetFlagByName("window_height").c_str()));
+    startup_window.configured_width =
+        window() != nullptr ? int(window()->GetDesiredLogicalWidth()) : startup_window.selected_width;
+    startup_window.configured_height =
+        window() != nullptr ? int(window()->GetDesiredLogicalHeight()) : startup_window.selected_height;
+    const DrawableSize drawable = CurrentDrawableSize(window());
+    startup_window.output_width = drawable.width;
+    startup_window.output_height = drawable.height;
+    startup_window.controller = ControllerSummary();
+    LogStartupDiagnostics(game_settings_, MonitorForSetting(monitor), monitor, game_data_root(), startup_window);
+    SetInfiniteTimeXexSupported(InfiniteTimeXexSupported(game_data_root()));
+    if (window()) {
+      AttachInfiniteTimeKey(window(), [this] {
+        ShowInfiniteTimeNotice(ToggleInfiniteTime(game_settings_), kInfiniteTimeToggleNoticeSeconds);
+      });
+    }
+    QueueStartupInfiniteTimeNotice(REXCVAR_GET(ssf2t_infinite_time));
+    ReXApp::LaunchModule();
   }
 
   void OnPostSetup() override {
@@ -160,13 +233,17 @@ class SuperStreetFighterApp : public rex::ReXApp {
 #if defined(_WIN32)
     REXLOG_INFO("Scheduling: {}", trg::TuneProcessScheduling());
 #endif
-    AttachWindowHost(window(), app_context(), [] { return !ModalDialog::AnyOpen(); });
+    AttachWindowHost(window(), app_context(), [this] {
+      rex::ui::ImGuiDrawer* drawer = imgui_drawer();
+      return drawer && drawer->GetIO().WantCaptureMouse;
+    });
     if (window()) {
       CheckWindowDisplay(window()->GetNativeWindowHandle(), REXCVAR_GET(monitor));
     }
     if (window() && imgui_drawer()) {
       CreateFrameCounter(imgui_drawer());
-      CreateCursorTick(imgui_drawer());
+      CreateInfiniteTimeNotice(imgui_drawer());
+      CreateCursorSync(imgui_drawer());
       ModalDialog::AttachEscapeKey(window());
       // Replaces ReXApp's own callback, which would let the controller through while the overlay is open.
       if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system())) {
@@ -182,14 +259,17 @@ class SuperStreetFighterApp : public rex::ReXApp {
       input->Shutdown();
     }
     ModalDialog::DetachEscapeKey();
+    DetachInfiniteTimeKey();
     delete achievements_;
     DetachWindowHost();
+    REXLOG_INFO("{}", FormatCleanExit(ProcessUptimeText()));
   }
 
   // Window close ends the process without teardown: the guest main thread may be inside D3D code that never waits.
   void OnClosing(rex::ui::UIEvent&) override {
     REXLOG_INFO("Window closing, hard-exiting process.");
-    rex::FlushLogging();
+    DiscardSessionLogBeforeHardExit();
+    PrepareHardExit();
     std::_Exit(0);
   }
 

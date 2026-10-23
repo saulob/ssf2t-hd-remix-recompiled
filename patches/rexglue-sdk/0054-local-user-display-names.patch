@@ -1,0 +1,247 @@
+diff --git a/include/rex/system/xam/display_name.h b/include/rex/system/xam/display_name.h
+new file mode 100644
+--- /dev/null
++++ b/include/rex/system/xam/display_name.h
+@@ -0,0 +1,38 @@
++#pragma once
++
++#include <array>
++#include <cstddef>
++#include <cstdint>
++#include <string>
++#include <string_view>
++
++namespace rex::system::xam {
++
++inline constexpr size_t kLocalPlayerNameSlots = 4;
++inline constexpr size_t kMaxDisplayNameBytes = 15;
++
++inline std::string_view Utf8Prefix(std::string_view text, size_t max_bytes) {
++  if (text.size() <= max_bytes) {
++    return text;
++  }
++  size_t end = max_bytes;
++  while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80) {
++    end--;
++  }
++  return text.substr(0, end);
++}
++
++// An empty configured name keeps the stock name.
++inline std::string LocalPlayerDisplayName(
++    uint32_t player_number, const std::array<std::string, kLocalPlayerNameSlots>& configured,
++    std::string_view stock) {
++  if (player_number >= 1 && player_number <= kLocalPlayerNameSlots) {
++    const std::string& name = configured[player_number - 1];
++    if (!name.empty()) {
++      return std::string(Utf8Prefix(name, kMaxDisplayNameBytes));
++    }
++  }
++  return std::string(stock);
++}
++
++}  // namespace rex::system::xam
+diff --git a/include/rex/system/xam/user_profile.h b/include/rex/system/xam/user_profile.h
+--- a/include/rex/system/xam/user_profile.h
++++ b/include/rex/system/xam/user_profile.h
+@@ -218,6 +218,7 @@
+ 
+   uint64_t xuid() const { return xuid_; }
+   std::string name() const { return name_; }
++  const std::string& profile_id() const { return profile_id_; }
+   uint32_t signin_state() const { return 1; }
+   uint32_t type() const { return 1 | 2; /* local | online profile? */ }
+ 
+@@ -229,6 +230,7 @@
+  private:
+   uint64_t xuid_;
+   std::string name_;
++  std::string profile_id_;
+   std::vector<std::unique_ptr<Setting>> setting_list_;
+   std::unordered_map<uint32_t, Setting*> settings_;
+   KernelState* kernel_state_ = nullptr;
+diff --git a/src/kernel/xam/xam_user.cpp b/src/kernel/xam/xam_user.cpp
+--- a/src/kernel/xam/xam_user.cpp
++++ b/src/kernel/xam/xam_user.cpp
+@@ -24,6 +24,7 @@
+ #include <rex/types.h>
+ #include <rex/string.h>
+ #include <rex/system/kernel_state.h>
++#include <rex/system/xam/display_name.h>
+ #include <rex/system/xam/user_profile.h>
+ #include <rex/system/xenumerator.h>
+ #include <rex/system/xio.h>
+@@ -31,6 +32,10 @@
+ #include <rex/system/xtypes.h>
+ 
+ REXCVAR_DEFINE_UINT32(user_language, 1, "Kernel", "User's language ID");
++REXCVAR_DEFINE_STRING(local_player_1_name, "", "Kernel", "Name shown for local player 1 (empty: default)");
++REXCVAR_DEFINE_STRING(local_player_2_name, "", "Kernel", "Name shown for local player 2 (empty: default)");
++REXCVAR_DEFINE_STRING(local_player_3_name, "", "Kernel", "Name shown for local player 3 (empty: default)");
++REXCVAR_DEFINE_STRING(local_player_4_name, "", "Kernel", "Name shown for local player 4 (empty: default)");
+ 
+ namespace rex {
+ namespace kernel {
+@@ -51,9 +56,24 @@
+   return REX_KERNEL_STATE()->user_profile()->xuid() + user_index;
+ }
+ 
+-std::string GuestName(uint32_t user_index) {
++std::string StockGuestName(uint32_t player_number) {
++  return "Player " + std::to_string(player_number);
++}
++
++uint32_t LocalPlayerNumber(uint32_t user_index) {
+   auto* input = static_cast<rex::input::InputSystem*>(REX_KERNEL_STATE()->emulator()->input_system());
+-  return "Player " + std::to_string(input->PlayerNumber(user_index));
++  return input ? input->PlayerNumber(user_index) : 0;
++}
++
++// Presentation only: the XUID and the profile directory never depend on the name.
++std::string UserDisplayName(uint32_t user_index) {
++  const std::array<std::string, kLocalPlayerNameSlots> configured = {
++      REXCVAR_GET(local_player_1_name), REXCVAR_GET(local_player_2_name),
++      REXCVAR_GET(local_player_3_name), REXCVAR_GET(local_player_4_name)};
++  const uint32_t player_number = LocalPlayerNumber(user_index);
++  const std::string stock =
++      user_index == 0 ? REX_KERNEL_STATE()->user_profile()->name() : StockGuestName(player_number);
++  return LocalPlayerDisplayName(player_number, configured, stock);
+ }
+ 
+ i32 XamUserGetXUID_entry(u32 user_index, u32 type_mask, mapped_u64 xuid_ptr) {
+@@ -123,14 +143,14 @@
+     }
+     info->xuid = GuestXuid(user_index);
+     info->signin_state = 1;
+-    rex::string::copy_truncating(info->name, GuestName(user_index), rex::countof(info->name));
++    rex::string::copy_truncating(info->name, UserDisplayName(user_index), rex::countof(info->name));
+     return X_E_SUCCESS;
+   }
+ 
+   const auto& user_profile = REX_KERNEL_STATE()->user_profile();
+   info->xuid = user_profile->xuid();
+   info->signin_state = user_profile->signin_state();
+-  rex::string::copy_truncating(info->name, user_profile->name(), rex::countof(info->name));
++  rex::string::copy_truncating(info->name, UserDisplayName(0), rex::countof(info->name));
+   return X_E_SUCCESS;
+ }
+ 
+@@ -143,13 +163,11 @@
+     if (!IsGuestUser(user_index)) {
+       return X_E_NO_SUCH_USER;
+     }
+-    rex::string::copy_truncating(buffer, GuestName(user_index), std::min(buffer_len, uint32_t(16)));
++    rex::string::copy_truncating(buffer, UserDisplayName(user_index), std::min(buffer_len, uint32_t(16)));
+     return X_E_SUCCESS;
+   }
+ 
+-  const auto& user_profile = REX_KERNEL_STATE()->user_profile();
+-  const auto& user_name = user_profile->name();
+-  rex::string::copy_truncating(buffer, user_name, std::min(buffer_len, uint32_t(16)));
++  rex::string::copy_truncating(buffer, UserDisplayName(0), std::min(buffer_len, uint32_t(16)));
+   return X_E_SUCCESS;
+ }
+ 
+@@ -166,8 +184,7 @@
+     return X_E_INVALIDARG;
+   }
+ 
+-  const auto& user_profile = REX_KERNEL_STATE()->user_profile();
+-  auto user_name = rex::string::to_utf16(user_profile->name());
++  auto user_name = rex::string::to_utf16(UserDisplayName(0));
+   rex::string::copy_and_swap_truncating(buffer, user_name, std::min(buffer_len, uint32_t(16)));
+   return X_E_SUCCESS;
+ }
+diff --git a/src/system/xam/content_manager.cpp b/src/system/xam/content_manager.cpp
+--- a/src/system/xam/content_manager.cpp
++++ b/src/system/xam/content_manager.cpp
+@@ -442,10 +442,10 @@
+ 
+ std::filesystem::path ContentManager::ResolveGameUserContentPath() {
+   auto title_id = fmt::format("{:08X}", kernel_state_->title_id());
+-  auto user_name = rex::to_path(kernel_state_->user_profile()->name());
++  auto user_name = rex::to_path(kernel_state_->user_profile()->profile_id());
+ 
+   // Per-game per-profile data location:
+-  // content_root/title_id/profile/user_name
++  // content_root/title_id/profile/profile_id
+   return root_path_ / title_id / kGameUserContentDirName / user_name;
+ }
+ 
+diff --git a/src/system/xam/user_profile.cpp b/src/system/xam/user_profile.cpp
+--- a/src/system/xam/user_profile.cpp
++++ b/src/system/xam/user_profile.cpp
+@@ -27,6 +27,7 @@
+   // "You do not have permissions to perform this operation."
+   xuid_ = 0xB13EBABEBABEBABE;
+   name_ = "User";
++  profile_id_ = "User";
+ 
+   // https://cs.rin.ru/forum/viewtopic.php?f=38&t=60668&hilit=gfwl+live&start=195
+   // https://github.com/arkem/py360/blob/master/py360/constants.py
+diff --git a/tests/unit/CMakeLists.txt b/tests/unit/CMakeLists.txt
+--- a/tests/unit/CMakeLists.txt
++++ b/tests/unit/CMakeLists.txt
+@@ -13,6 +13,7 @@
+     ppc/import_function_test.cpp
+     ppc/stack_test.cpp
+     system/guest_path_test.cpp
++    system/display_name_test.cpp
+     system/achievement_manager_test.cpp
+     system/function_dispatcher_test.cpp
+     input/input_assignment_test.cpp
+diff --git a/tests/unit/system/display_name_test.cpp b/tests/unit/system/display_name_test.cpp
+new file mode 100644
+--- /dev/null
++++ b/tests/unit/system/display_name_test.cpp
+@@ -0,0 +1,50 @@
++#include <catch2/catch_test_macros.hpp>
++
++#include <rex/system/xam/display_name.h>
++#include <rex/system/xam/user_profile.h>
++
++using namespace rex::system::xam;
++
++namespace {
++
++using Names = std::array<std::string, kLocalPlayerNameSlots>;
++
++}  // namespace
++
++TEST_CASE("Profile identity does not depend on the display name", "[xam][user]") {
++  UserProfile profile;
++  const uint64_t xuid = profile.xuid();
++  const std::string profile_id = profile.profile_id();
++
++  const Names configured = {"Saulo", "Guest", "", ""};
++  REQUIRE(LocalPlayerDisplayName(1, configured, "Player 1") == "Saulo");
++
++  REQUIRE(profile.xuid() == xuid);
++  REQUIRE(profile.profile_id() == profile_id);
++  REQUIRE(profile_id == "User");
++
++  const Names defaults = {"", "", "", ""};
++  REQUIRE(LocalPlayerDisplayName(1, defaults, "Player 1") == "Player 1");
++  REQUIRE(profile.xuid() == xuid);
++  REQUIRE(profile.profile_id() == profile_id);
++}
++
++TEST_CASE("Configured names map to logical player numbers", "[xam][user]") {
++  const Names configured = {"One", "Two", "Three", "Four"};
++  REQUIRE(LocalPlayerDisplayName(1, configured, "x") == "One");
++  REQUIRE(LocalPlayerDisplayName(2, configured, "x") == "Two");
++  REQUIRE(LocalPlayerDisplayName(3, configured, "x") == "Three");
++  REQUIRE(LocalPlayerDisplayName(4, configured, "x") == "Four");
++  REQUIRE(LocalPlayerDisplayName(0, configured, "stock") == "stock");
++  REQUIRE(LocalPlayerDisplayName(5, configured, "stock") == "stock");
++}
++
++TEST_CASE("Display names never overflow the XAM buffer or split a character", "[xam][user]") {
++  const std::string long_name(40, 'A');
++  REQUIRE(Utf8Prefix(long_name, kMaxDisplayNameBytes).size() == kMaxDisplayNameBytes);
++
++  const std::string accents = "\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9";
++  const std::string_view cut = Utf8Prefix(accents, kMaxDisplayNameBytes);
++  REQUIRE(cut.size() == 14);
++  REQUIRE(Utf8Prefix("abc", kMaxDisplayNameBytes) == "abc");
++}

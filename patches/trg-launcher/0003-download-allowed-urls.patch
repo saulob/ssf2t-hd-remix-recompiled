@@ -1,0 +1,266 @@
+diff --git a/include/trg/download.h b/include/trg/download.h
+index cda6755..d024a63 100644
+--- a/include/trg/download.h
++++ b/include/trg/download.h
+@@ -3,6 +3,7 @@
+ // the game calls these, so a launcher stays offline until the player asks.
+ #pragma once
+ 
++#include <functional>
+ #include <string>
+ #include <vector>
+ 
+@@ -26,6 +27,8 @@ struct HttpOptions {
+   long long max_bytes = 0;
+   // 0 uses the size the server reports; otherwise this is the expected total.
+   long long progress_total = 0;
++  // When set, redirects are followed one hop at a time and every address, the first included, must pass.
++  std::function<bool(const std::string& url)> allow_url;
+ };
+ 
+ // GETs `url` (following redirects) into `out`. When `task` is given it reports
+diff --git a/src/download.cpp b/src/download.cpp
+index 3096280..365c226 100644
+--- a/src/download.cpp
++++ b/src/download.cpp
+@@ -4,7 +4,9 @@
+ #include <cctype>
+ #include <chrono>
+ #include <cstdio>
++#include <cstdlib>
+ #include <limits>
++#include <string>
+ #include <string_view>
+ #include <vector>
+ 
+@@ -53,8 +55,67 @@ bool ValidOptions(const HttpOptions& options) {
+   return true;
+ }
+ 
++constexpr int kMaxRedirects = 5;
++
++bool IsRedirect(long code) {
++  return code == 301 || code == 302 || code == 303 || code == 307 || code == 308;
++}
++
++// An absolute, scheme-relative or root-relative Location against the address that sent it; "" otherwise.
++std::string ResolveLocation(const std::string& base, const std::string& location) {
++  if (location.rfind("https://", 0) == 0 || location.rfind("http://", 0) == 0) {
++    return location;
++  }
++  const size_t scheme_end = base.find("://");
++  if (scheme_end == std::string::npos) {
++    return {};
++  }
++  if (location.rfind("//", 0) == 0) {
++    return base.substr(0, scheme_end + 1) + location;
++  }
++  if (location.rfind('/', 0) == 0) {
++    const size_t path = base.find('/', scheme_end + 3);
++    return base.substr(0, path) + location;
++  }
++  return {};
++}
++
++// One request. With follow false a redirect is not taken: its Location is returned in `redirect`.
++std::string GetOnce(const std::string& url, std::string& out, Task* task, const HttpOptions& options, bool follow,
++                    std::string& redirect);
++
+ }  // namespace
+ 
++std::string HttpGet(const std::string& url, std::string& out, Task* task, const HttpOptions& options) {
++  out.clear();
++  if (!ValidOptions(options)) {
++    return "The request headers are not valid.";
++  }
++  if (!options.allow_url) {
++    std::string unused;
++    return GetOnce(url, out, task, options, true, unused);
++  }
++  std::string current = url;
++  for (int hop = 0; hop <= kMaxRedirects; ++hop) {
++    if (!options.allow_url(current)) {
++      out.clear();
++      return "The download address is not allowed.";
++    }
++    std::string redirect;
++    std::string error = GetOnce(current, out, task, options, false, redirect);
++    if (!error.empty() || redirect.empty()) {
++      return error;
++    }
++    current = ResolveLocation(current, redirect);
++    if (current.empty()) {
++      out.clear();
++      return "The server sent an invalid redirect.";
++    }
++  }
++  out.clear();
++  return "The server redirected too many times.";
++}
++
+ #if defined(_WIN32)
+ 
+ namespace {
+@@ -72,13 +133,39 @@ std::wstring Widen(const std::string& text) {
+   return wide;
+ }
+ 
+-}  // namespace
++std::string Narrow(const std::wstring& text) {
++  if (text.empty()) {
++    return {};
++  }
++  const int length = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), int(text.size()), nullptr, 0, nullptr, nullptr);
++  if (length <= 0) {
++    return {};
++  }
++  std::string narrow(size_t(length), '\0');
++  WideCharToMultiByte(CP_UTF8, 0, text.c_str(), int(text.size()), narrow.data(), length, nullptr, nullptr);
++  return narrow;
++}
+ 
+-std::string HttpGet(const std::string& url, std::string& out, Task* task, const HttpOptions& options) {
+-  out.clear();
+-  if (!ValidOptions(options)) {
+-    return "The request headers are not valid.";
++std::string Location(HINTERNET req) {
++  DWORD bytes = 0;
++  WinHttpQueryHeaders(req, WINHTTP_QUERY_LOCATION, WINHTTP_HEADER_NAME_BY_INDEX, nullptr, &bytes,
++                      WINHTTP_NO_HEADER_INDEX);
++  if (bytes == 0) {
++    return {};
+   }
++  std::wstring location(bytes / sizeof(wchar_t) + 1, L'\0');
++  if (!WinHttpQueryHeaders(req, WINHTTP_QUERY_LOCATION, WINHTTP_HEADER_NAME_BY_INDEX, location.data(), &bytes,
++                           WINHTTP_NO_HEADER_INDEX)) {
++    return {};
++  }
++  location.resize(bytes / sizeof(wchar_t));
++  return Narrow(location);
++}
++
++std::string GetOnce(const std::string& url, std::string& out, Task* task, const HttpOptions& options, bool follow,
++                    std::string& redirect) {
++  out.clear();
++  redirect.clear();
+   const std::wstring wurl = Widen(url);
+   const std::wstring user_agent = Widen(options.user_agent);
+   if (wurl.empty() || user_agent.empty()) {
+@@ -118,7 +205,8 @@ std::string HttpGet(const std::string& url, std::string& out, Task* task, const
+     const DWORD flags = parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0;
+     if (HINTERNET req = WinHttpOpenRequest(conn, L"GET", path.data(), nullptr, WINHTTP_NO_REFERER,
+                                            WINHTTP_DEFAULT_ACCEPT_TYPES, flags)) {
+-      DWORD redirects = WINHTTP_OPTION_REDIRECT_POLICY_DISALLOW_HTTPS_TO_HTTP;
++      DWORD redirects =
++          follow ? WINHTTP_OPTION_REDIRECT_POLICY_DISALLOW_HTTPS_TO_HTTP : WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
+       WinHttpSetOption(req, WINHTTP_OPTION_REDIRECT_POLICY, &redirects, sizeof(redirects));
+       DWORD code = 0;
+       DWORD length = sizeof(code);
+@@ -127,7 +215,10 @@ std::string HttpGet(const std::string& url, std::string& out, Task* task, const
+           WinHttpReceiveResponse(req, nullptr) &&
+           WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &code, &length,
+                               nullptr)) {
+-        if (code != 200) {
++        if (!follow && IsRedirect(long(code))) {
++          redirect = Location(req);
++          error = redirect.empty() ? "The server sent an invalid redirect." : "";
++        } else if (code != 200) {
+           error = "The server answered " + std::to_string(code) + ".";
+         } else {
+           DWORD content = 0;
+@@ -180,6 +271,8 @@ std::string HttpGet(const std::string& url, std::string& out, Task* task, const
+   return error;
+ }
+ 
++}  // namespace
++
+ #else
+ 
+ namespace {
+@@ -204,21 +297,22 @@ long long Seconds(int milliseconds) {
+   return std::max<long long>(1, (static_cast<long long>(milliseconds) + 999) / 1000);
+ }
+ 
+-}  // namespace
++constexpr std::string_view kStatusMarker = "\ntrg-http-status:";
+ 
+-std::string HttpGet(const std::string& url, std::string& out, Task* task, const HttpOptions& options) {
++std::string GetOnce(const std::string& url, std::string& out, Task* task, const HttpOptions& options, bool follow,
++                    std::string& redirect) {
+   out.clear();
+-  if (!ValidOptions(options)) {
+-    return "The request headers are not valid.";
+-  }
++  redirect.clear();
+   for (const char c : url) {
+     if (c == '\'' || c == '"' || c == '\\' || c == '`' || c == '$' || static_cast<unsigned char>(c) < 0x21) {
+       return "Not a valid web address.";
+     }
+   }
+ 
+-  std::string command = "curl -fsSL --proto-redir =https --connect-timeout " +
+-                        std::to_string(Seconds(options.connect_timeout_ms));
++  // Without following, curl reports the status and the resolved Location after the body.
++  std::string command = follow ? "curl -fsSL --proto-redir =https --connect-timeout "
++                               : "curl -sS --proto =https --max-redirs 0 --connect-timeout ";
++  command += std::to_string(Seconds(options.connect_timeout_ms));
+   if (const long long total = Seconds(options.total_timeout_ms); total > 0) {
+     command += " --max-time " + std::to_string(total);
+   }
+@@ -226,6 +320,9 @@ std::string HttpGet(const std::string& url, std::string& out, Task* task, const
+   for (const HttpHeader& header : options.headers) {
+     command += " -H " + ShellQuote(header.name + ": " + header.value);
+   }
++  if (!follow) {
++    command += " -w " + ShellQuote(std::string(kStatusMarker) + "%{http_code} %{redirect_url}");
++  }
+   command += " " + ShellQuote(url);
+ 
+   FILE* pipe = popen(command.c_str(), "r");
+@@ -235,7 +332,7 @@ std::string HttpGet(const std::string& url, std::string& out, Task* task, const
+   std::string error;
+   char buffer[1 << 16];
+   for (size_t count; (count = fread(buffer, 1, sizeof(buffer), pipe)) > 0;) {
+-    if (options.max_bytes > 0 && out.size() + count > size_t(options.max_bytes)) {
++    if (options.max_bytes > 0 && out.size() + count > size_t(options.max_bytes) + (follow ? 0 : 4096)) {
+       error = "The server sent more data than expected.";
+       break;
+     }
+@@ -253,9 +350,36 @@ std::string HttpGet(const std::string& url, std::string& out, Task* task, const
+   if (error.empty() && status != 0) {
+     error = "The download failed. Check your internet connection and try again.";
+   }
+-  return error;
++  if (!error.empty() || follow) {
++    return error;
++  }
++  const size_t marker = out.rfind(kStatusMarker);
++  if (marker == std::string::npos) {
++    out.clear();
++    return "The download failed. Check your internet connection and try again.";
++  }
++  const std::string status_line = out.substr(marker + kStatusMarker.size());
++  out.resize(marker);
++  const size_t space = status_line.find(' ');
++  const long code = std::strtol(status_line.substr(0, space).c_str(), nullptr, 10);
++  if (IsRedirect(code)) {
++    out.clear();
++    redirect = space == std::string::npos ? std::string() : status_line.substr(space + 1);
++    return redirect.empty() ? "The server sent an invalid redirect." : "";
++  }
++  if (code != 200) {
++    out.clear();
++    return "The server answered " + std::to_string(code) + ".";
++  }
++  if (options.max_bytes > 0 && out.size() > size_t(options.max_bytes)) {
++    out.clear();
++    return "The server sent more data than expected.";
++  }
++  return "";
+ }
+ 
++}  // namespace
++
+ #endif
+ 
+ std::string DownloadFile(Task& task, const std::string& url, const std::string& utf8_path,

@@ -4,6 +4,8 @@
   tests. Nothing opens a window, plays audio or needs the game files.
 
 .DESCRIPTION
+  The updater tests (tests\update_tests.cpp, tests\update_helper_tests.cpp) run the real install transaction and the
+  real trg-updater.exe against a marker program; they never start the game or the launcher.
   The runtime tests (tests\physical_heap_stress.cpp, tests\title_thread_shutdown_tests.cpp) are built into the
   configured build folder and run against the patched runtime in tools\rexglue, so run tools\build.ps1 once first.
   The scanner --verify step runs only when generated\default and game\analysis\default.image.bin exist.
@@ -92,9 +94,33 @@ if ((Get-FileSha256 $dll) -ne (Get-FileSha256 (Join-Path $SdkRoot "bin\rexruntim
 Invoke-Step 'window placement' { & (Join-Path $BuildDir 'ssf2t_window_placement_tests.exe') }
 Invoke-Step 'menu text' { & (Join-Path $BuildDir 'ssf2t_menu_text_tests.exe') }
 Invoke-Step 'launcher settings' { & (Join-Path $BuildDir 'ssf2t_launcher_settings_tests.exe') }
+Invoke-Step 'fight area' { & (Join-Path $BuildDir 'ssf2t_fight_area_tests.exe') }
+Invoke-Step 'infinite time' { & (Join-Path $BuildDir 'ssf2t_infinite_time_tests.exe') }
+Invoke-Step 'keyboard remapping' { & (Join-Path $BuildDir 'ssf2t_keyboard_tests.exe') }
+Invoke-Step 'player names' { & (Join-Path $BuildDir 'ssf2t_player_name_tests.exe') }
+Invoke-Step 'launcher quit' { & (Join-Path $BuildDir 'ssf2t_launcher_quit_tests.exe') }
+Invoke-Step 'display scaling' { & (Join-Path $BuildDir 'ssf2t_dpi_tests.exe') }
+Invoke-Step 'window host' { & (Join-Path $BuildDir 'ssf2t_window_host_tests.exe') }
 Invoke-Step 'game files' { & (Join-Path $BuildDir 'ssf2t_game_files_tests.exe') }
 Invoke-Step 'achievements' { & (Join-Path $BuildDir 'ssf2t_achievement_tests.exe') }
 Invoke-Step 'achievement metadata' { & (Join-Path $BuildDir 'ssf2t_achievement_metadata_tests.exe') }
+Invoke-Step 'updater' { & (Join-Path $BuildDir 'ssf2t_update_tests.exe') }
+Invoke-Step 'updater helper' { & (Join-Path $BuildDir 'ssf2t_update_helper_tests.exe') }
+Invoke-Step 'guest clock' { & (Join-Path $BuildDir 'ssf2t_guest_clock_tests.exe') }
+Invoke-Step 'D3D12 transfer short-circuit' { & (Join-Path $BuildDir 'ssf2t_d3d12_transfer_short_circuit_tests.exe') }
+Invoke-Step 'D3D12 sampler memo' { & (Join-Path $BuildDir 'ssf2t_d3d12_sampler_memo_tests.exe') }
+Invoke-Step 'shared memory fast path' { & (Join-Path $BuildDir 'ssf2t_shared_memory_fast_path_tests.exe') }
+Invoke-Step 'GPU draw state memo' { & (Join-Path $BuildDir 'ssf2t_gpu_draw_state_memo_tests.exe') }
+Invoke-Step 'D3D12 async submission' { & (Join-Path $BuildDir 'ssf2t_d3d12_async_submission_tests.exe') }
+Invoke-Step 'GPU register wake' { & (Join-Path $BuildDir 'ssf2t_gpu_register_wake_tests.exe') }
+Invoke-Step 'log path' { & (Join-Path $BuildDir 'ssf2t_log_path_tests.exe') }
+Invoke-Step 'file dialog' { & (Join-Path $BuildDir 'ssf2t_file_dialog_tests.exe') }
+Invoke-Step 'diagnostics' { & (Join-Path $BuildDir 'ssf2t_diagnostics_tests.exe') }
+Invoke-Step 'crash report' { & (Join-Path $BuildDir 'ssf2t_crash_report_tests.exe') }
+Invoke-Step 'active log' { & (Join-Path $BuildDir 'ssf2t_active_log_tests.exe') }
+Invoke-Step 'log filter and session log' { & (Join-Path $BuildDir 'ssf2t_log_filter_tests.exe') }
+Invoke-Step 'lifecycle' { & (Join-Path $BuildDir 'ssf2t_lifecycle_tests.exe') }
+Invoke-Step 'relaunch' { & (Join-Path $BuildDir 'ssf2t_relaunch_tests.exe') }
 Invoke-Step 'physical heap stress' { & (Join-Path $BuildDir 'ssf2t_physical_heap_stress.exe') }
 Invoke-Step 'title thread shutdown' { & (Join-Path $BuildDir 'ssf2t_title_thread_shutdown_tests.exe') }
 Write-Host 'All headless checks passed.'

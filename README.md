@@ -18,10 +18,12 @@
 
 - **Native static recompilation**: the game's own code, not an emulator. Windows, plus an experimental Linux AppImage.
 - **TRG launcher** with a game package installer, display and graphics options, and an Achievements page.
+- **Launcher updates**: the launcher checks GitHub releases once per start and installs a newer release only when you choose UPDATE NOW. Game files, saves, settings and logs are kept.
 - **Display**: Windowed or Borderless Fullscreen (**F11**), window size, monitor and VSync. Per-monitor high-DPI support, and the game window opens where and how large you chose.
 - **Presentation**: Letterbox keeps the picture's proportions, Stretch fills the window. Aspect ratios 16:9, 16:10, 21:9, 32:9, 4:3 and 5:4.
+- **Fight Area**: Original keeps the fight's original framing, Fill 16:9 removes the black bars at the sides of the fight.
 - **Render resolution and Internal render resolution**: Render resolution (1x to 4x) sets the target resolution of the picture. Internal render resolution (100% Native, 75% Performance, 50% Low-end) lowers the resolution the GPU draws at before the picture is scaled up, trading sharpness for performance. Both are separate from the Window size.
-- **Graphics card selection**: Automatic (recommended) or a specific compatible GPU.
+- **Graphics card selection**: choose which compatible GPU renders the game.
 - **Anti-aliasing, multisampling and texture filtering** choices.
 - **Language**: English, French, German, Italian or Spanish.
 - **Local saves**: the game saves and loads as on the console.
@@ -51,7 +53,7 @@ The launcher checks the Title ID when you pick the package and checks `default.x
 
 ## Installing
 
-1. Download **SSF2THDRemix-v0.1.0-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
+1. Download **SSF2THDRemix-v0.2.0-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
 2. Run **ssf2t_hd_remix.exe**. The launcher opens.
 3. On the **Play** page click **Install from package...** and pick your package. It is one file with a long hexadecimal name and no extension. On an Xbox 360 drive it is in `Content\0000000000000000\584108A4\000D0000\`.
 4. Wait until **Ready to play** appears. The game files (about 370 MB) are copied into the `game` folder next to the program.
@@ -61,7 +63,7 @@ The launcher checks the Title ID when you pick the package and checks `default.x
 
 ### Linux AppImage (experimental)
 
-Download **SSF2THDRemix-v0.1.0-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
+Download **SSF2THDRemix-v0.2.0-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
 
 ### Windows SmartScreen
 
@@ -72,12 +74,14 @@ Windows may warn the first time you run the program, because the release is not 
 Your choices are saved to `settings.toml` in the `user_data` folder next to the program. To turn the launcher off, set **Show this launcher** to **Off** on the Play page. Hold **Shift** while starting to bring it back.
 
 - **Play**: package install and reinstall, status
-- **Display**: Display mode, Window size, Monitor, Aspect Ratio, VSync and Presentation (Letterbox or Stretch)
+- **Display**: Display mode, Window size, Monitor, Aspect Ratio, VSync, Presentation (Letterbox or Stretch) and Fight Area (Original or Fill 16:9)
 - **Graphics**: Graphics card, Render resolution, Internal render resolution, Anti-aliasing, Multisampling, Texture filtering
 - **Gameplay**: Language, frame rate and render resolution in the title, frame counter
 - **Achievements**: unlocked achievements and gamerscore
-- **Controls**: keyboard on or off and the key layout
-- **About**: versions, folders, **Show settings file** and **Reset all settings**
+- **Controls**: keyboard on or off, every key remappable, and **Keyboard defaults** to restore the standard layout
+- **About**: versions, folders (game, saves and settings, logs), **Show settings file**, **Detailed logging**, **Open logs folder** and **Reset all settings**
+
+During gameplay the mouse cursor follows the last input device: mouse activity shows it, keyboard or controller activity hides it, and mouse-driven overlays always show it.
 
 ## Screenshots
 
@@ -85,7 +89,7 @@ Your choices are saved to `settings.toml` in the `user_data` folder next to the 
 
 ## Reporting problems
 
-If the game does not start or crashes, please open an [issue](https://github.com/saulob/ssf2t-hd-remix-recompiled/issues). Attach the newest `ssf2t_hd_remix_*.log` file from the `logs` folder next to the program, and say what you were doing when the problem happened.
+If the game does not start or crashes, please open an [issue](https://github.com/saulob/ssf2t-hd-remix-recompiled/issues). Attach the newest `ssf2t_hd_remix_*.log` file from the `logs` folder next to the program, and say what you were doing when the problem happened. The launcher and the game write to the same log for one application session. After a crash on Windows the log ends with a `CRASH REPORT` section; no separate crash file or minidump is written. For a non-crash problem, turn Detailed logging on in the launcher's About page, reproduce it, and send the newest log.
 
 ## Building it yourself
 
