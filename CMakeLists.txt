@@ -318,6 +318,16 @@ target_include_directories(ssf2t_fight_area_tests PRIVATE src)
 target_compile_definitions(ssf2t_fight_area_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_dependencies(ssf2t_runtime_tests ssf2t_fight_area_tests)
 
+# Graphics card setting tests, not part of the default build: cmake --build <dir> --target ssf2t_graphics_adapter_tests
+add_executable(ssf2t_graphics_adapter_tests EXCLUDE_FROM_ALL tests/graphics_adapter_tests.cpp src/graphics_adapters.cpp)
+target_include_directories(ssf2t_graphics_adapter_tests PRIVATE src)
+target_include_directories(ssf2t_graphics_adapter_tests SYSTEM PRIVATE "${SSF2T_SDK_DIR}/include" "${_trg_dir}/include")
+target_link_libraries(ssf2t_graphics_adapter_tests PRIVATE trg::launcher)
+if(WIN32)
+    target_link_libraries(ssf2t_graphics_adapter_tests PRIVATE dxgi d3d12)
+endif()
+target_compile_definitions(ssf2t_graphics_adapter_tests PRIVATE SSF2T_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src")
+
 # Infinite Time: the setting, the F10 toggle, the notice and the timer hook decision. Headless.
 add_executable(ssf2t_infinite_time_tests EXCLUDE_FROM_ALL tests/infinite_time_tests.cpp
     src/updater/sha256.cpp src/updater/update_paths.cpp)

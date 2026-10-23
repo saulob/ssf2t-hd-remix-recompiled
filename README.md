@@ -21,7 +21,7 @@
 - **Presentation**: Letterbox keeps the picture's proportions, Stretch fills the window. Aspect ratios 16:9, 16:10, 21:9, 32:9, 4:3 and 5:4.
 - **Fight Area**: Original keeps the fight's original framing, Fill 16:9 removes the black bars at the sides of the fight.
 - **Render resolution and Internal render resolution**: Render resolution (1x to 4x) sets the target resolution of the picture. Internal render resolution (100% Native, 75% Performance, 50% Low-end) lowers the resolution the GPU draws at before the picture is scaled up, trading sharpness for performance. Both are separate from the Window size.
-- **Graphics card selection**: Automatic (recommended) or a specific compatible GPU.
+- **Graphics card selection**: choose which compatible GPU renders the game.
 - **Anti-aliasing, multisampling and texture filtering** choices.
 - **Language**: English, French, German, Italian or Spanish.
 - **Local saves**: the game saves and loads as on the console.
