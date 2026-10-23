@@ -285,7 +285,7 @@ add_dependencies(ssf2t_runtime_tests ssf2t_window_placement_tests)
 
 # Launcher and window behaviour that needs no window: keyboard remapping, Escape not quitting, per-monitor DPI
 # helpers, the input-aware cursor and the window title.
-foreach(_test keyboard launcher_quit dpi window_host)
+foreach(_test keyboard launcher_quit dpi window_host player_name)
     set(_name ssf2t_${_test}_tests)
     add_executable(${_name} EXCLUDE_FROM_ALL tests/${_test}_tests.cpp)
     target_include_directories(${_name} PRIVATE src)

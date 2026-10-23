@@ -2,11 +2,13 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cstdio>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -38,6 +40,8 @@
 #include "internal_render_scale.h"
 #include "keybinds.h"
 #include "language_setting.h"
+#include "local_player_name.h"
+#include "player_name_setting.h"
 #include "launcher_achievements.h"
 #include "log_filter.h"
 #include "launcher_assets.h"
@@ -821,6 +825,12 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     ui.Toggle("Frame counter", "Shows the game's frame rate in the corner. F2 toggles it while playing.",
               "ssf2t_show_frame_counter", false, "Hidden", "Shown");
     ui.Toggle(kInfiniteTimeLabel, kInfiniteTimeHelp, kInfiniteTimeSetting, kDefaultInfiniteTime, "Off", "On");
+    if (ui.Section("Player names", true)) {
+      ui.Help(kPlayerNamesHelp);
+      for (const PlayerNameSetting& player : kPlayerNames) {
+        PlayerNameRow(ui, player);
+      }
+    }
   }
 
   void PageAchievements(trg::Ui& ui) {
@@ -887,6 +897,42 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
       if (!enabled) {
         ImGui::EndDisabled();
       }
+    }
+  }
+
+  static void PlayerNameRow(trg::Ui& ui, const PlayerNameSetting& player) {
+    static std::map<std::string, local_player_name::Result> blocked;
+    struct Edit {
+      std::string previous;
+      local_player_name::Result blocked = local_player_name::Result::Ok;
+    } edit{ui.settings().Get(player.key)};
+    const auto reject_invalid = [](ImGuiInputTextCallbackData* data) {
+      auto* state = static_cast<Edit*>(data->UserData);
+      const std::string kept = local_player_name::AcceptEdit(state->previous, {data->Buf, size_t(data->BufTextLen)},
+                                                             &state->blocked);
+      if (state->blocked != local_player_name::Result::Ok) {
+        data->DeleteChars(0, data->BufTextLen);
+        data->InsertChars(0, kept.c_str());
+      }
+      return 0;
+    };
+    ui.Row(player.label, kPlayerNameHint);
+    char text[64];
+    std::snprintf(text, sizeof text, "%s", edit.previous.c_str());
+    ImGui::PushID(player.key);
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (ImGui::InputTextWithHint("##text", player.default_name, text, sizeof text, ImGuiInputTextFlags_CallbackEdit,
+                                 reject_invalid, &edit)) {
+      ui.settings().Set(player.key, text);
+      blocked[player.key] = edit.blocked;
+    }
+    ImGui::PopID();
+    local_player_name::Result shown = blocked[player.key];
+    if (shown == local_player_name::Result::Ok) {
+      shown = local_player_name::Check(ui.settings().Get(player.key)).result;
+    }
+    if (shown != local_player_name::Result::Ok) {
+      ui.Help(local_player_name::Message(shown));
     }
   }
 

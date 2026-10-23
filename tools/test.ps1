@@ -97,6 +97,7 @@ Invoke-Step 'launcher settings' { & (Join-Path $BuildDir 'ssf2t_launcher_setting
 Invoke-Step 'fight area' { & (Join-Path $BuildDir 'ssf2t_fight_area_tests.exe') }
 Invoke-Step 'infinite time' { & (Join-Path $BuildDir 'ssf2t_infinite_time_tests.exe') }
 Invoke-Step 'keyboard remapping' { & (Join-Path $BuildDir 'ssf2t_keyboard_tests.exe') }
+Invoke-Step 'player names' { & (Join-Path $BuildDir 'ssf2t_player_name_tests.exe') }
 Invoke-Step 'launcher quit' { & (Join-Path $BuildDir 'ssf2t_launcher_quit_tests.exe') }
 Invoke-Step 'display scaling' { & (Join-Path $BuildDir 'ssf2t_dpi_tests.exe') }
 Invoke-Step 'window host' { & (Join-Path $BuildDir 'ssf2t_window_host_tests.exe') }

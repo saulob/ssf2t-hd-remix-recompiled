@@ -30,7 +30,9 @@
 #include "internal_render_scale.h"
 #include "keybinds.h"
 #include "language_setting.h"
+#include "local_player_name.h"
 #include "multisampling.h"
+#include "player_name_setting.h"
 #include "presentation_setting.h"
 
 #include "platform.h"
@@ -57,6 +59,8 @@ REXCVAR_DEFINE_STRING(ssf2t_graphics_adapter, "auto", "SSF2T",
                       "Graphics card: auto, or the index d3d12_adapter takes (applied at start)");
 REXCVAR_DEFINE_STRING(ssf2t_language, "en-US", "SSF2T",
                       "Game language: en-US, fr-FR, de-DE, it-IT or es-ES (sets user_language at start)");
+REXCVAR_DEFINE_STRING(ssf2t_player_1_name, "Player 1", "SSF2T", "Name shown in-game for local player 1");
+REXCVAR_DEFINE_STRING(ssf2t_player_2_name, "Player 2", "SSF2T", "Name shown in-game for local player 2");
 REXCVAR_DEFINE_INT32(ssf2t_launcher_x, 0, "SSF2T", "Launcher window left edge, written by the launcher");
 REXCVAR_DEFINE_INT32(ssf2t_launcher_y, 0, "SSF2T", "Launcher window top edge, written by the launcher");
 REXCVAR_DEFINE_INT32(ssf2t_launcher_width, 0, "SSF2T", "Launcher window restored width, written by the launcher");
@@ -92,6 +96,8 @@ std::vector<std::string> GameSettingKeys() {
       "ssf2t_msaa_compatibility",
       "anisotropic_override",
       kLanguageSetting,
+      "ssf2t_player_1_name",
+      "ssf2t_player_2_name",
       "ssf2t_show_fps",
       "ssf2t_show_render_resolution",
       "ssf2t_show_frame_counter",
@@ -312,6 +318,12 @@ void GameSettings::Set(std::string_view key, std::string value) {
 }
 
 bool GameSettings::Save() {
+  for (const PlayerNameSetting& player : kPlayerNames) {
+    const auto name = pending_.find(player.key);
+    if (name != pending_.end() && local_player_name::Check(name->second).result != local_player_name::Result::Ok) {
+      name->second = player.default_name;
+    }
+  }
   std::vector<std::pair<std::string, std::string>> changes;
   for (const auto& [key, value] : pending_) {
     const auto saved = saved_.find(key);
@@ -377,6 +389,7 @@ void GameSettings::Apply() const {
   ApplyInternalRenderPath();
   ApplyMultisampling();
   ApplyLanguage();
+  ApplyPlayerNames();
   ApplyFightArea();
   ApplyInfiniteTime();
 }
@@ -385,6 +398,13 @@ void ApplyLanguage() {
   const GameLanguage& language = LanguageFor(REXCVAR_GET(ssf2t_language));
   rex::cvar::SetFlagByName("user_language", std::to_string(language.xconfig_language));
   REXLOG_INFO("Language: {} (user_language {})", language.label, language.xconfig_language);
+}
+
+void ApplyPlayerNames() {
+  for (const PlayerNameSetting& player : kPlayerNames) {
+    rex::cvar::SetFlagByName(player.sdk_key,
+                             local_player_name::SdkValue(rex::cvar::GetFlagByName(player.key), player.default_name));
+  }
 }
 
 void ApplyFightArea() {

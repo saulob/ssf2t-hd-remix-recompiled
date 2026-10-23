@@ -150,6 +150,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
       ApplyAspectRatio();
       ApplyInternalRenderPath();
       ApplyLanguage();
+      ApplyPlayerNames();
       ApplyFightArea();
       ApplyInfiniteTime();
       return defaults;

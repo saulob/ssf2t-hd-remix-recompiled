@@ -28,6 +28,8 @@ REXCVAR_DECLARE(int32_t, ssf2t_launcher_height);
 REXCVAR_DECLARE(bool, ssf2t_launcher_maximized);
 REXCVAR_DECLARE(bool, ssf2t_launcher_fullscreen);
 REXCVAR_DECLARE(bool, ssf2t_infinite_time);
+REXCVAR_DECLARE(std::string, ssf2t_player_1_name);
+REXCVAR_DECLARE(std::string, ssf2t_player_2_name);
 
 namespace ssf2t {
 
@@ -56,6 +58,9 @@ void ApplyAspectRatio();
 
 // Sets the SDK's user_language, which the title reads once at startup, from ssf2t_language.
 void ApplyLanguage();
+
+// Sets the SDK's local_player_N_name cvars from ssf2t_player_N_name. Call with ApplyLanguage.
+void ApplyPlayerNames();
 
 // Sets the guest hook for ssf2t_fight_area. Call with ApplyLanguage.
 void ApplyFightArea();
