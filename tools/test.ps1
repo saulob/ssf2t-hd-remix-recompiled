@@ -5,7 +5,8 @@
 
 .DESCRIPTION
   The updater tests (tests\update_tests.cpp, tests\update_helper_tests.cpp) run the real install transaction and the
-  real trg-updater.exe against a marker program; they never start the game or the launcher.
+  real trg-updater.exe against a marker program, and the release CLANG64 build when build-updater.ps1 has made one;
+  they never start the game or the launcher.
   The runtime tests (tests\physical_heap_stress.cpp, tests\title_thread_shutdown_tests.cpp) are built into the
   configured build folder and run against the patched runtime in tools\rexglue, so run tools\build.ps1 once first.
   The scanner --verify step runs only when generated\default and game\analysis\default.image.bin exist.
@@ -106,6 +107,10 @@ Invoke-Step 'achievements' { & (Join-Path $BuildDir 'ssf2t_achievement_tests.exe
 Invoke-Step 'achievement metadata' { & (Join-Path $BuildDir 'ssf2t_achievement_metadata_tests.exe') }
 Invoke-Step 'updater' { & (Join-Path $BuildDir 'ssf2t_update_tests.exe') }
 Invoke-Step 'updater helper' { & (Join-Path $BuildDir 'ssf2t_update_helper_tests.exe') }
+$ReleaseUpdater = Join-Path $BuildDir 'trg-updater-clang64\trg-updater.exe'
+if (Test-Path -LiteralPath $ReleaseUpdater) {
+    Invoke-Step 'updater helper (release CLANG64 build)' { & (Join-Path $BuildDir 'ssf2t_update_helper_tests.exe') $ReleaseUpdater }
+}
 Invoke-Step 'guest clock' { & (Join-Path $BuildDir 'ssf2t_guest_clock_tests.exe') }
 Invoke-Step 'D3D12 transfer short-circuit' { & (Join-Path $BuildDir 'ssf2t_d3d12_transfer_short_circuit_tests.exe') }
 Invoke-Step 'D3D12 sampler memo' { & (Join-Path $BuildDir 'ssf2t_d3d12_sampler_memo_tests.exe') }

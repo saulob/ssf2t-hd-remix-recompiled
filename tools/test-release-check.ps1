@@ -22,6 +22,8 @@ $Cases = [ordered]@{
     'game file upper'    = @{ Path = 'DEFAULT.XEX' }
     'asset archive'      = @{ Path = 'flog_x360.fpg' }
     'pdb'                = @{ Path = 'ssf2t_hd_remix.pdb' }
+    'updater pdb'        = @{ Path = 'trg-updater.pdb' }
+    'debug file'         = @{ Path = 'trg-updater.debug' }
     'renderdoc'          = @{ Path = 'renderdoc.dll' }
     'vulkan layer'       = @{ Path = 'VkLayer_test.json' }
     'unexpected file'    = @{ Path = 'notes.txt' }

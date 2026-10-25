@@ -53,7 +53,7 @@ The launcher checks the Title ID when you pick the package and checks `default.x
 
 ## Installing
 
-1. Download **SSF2THDRemix-v0.2.0-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
+1. Download **SSF2THDRemix-v0.2.1-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
 2. Run **ssf2t_hd_remix.exe**. The launcher opens.
 3. On the **Play** page click **Install from package...** and pick your package. It is one file with a long hexadecimal name and no extension. On an Xbox 360 drive it is in `Content\0000000000000000\584108A4\000D0000\`.
 4. Wait until **Ready to play** appears. The game files (about 370 MB) are copied into the `game` folder next to the program.
@@ -63,7 +63,7 @@ The launcher checks the Title ID when you pick the package and checks `default.x
 
 ### Linux AppImage (experimental)
 
-Download **SSF2THDRemix-v0.2.0-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
+Download **SSF2THDRemix-v0.2.1-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
 
 ### Windows SmartScreen
 
@@ -100,7 +100,7 @@ The recompiled C++ is generated from your own game files, so the repository does
 3. `.\tools\codegen.ps1` downloads the pinned ReXGlue SDK 0.10.0, checks `default.xex` and generates the C++ into `generated\`.
 4. `.\tools\build.ps1` builds `build\ssf2t_hd_remix.exe`. It first checks that ReXGlue's runtime and Xenos GPU plugin in `tools\rexglue` were built from this project's patches (`patches\rexglue-sdk`) and rebuilds them from the v0.10.0 source when they were not.
 5. `.\tools\test.ps1` runs the headless tests.
-6. `.\tools\package-release.ps1` makes the release ZIP in `dist\`. It refuses to package a runtime that does not match the patches and publishes nothing. See [docs/release.md](docs/release.md).
+6. `.\tools\package-release.ps1` (PowerShell 7, and MSYS2 CLANG64 for the update helper) makes the release ZIP in `dist\`. It refuses to package a runtime that does not match the patches and publishes nothing. See [docs/release.md](docs/release.md).
 
 ## Credits
 

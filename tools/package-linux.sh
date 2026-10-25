@@ -4,8 +4,10 @@
 #
 #   tools/package-linux.sh            incremental Release build, then package
 #   tools/package-linux.sh --clean    clean Release build first
-#   tools/package-linux.sh --out-dir DIR    write the AppImage and its .sha256 to DIR instead of dist (test builds)
+#   tools/package-linux.sh --out-dir DIR    write the AppImage, its .sha256 and the symbols to DIR instead of dist (test builds)
 #   tools/package-linux.sh --verify-only FILE    check an existing AppImage (extracts it, scans it, checks the runtime)
+#
+# The program's debug information goes to <out dir>/SSF2THDRemix-v<version>-x86_64-symbols/, which is not packaged.
 #
 # Needs clang-20, clang++-20, lld-20, cmake 3.25+, ninja, rsync, git, wget or curl, unzip or python3, binutils and the
 # GCC 13+ C++ runtime. Release builds are made on Ubuntu 20.04 (tools/setup-linux-build-env.sh prepares one): the AppImage
@@ -104,7 +106,7 @@ scan_appdir() {  # appdir label [extra_paths...]
     case "${base,,}" in
       default.xex | game | game-install-temp | game-install-backup | user_data | cache | logs | settings.toml | 584108a4 | \
         '$systemupdate') problem "forbidden name: $rel" ;;
-      *.xex | *.iso | *.fpg | *.log | *.dmp | *.pdb | *.bak | *.tmp | *.sav | *.invalid | *.pyc | *~ | settings.toml.*) problem "forbidden file type: $rel" ;;
+      *.xex | *.iso | *.fpg | *.log | *.dmp | *.pdb | *.debug | *.bak | *.tmp | *.sav | *.invalid | *.pyc | *~ | settings.toml.*) problem "forbidden file type: $rel" ;;
     esac
     case "${base,,}" in
       *renderdoc* | *vklayer* | *.json | implicit_layer.d | explicit_layer.d) problem "RenderDoc or Vulkan layer file: $rel" ;;
@@ -129,6 +131,7 @@ scan_appdir() {  # appdir label [extra_paths...]
   grep -qaF "$APP_ID" "$appdir/usr/bin/$BIN_NAME" || problem "the program does not contain the application id $APP_ID"
   for f in $BIN_NAME librexruntime.so librexgpu-xenos.so; do
     if readelf -d "$appdir/usr/bin/$f" | grep -i renderdoc >/dev/null; then problem "$f links RenderDoc"; fi
+    if readelf -S -W "$appdir/usr/bin/$f" | grep -F ' .debug_' >/dev/null; then problem "$f holds debug sections"; fi
     rpath="$(readelf -d "$appdir/usr/bin/$f" | sed -n 's/.*R\(UN\)\?PATH.*\[\(.*\)\]/\2/p')"
     case "$f" in
       $BIN_NAME) [ "$rpath" = '$ORIGIN' ] || problem "$f RPATH/RUNPATH is '$rpath', not \$ORIGIN" ;;
@@ -170,7 +173,7 @@ fi
 echo "Source: $SOURCE"
 
 echo "== Tools"
-for tool in clang-20 clang++-20 ld.lld-20 cmake ninja rsync sha256sum strip readelf objdump ldd; do
+for tool in clang-20 clang++-20 ld.lld-20 cmake ninja rsync sha256sum objcopy readelf objdump ldd; do
   command -v "$tool" >/dev/null || fail "$tool not found"
 done
 command -v wget >/dev/null || command -v curl >/dev/null || fail "wget or curl not found"
@@ -251,13 +254,15 @@ bash "$PATCHED" --check "$SDK" --staged "$BIN" || fail "the build folder does no
 echo "== AppDir"
 APPDIR="$WORK/AppDir"
 DOC="$APPDIR/usr/share/doc/$BIN_NAME"
-rm -rf "$APPDIR"
-mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" "$DOC"
-cp "$BIN/$BIN_NAME" "$BIN/librexruntime.so" "$BIN/librexgpu-xenos.so" "$BIN/$BIN_NAME.toml" "$APPDIR/usr/bin/"
+SYMBOLS="$OUT_DIR/$NAME-symbols"
+rm -rf "$APPDIR" "$SYMBOLS"
+mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" "$DOC" "$SYMBOLS"
+cp "$BIN/librexruntime.so" "$BIN/librexgpu-xenos.so" "$BIN/$BIN_NAME.toml" "$APPDIR/usr/bin/"
 mkdir -p "$APPDIR/usr/bin/assets/launcher"
 cp "$BIN/assets/launcher/header-art.png" "$APPDIR/usr/bin/assets/launcher/"
-# Debug sections carry the build machine's folders.
-strip --strip-unneeded "$APPDIR/usr/bin/$BIN_NAME"
+# The debug sections carry the build machine's folders, so they stay in $SYMBOLS.
+objcopy --only-keep-debug "$BIN/$BIN_NAME" "$SYMBOLS/$BIN_NAME.debug"
+objcopy --strip-debug --add-gnu-debuglink="$SYMBOLS/$BIN_NAME.debug" "$BIN/$BIN_NAME" "$APPDIR/usr/bin/$BIN_NAME"
 # ReXGlue needs GLIBCXX_3.4.32 (GCC 13); AppRun uses this copy only on systems without it.
 for lib in libstdc++.so.6 libgcc_s.so.1; do
   src="$(g++ -print-file-name=$lib 2>/dev/null || true)"
@@ -327,6 +332,7 @@ echo " APPIMAGE READY (nothing was published)"
 echo "===================================================="
 echo "  AppImage: $OUT ($(du -h "$OUT" | cut -f1))"
 echo "  SHA-256:  $(cut -d' ' -f1 "$OUT_DIR/$NAME.sha256")"
+echo "  Symbols:  $SYMBOLS (not in the AppImage)"
 echo "  Source:   $SOURCE"
 echo "  Contents:"
 echo "$EXPECTED" | sed 's/^/    /'

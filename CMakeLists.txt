@@ -1,7 +1,7 @@
 # SDK boilerplate lives in generated/rexglue.cmake.
 
 cmake_minimum_required(VERSION 3.25)
-project(ssf2t_hd_remix VERSION 0.2.0 LANGUAGES C CXX)
+project(ssf2t_hd_remix VERSION 0.2.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -249,7 +249,7 @@ endfunction()
 ssf2t_enable_thinlto(ssf2t_hd_remix)
 
 # The update helper runs from the temporary update workspace, away from the installation, so it keeps its runtime
-# inside the executable.
+# inside the executable. Release packages ship the MSYS2 CLANG64 build of these sources (tools/build-updater.ps1).
 if(WIN32)
     add_executable(trg-updater WIN32
         src/updater/helper_main.cpp
@@ -264,7 +264,6 @@ if(WIN32)
     target_link_options(trg-updater PRIVATE -static)
     set_property(TARGET trg-updater PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     target_compile_options(trg-updater PRIVATE -Wall -Wextra)
-    ssf2t_enable_thinlto(trg-updater)
     add_dependencies(ssf2t_hd_remix trg-updater)
 endif()
 target_compile_definitions(ssf2t_hd_remix PRIVATE

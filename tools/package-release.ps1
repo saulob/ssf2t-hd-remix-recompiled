@@ -8,14 +8,18 @@
   the Release files built from this branch's ReXGlue patches, stages exactly the files the program needs, checks the
   staging folder with check-release-folder.ps1, then writes dist\SSF2THDRemix-v<version>-windows-x64.zip and its
   .sha256 file. The ZIP is extracted again and checked, so the artifact itself is verified, not only the staging folder.
+  The update helper, trg-updater.exe, is built with MSYS2 CLANG64 by build-updater.ps1; its debug information,
+  trg-updater.debug, goes to dist\SSF2THDRemix-v<version>-windows-x64-symbols\, which is not packaged.
+  The ZIP holds one top-level folder named after it, written with PowerShell 7's .NET ZIP support.
   The version is the project VERSION in CMakeLists.txt.
 
 .EXAMPLE
   .\tools\package-release.ps1              # incremental Release build, then package
   .\tools\package-release.ps1 -Clean       # clean Release build first
   .\tools\package-release.ps1 -SkipBuild   # package the existing build-release\ output
-  .\tools\package-release.ps1 -VerifyOnly dist\SSF2THDRemix-v0.2.0-windows-x64.zip   # check a staged folder or a ZIP
+  .\tools\package-release.ps1 -VerifyOnly dist\SSF2THDRemix-v0.2.1-windows-x64.zip   # check a staged folder or a ZIP
 #>
+#Requires -Version 7.0
 param(
     [switch]$Clean,
     [switch]$SkipBuild,
@@ -25,16 +29,16 @@ $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path $PSScriptRoot -Parent
 $ReleaseBuild = Join-Path $Root 'build-release'
+$UpdaterBuild = Join-Path $ReleaseBuild 'trg-updater-clang64'
 $Packaging = Join-Path $Root 'packaging'
 $SdkRoot = Join-Path $Root 'tools\rexglue\win-amd64'
 . (Join-Path $PSScriptRoot 'rexruntime-patch.ps1')
 
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
-$ProgramFiles = @('ssf2t_hd_remix.exe', 'trg-updater.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'ssf2t_hd_remix.toml')
+$ProgramFiles = @('ssf2t_hd_remix.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'ssf2t_hd_remix.toml')
 $LicenseFiles = @('ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt')
 $AssetFiles = @('assets\launcher\header-art.png')
 $CheckFolder = Join-Path $PSScriptRoot 'check-release-folder.ps1'
-$ZipTimestamp = [DateTimeOffset]::new(2026, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
 
 function Write-Problems($problems) {
     Write-Host ''
@@ -65,11 +69,18 @@ function Expand-ReleaseZip([string]$Zip) {
     return $target
 }
 
+# The updater installs the files at the root or inside one top-level folder.
+function Get-ZipContentRoot([string]$Folder) {
+    $items = @(Get-ChildItem -LiteralPath $Folder -Force)
+    if ($items.Count -eq 1 -and $items[0].PSIsContainer) { return $items[0].FullName }
+    return $Folder
+}
+
 if ($VerifyOnly) {
     $path = (Resolve-Path -LiteralPath $VerifyOnly).Path
     if (Test-Path -LiteralPath $path -PathType Leaf) {
         $folder = Expand-ReleaseZip $path
-        try { $ok = Invoke-FolderCheck $folder } finally { Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue }
+        try { $ok = Invoke-FolderCheck (Get-ZipContentRoot $folder) } finally { Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue }
     } else {
         $ok = Invoke-FolderCheck $path
     }
@@ -83,6 +94,7 @@ $Version = $Matches[1]
 $Name = "SSF2THDRemix-v$Version-windows-x64"
 $Dist = Join-Path $Root 'dist'
 $Stage = Join-Path $Dist $Name
+$Symbols = Join-Path $Dist "$Name-symbols"
 $Zip = Join-Path $Dist "$Name.zip"
 $ShaFile = Join-Path $Dist "$Name.sha256"
 
@@ -93,6 +105,7 @@ if (-not $SkipBuild) {
     $build = @{ Config = 'Release'; BuildDir = $ReleaseBuild }
     if ($Clean) { $build.Clean = $true }
     & (Join-Path $PSScriptRoot 'build.ps1') @build
+    & (Join-Path $PSScriptRoot 'build-updater.ps1') -OutDir $UpdaterBuild
 }
 
 # tools\rexglue must hold the Release runtime and GPU plugin built from this branch's patches, and the build must use them.
@@ -106,12 +119,19 @@ foreach ($leaf in $ProgramFiles) {
     if (-not (Test-Path (Join-Path $ReleaseBuild $leaf))) { throw "Release build output is missing $leaf (run without -SkipBuild)" }
 }
 if ((Get-Item (Join-Path $ReleaseBuild 'ssf2t_hd_remix.exe')).Length -lt 1MB) { throw 'ssf2t_hd_remix.exe is implausibly small' }
+$Updater = Join-Path $UpdaterBuild 'trg-updater.exe'
+$UpdaterDebug = Join-Path $UpdaterBuild 'trg-updater.debug'
+foreach ($file in $Updater, $UpdaterDebug) {
+    if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing $file (run without -SkipBuild)" }
+}
 
 New-Item -ItemType Directory -Force $Dist | Out-Null
-if (Test-Path -LiteralPath $Stage) { Remove-Item -LiteralPath $Stage -Recurse -Force }
-New-Item -ItemType Directory $Stage, (Join-Path $Stage 'licenses') | Out-Null
+foreach ($old in $Stage, $Symbols) { if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Recurse -Force } }
+New-Item -ItemType Directory $Stage, (Join-Path $Stage 'licenses'), $Symbols | Out-Null
+Copy-Item -LiteralPath $UpdaterDebug $Symbols
 
 foreach ($leaf in $ProgramFiles) { Copy-Item (Join-Path $ReleaseBuild $leaf) $Stage }
+Copy-Item -LiteralPath $Updater $Stage
 $AssetDir = Join-Path $Stage 'assets\launcher'
 New-Item -ItemType Directory -Force $AssetDir | Out-Null
 foreach ($asset in $AssetFiles) {
@@ -153,6 +173,9 @@ foreach ($dependency in 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll'
     if ($helperText.IndexOf($dependency, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $helper += "trg-updater.exe refers to $dependency" }
 }
 if ($helper.Count) { Write-Problems $helper; throw 'trg-updater.exe is not self-contained' }
+if ($helperText.IndexOf('.debug_', [StringComparison]::Ordinal) -ge 0 -or $helperText.IndexOf('trg-updater.debug', [StringComparison]::Ordinal) -lt 0) {
+    throw 'trg-updater.exe is not the build-updater.ps1 build without debug information (run without -SkipBuild)'
+}
 
 if (-not (Invoke-FolderCheck $Stage)) { throw 'The staging folder holds files that must not be released' }
 
@@ -164,11 +187,8 @@ try {
     $archive = New-Object IO.Compression.ZipArchive($stream, [IO.Compression.ZipArchiveMode]::Create)
     try {
         foreach ($file in $files) {
-            $entry = $archive.CreateEntry($file.FullName.Substring($Stage.Length + 1).Replace('\', '/'), [IO.Compression.CompressionLevel]::Optimal)
-            $entry.LastWriteTime = $ZipTimestamp
-            $in = [IO.File]::OpenRead($file.FullName)
-            $out = $entry.Open()
-            try { $in.CopyTo($out) } finally { $out.Dispose(); $in.Dispose() }
+            $entry = "$Name/" + $file.FullName.Substring($Stage.Length + 1).Replace('\', '/')
+            [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $entry, [IO.Compression.CompressionLevel]::Optimal)
         }
     } finally { $archive.Dispose() }
 } finally { $stream.Dispose() }
@@ -177,12 +197,13 @@ $entries = @($files | ForEach-Object { $_.FullName.Substring($Stage.Length + 1).
 $extracted = Expand-ReleaseZip $Zip
 try {
     $listed = @(Get-ChildItem -LiteralPath $extracted -Recurse -File | ForEach-Object { $_.FullName.Substring($extracted.Length + 1).Replace('\', '/') } | Sort-Object)
-    if (Compare-Object $entries $listed) { throw 'The ZIP does not hold exactly the staged files' }
+    if (Compare-Object @($entries | ForEach-Object { "$Name/$_" }) $listed) { throw "The ZIP does not hold exactly the staged files inside $Name/" }
+    $content = Join-Path $extracted $Name
     foreach ($entry in $entries) {
         $relative = $entry.Replace('/', '\')
-        if ((Get-FileSha256 (Join-Path $Stage $relative)) -ne (Get-FileSha256 (Join-Path $extracted $relative))) { throw "$entry in the ZIP differs from the staged file" }
+        if ((Get-FileSha256 (Join-Path $Stage $relative)) -ne (Get-FileSha256 (Join-Path $content $relative))) { throw "$entry in the ZIP differs from the staged file" }
     }
-    if (-not (Invoke-FolderCheck $extracted)) { throw 'The ZIP holds files that must not be released' }
+    if (-not (Invoke-FolderCheck $content)) { throw 'The ZIP holds files that must not be released' }
 } finally { Remove-Item -LiteralPath $extracted -Recurse -Force -ErrorAction SilentlyContinue }
 
 $hash = Get-FileSha256 $Zip
@@ -195,7 +216,8 @@ Write-Host '===================================================='
 Write-Host "  ZIP:       $Zip ($([math]::Round((Get-Item $Zip).Length / 1MB, 1)) MB)"
 Write-Host "  SHA-256:   $hash"
 Write-Host "  Hash file: $ShaFile"
+Write-Host "  Symbols:   $Symbols (not in the package)"
 Write-Host "  Runtime:   ReXGlue $($stamp.Values['sdk_version']) ($($stamp.Values['sdk_commit'].Substring(0, 12))), patch fingerprint $($stamp.Values['inputs_sha256'].Substring(0, 16))"
-Write-Host '  Contents:'
+Write-Host "  Contents (inside $Name/):"
 foreach ($entry in $entries) { Write-Host "    $entry" }
 Write-Host ''

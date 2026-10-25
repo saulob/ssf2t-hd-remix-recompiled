@@ -32,7 +32,7 @@ is older than GCC 13.
    copied into a `game` folder next to the AppImage.
 5. Wait for **Ready to play**, then press **PLAY**.
 
-Steam Deck is not a tested target for v0.2.0. Adding the AppImage as a non-Steam game should work, but nobody has tried it.
+Steam Deck is not a tested target for v0.2.1. Adding the AppImage as a non-Steam game should work, but nobody has tried it.
 
 ### If the AppImage does not start
 
@@ -81,7 +81,7 @@ Run on Linux or WSL, after `tools/codegen.ps1` has generated `generated/default`
 ```sh
 tools/package-linux.sh            # incremental Release build, then package
 tools/package-linux.sh --clean    # clean Release build first
-tools/package-linux.sh --verify-only dist/SSF2THDRemix-v0.2.0-x86_64.AppImage
+tools/package-linux.sh --verify-only dist/SSF2THDRemix-v0.2.1-x86_64.AppImage
 tools/test.sh                     # headless tests, after tools/build.sh
 ```
 
@@ -95,7 +95,9 @@ appimagetool with SHA-256 checks, builds the patched ReXGlue runtime and Vulkan 
 builds the `linux-amd64-release` preset, checks that the AppDir holds exactly the allow-listed files and no game files,
 saves, logs, local paths (ASCII and UTF-16) or `DEBUG_SAULO`, checks RPATH, unresolved libraries and glibc symbols, builds
 the AppImage, extracts it again and runs the same checks on the result. It writes
-`dist/SSF2THDRemix-v<version>-x86_64.AppImage` and its `.sha256`, and publishes nothing.
+`dist/SSF2THDRemix-v<version>-x86_64.AppImage` and its `.sha256`, and publishes nothing. The packaged program is built
+without its debug sections; they go to `dist/SSF2THDRemix-v<version>-x86_64-symbols/ssf2t_hd_remix.debug`, outside the
+AppImage.
 
 The AppImage runtime is built from the pinned upstream AppImage/type2-runtime commit with the patch in
 `patches/appimage-runtime` (`tools/build-appimage-runtime.sh`), so that an AppImage whose FUSE mount fails falls back to

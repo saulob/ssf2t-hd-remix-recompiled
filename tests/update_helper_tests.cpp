@@ -209,8 +209,10 @@ bool SameFile(const std::filesystem::path& left, const std::filesystem::path& ri
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
   std::setvbuf(stdout, nullptr, _IONBF, 0);
+  const std::filesystem::path updater =
+      argc > 1 ? std::filesystem::path(argv[1]) : std::filesystem::path(SSF2T_UPDATER_EXE);
   ScopedEnvironment environment;
   TempDir temp;
   const std::filesystem::path helper_dir = temp.path / "helper dir";
@@ -229,7 +231,7 @@ int main() {
 
   std::error_code ec;
   std::filesystem::create_directories(helper_dir, ec);
-  std::filesystem::copy_file(SSF2T_UPDATER_EXE, helper, std::filesystem::copy_options::overwrite_existing, ec);
+  std::filesystem::copy_file(updater, helper, std::filesystem::copy_options::overwrite_existing, ec);
   CHECK(!ec);
   for (const auto& entry : std::filesystem::directory_iterator(helper_dir, ec)) {
     CHECK(entry.is_regular_file());

@@ -4,7 +4,7 @@
   debug output or developer paths. Reads the folder only; exits 1 and lists the problems when it is not clean.
 
 .EXAMPLE
-  .\tools\check-release-folder.ps1 dist\SSF2THDRemix-v0.2.0-windows-x64
+  .\tools\check-release-folder.ps1 dist\SSF2THDRemix-v0.2.1-windows-x64
 #>
 param(
     [Parameter(Mandatory)][string]$Folder
@@ -19,7 +19,7 @@ $AssetFiles = @('assets\launcher\header-art.png')
 $ForbiddenNames = @('default.xex', 'game', 'game-install-temp', 'game-install-backup', 'user_data', 'user_data.migrating',
     'content', 'cache', 'logs', 'settings.toml', 'settings.toml.bak', 'flog_x360.fpg', '584108A4', 'renderdoc', 'renderdoc.dll',
     'vulkan-1.dll')
-$ForbiddenPatterns = @('*.xex', '*.fpg', '*.log', '*.dmp', '*.pdb', '*.xsh', '*.xpso', '*.bak', '*.tmp', '*.sav', 'VkLayer_*', 'renderdoc*',
+$ForbiddenPatterns = @('*.xex', '*.fpg', '*.log', '*.dmp', '*.pdb', '*.debug', '*.xsh', '*.xpso', '*.bak', '*.tmp', '*.sav', 'VkLayer_*', 'renderdoc*',
     'TracyClient*', '*.pyc', '*.obj', '*.lib', '*.ilk', '*.orig', '*.rej', '*.rdc', 'Thumbs.db', 'desktop.ini', '.git*')
 $PackageMagic = @('LIVE', 'PIRS', 'CON ', 'XEX2')
 $Markers = @('DEBUG_SAULO')
