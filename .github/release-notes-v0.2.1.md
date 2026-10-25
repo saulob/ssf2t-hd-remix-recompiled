@@ -1,12 +1,20 @@
 ## Super Street Fighter II Turbo HD Remix PC Port v0.2.1
 
-Release packaging update. Gameplay, the launcher and the in-place updater behave exactly as in v0.2.0.
+Release packaging and compatibility update. Some antivirus engines reported heuristic detections for v0.2.0 files; v0.2.1 changes how the release is built and packaged to reduce these false-positive detections. Gameplay, the launcher and the in-place updater behave exactly as in v0.2.0.
 
 ### Changes
-- **Windows release packaging**: improved release packaging and compatibility, intended to reduce the false-positive antivirus detections reported for the v0.2.0 update helper (`trg-updater.exe`). The helper now uses the same conventional MSYS2 CLANG64 build model as the Dragon's Crown Pro PC port's update helper, and its debug symbols are kept in a separate file outside the release ZIP. It remains a static, self-contained program that uses only Windows system libraries; its source code is unchanged. The game executable is built exactly as before.
+- **Windows update helper**: `trg-updater.exe` is now built with the same conventional MSYS2 CLANG64 build model already used by the Dragon's Crown Pro PC port's update helper. It is built from the same source, remains a static, self-contained program that uses only Windows system libraries, and its debug symbols are kept in a separate file outside the release ZIP.
+- **Windows game executable**: built with its normal Visual Studio clang Release configuration, as before. Its machine code is unchanged from v0.2.0; only the version information differs.
 - **Windows ZIP layout**: the ZIP now extracts to a single `SSF2THDRemix-v0.2.1-windows-x64` folder.
-- **Linux AppImage packaging**: the program's debug symbols are now separated into a `.debug` file that is kept out of the AppImage, the same conventional model already used by the Dragon's Crown Pro PC port. The bundled program code is unchanged.
-- No gameplay or updater behavior was changed by these packaging changes.
+- **Linux AppImage**: the program's debug symbols are now kept in a separate `.debug` file outside the AppImage, the conventional model already used by the Dragon's Crown Pro PC port. The bundled program code is unchanged.
+- No gameplay, updater protocol or save behavior was changed by these packaging improvements.
+
+### Antivirus checks
+Both release artifacts were checked with VirusTotal before publication, with 0 detections at release preparation time:
+- Windows ZIP: [VirusTotal report](https://www.virustotal.com/gui/file/348cb82a160fe615939a940850e1be98d1805e5e1e4307abef3e4508d15b0718)
+- Linux AppImage: [VirusTotal report](https://www.virustotal.com/gui/file/ed8a75add5cf981020be981dcf849a6f7edf5a9fc632bebc6838b251c761dab7)
+
+VirusTotal results can change as antivirus engines update, and a scan result is not a guarantee. Compare your download with the SHA-256 values below; if an engine flags a file, please open an issue with the engine name and detection.
 
 ### Updating from v0.2.0
 The v0.2.0 launcher offers this update when it starts; choose **UPDATE NOW** to install it in place. Game files, saves, settings and logs are kept.
