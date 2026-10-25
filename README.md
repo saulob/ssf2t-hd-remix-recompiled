@@ -106,7 +106,7 @@ The recompiled C++ is generated from your own game files, so the repository does
 
 - Super Street Fighter II Turbo HD Remix is a game by its original rights holders. This is an unofficial fan-made PC port. It is not affiliated with or endorsed by them, and it contains none of their files.
 - [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk) for the recompiler and runtime (BSD 3-Clause)
-- [TRG Launcher](https://github.com/TekRantGaming/trg-launcher), the launcher interface, pinned at v1.1.0 (revision b384a28). The referenced revision contains no explicit license file.
+- [TRG Launcher](https://github.com/TekRantGaming/trg-launcher), the launcher interface, pinned at v1.1.0 (revision b384a28), licensed under the MIT License
 - The licenses of the libraries the release includes are in the `licenses` folder of the ZIP
 
 ## AI disclosure
