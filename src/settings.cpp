@@ -54,7 +54,8 @@ REXCVAR_DEFINE_BOOL(ssf2t_msaa_compatibility, false, "SSF2T",
 REXCVAR_DEFINE_STRING(ssf2t_aspect_ratio, "16:9", "SSF2T",
                       "Aspect ratio chosen in the launcher: 16:9, 16:10, 21:9, 32:9, 4:3 or 5:4");
 REXCVAR_DEFINE_STRING(ssf2t_fight_area, "original", "SSF2T",
-                      "Fight area chosen in the launcher: original or fill_16_9 (removes the fight's side bars)");
+                      "Fight area chosen in the launcher: original or fill_16_9 "
+                      "(removes the side bars of fights, Character Select and VS)");
 REXCVAR_DEFINE_STRING(ssf2t_graphics_adapter, "auto", "SSF2T",
                       "Graphics card: auto, or the index d3d12_adapter takes (applied at start)");
 REXCVAR_DEFINE_STRING(ssf2t_language, "en-US", "SSF2T",
