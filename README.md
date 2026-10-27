@@ -102,6 +102,14 @@ The recompiled C++ is generated from your own game files, so the repository does
 5. `.\tools\test.ps1` runs the headless tests.
 6. `.\tools\package-release.ps1` (PowerShell 7, and MSYS2 CLANG64 for the update helper) makes the release ZIP in `dist\`. It refuses to package a runtime that does not match the patches and publishes nothing. See [docs/release.md](docs/release.md).
 
+## Sponsoring
+
+Super Street Fighter II Turbo HD Remix Recompiled is maintained and developed in my free time. If you enjoy the project or find it useful, consider supporting its continued development.
+
+<p align="center">
+<a href="https://github.com/sponsors/saulob" target="_blank"><img src="https://img.shields.io/badge/GitHub%20Sponsors-Sponsor-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="GitHub Sponsors"></a>
+</p>
+
 ## Credits
 
 - Super Street Fighter II Turbo HD Remix is a game by its original rights holders. This is an unofficial fan-made PC port. It is not affiliated with or endorsed by them, and it contains none of their files.
