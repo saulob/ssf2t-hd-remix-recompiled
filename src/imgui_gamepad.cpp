@@ -9,6 +9,18 @@
 
 #include <SDL3/SDL.h>
 
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
+#include <rex/logging.h>  // DEBUG_SAULO
+
 namespace ssf2t {
 namespace {
 
@@ -73,6 +85,18 @@ void ClosePad(std::vector<SDL_Gamepad*>& pads, SDL_JoystickID id) {
   }
 }
 
+// SDL ignores controllers while its windows are unfocused, but on Windows this program's own SDL has no window, so a
+// pad used in another program would still drive the launcher or an overlay from the background.
+bool ProgramInForeground() {
+#if defined(_WIN32)
+  DWORD process = 0;
+  const HWND window = GetForegroundWindow();
+  return window != nullptr && GetWindowThreadProcessId(window, &process) != 0 && process == GetCurrentProcessId();
+#else
+  return true;
+#endif
+}
+
 }  // namespace
 
 ImGuiGamepad::~ImGuiGamepad() {
@@ -96,8 +120,8 @@ void ImGuiGamepad::Update(ImGuiIO& io) {
   }
   DrainEvents();
   io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
-  // The union of every connected pad, so any of them navigates. All-false when none is connected, which is what
-  // releases the keys of a pad that was unplugged while a button was held.
+  // The union of every connected pad, so any of them navigates. All-false when none is connected or another program
+  // is in front, which is what releases the keys of a pad that was unplugged or is in use elsewhere.
   std::array<bool, std::size(kButtons)> down{};
   std::array<float, std::size(kSticks)> amount{};
   for (SDL_Gamepad* pad : pads_) {
@@ -110,6 +134,17 @@ void ImGuiGamepad::Update(ImGuiIO& io) {
           std::clamp(float(value - kStickDeadZone) / float(32767 - kStickDeadZone), 0.0f, 1.0f);
       amount[i] = std::max(amount[i], reached);
     }
+  }
+  if (!ProgramInForeground()) {
+    // DEBUG_SAULO: once per run, shows that a controller was in use while this program was in the background.
+    static bool debug_saulo_logged = false;
+    if (!debug_saulo_logged && (std::find(down.begin(), down.end(), true) != down.end() ||
+                                *std::max_element(amount.begin(), amount.end()) > 0.0f)) {
+      debug_saulo_logged = true;
+      REXLOG_INFO("DEBUG_SAULO controller input ignored: another program is in the foreground");
+    }
+    down = {};
+    amount = {};
   }
   for (size_t i = 0; i < std::size(kButtons); ++i) {
     io.AddKeyEvent(kButtons[i].key, down[i]);

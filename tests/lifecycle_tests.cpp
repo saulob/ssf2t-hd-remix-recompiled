@@ -1,6 +1,7 @@
 // Window-close lifecycle policy: a host window close hard-exits without runtime teardown, while a normal
-// guest exit keeps the graceful teardown in OnShutdown. The decision is read from the app source (the
-// window calls need the running game).
+// guest exit keeps the graceful teardown in OnShutdown. The launcher reaches the game only through Play, and a
+// controller drives it only while the program is in front. Read from the sources (the calls need the running
+// game and a window).
 // Run: ssf2t_lifecycle_tests
 
 #include <cstdio>
@@ -31,6 +32,14 @@ std::string ReadSource(const char* name) {
 
 bool Has(const std::string& text, const char* needle) {
   return text.find(needle) != std::string::npos;
+}
+
+int Count(const std::string& text, const char* needle) {
+  int count = 0;
+  for (size_t at = text.find(needle); at != std::string::npos; at = text.find(needle, at + 1)) {
+    ++count;
+  }
+  return count;
 }
 
 std::string Between(const std::string& source, const char* from, const char* to) {
@@ -144,6 +153,54 @@ void TestIntentionalExitsWriteNoCrashBlock() {
   CHECK(!Has(shutdown, "CrashReport"));
 }
 
+void TestOnlyPlayStartsTheGame() {
+  std::printf("only an explicit Play resumes the runtime; the updater cannot\n");
+  const std::string app = ReadSource("ssf2t_hd_remix_app.h");
+  CHECK(Count(app, "resume(") == 1);
+  CHECK(Has(Between(app, "callbacks.play =", "callbacks.window_changed ="), "resume(defaults);"));
+
+  const std::string launcher = ReadSource("launcher.cpp");
+  CHECK(Count(launcher, "cb_.play") == 1);
+  CHECK(Has(FunctionBody(launcher, "void StartGame("), "Finish(cb_.play);"));
+  CHECK(Count(launcher, "StartGame();") == 1);
+  CHECK(Has(Between(launcher, "if (starting_ && ImGui::GetTime() - play_started_", "return;"), "StartGame();"));
+  CHECK(Count(launcher, "starting_ = true;") == 1);
+  CHECK(Has(FunctionBody(launcher, "void RequestPlay("), "starting_ = true;"));
+  CHECK(Count(launcher, "RequestPlay();") == 1);
+  CHECK(Has(Between(launcher, "case trg::Result::kPlay:", "break;"), "RequestPlay();"));
+
+  const std::string updater = Between(launcher, "void ReleaseUpdater(", "void* WindowHandle()");
+  CHECK(!updater.empty());
+  for (const char* start : {"cb_.play", "RequestPlay", "StartGame", "starting_"}) {
+    CHECK(!Has(updater, start));
+  }
+  CHECK(Has(FunctionBody(launcher, "void RestartToUpdate("), "Finish(cb_.quit);"));
+}
+
+void TestLauncherAchievementsRuntimeOnlyFromItsPage() {
+  std::printf("the launcher builds its achievements runtime only on the Achievements page\n");
+  const std::string launcher = ReadSource("launcher.cpp");
+  CHECK(Count(launcher, "std::make_unique<LauncherAchievements>(") == 1);
+  CHECK(Has(FunctionBody(launcher, "void PageAchievements("), "std::make_unique<LauncherAchievements>("));
+}
+
+void TestControllerIgnoredInBackground() {
+  std::printf("a controller drives the launcher and overlays only while the program is in front\n");
+  const std::string gamepad = ReadSource("imgui_gamepad.cpp");
+  const std::string foreground = Between(gamepad, "bool ProgramInForeground()", "}  // namespace");
+  CHECK(Has(foreground, "GetForegroundWindow()"));
+  CHECK(Has(foreground, "GetCurrentProcessId()"));
+
+  const std::string update = Between(gamepad, "void ImGuiGamepad::Update(", "void ImGuiGamepad::Release(");
+  const size_t gate = update.find("if (!ProgramInForeground()) {");
+  const size_t feed = update.find("io.AddKeyEvent(kButtons[i].key");
+  CHECK(feed != std::string::npos);
+  CHECK(gate < feed);
+  const std::string ignored = gate < feed ? update.substr(gate, feed - gate) : std::string();
+  CHECK(Has(ignored, "down = {};"));
+  CHECK(Has(ignored, "amount = {};"));
+}
+
 }  // namespace
 
 int main() {
@@ -153,6 +210,9 @@ int main() {
   TestSessionLogFinalizationWiring();
   TestNoSeparateCrashArtifacts();
   TestIntentionalExitsWriteNoCrashBlock();
+  TestOnlyPlayStartsTheGame();
+  TestLauncherAchievementsRuntimeOnlyFromItsPage();
+  TestControllerIgnoredInBackground();
   std::printf("%d checks, %d failures\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;
 }

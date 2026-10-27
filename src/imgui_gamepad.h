@@ -15,7 +15,7 @@ namespace ssf2t {
 // This runs on the program's own SDL (on Windows a second, independent instance; elsewhere the one SDL shared with
 // the runtime). It starts and quits the gamepad subsystem on its own; SDL counts the starts, so the runtime's input
 // is unaffected. Every connected controller is read and their inputs combined, so any of them navigates, and pads
-// added or removed while it is open are followed.
+// added or removed while it is open are followed. Nothing is fed while another program is in the foreground.
 //
 // Call Update() once per frame while the dialog is open and Release() when it closes. Release() lets go of every
 // key, so nothing read here is left held in the game. A pad unplugged while a button is held has its key released
