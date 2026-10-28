@@ -5,9 +5,9 @@
 
 #include <rex/hook.h>
 
-REX_EXTERN(__imp__sub_823F75D8);
-REX_EXTERN(__imp__sub_821738A0);
-REX_EXTERN(__imp__sub_821738F0);
+REX_EXTERN(__imp__sub_823F7D48);
+REX_EXTERN(__imp__sub_821738C0);
+REX_EXTERN(__imp__sub_82173910);
 
 namespace {
 
@@ -86,15 +86,15 @@ void WriteVertices(uint8_t* base, uint32_t address, std::span<const ssf2t::QuadV
 void DrawStrip(PPCContext& ctx, uint8_t* base, std::span<const ssf2t::QuadVertex> vertices) {
   const uint32_t bytes = uint32_t(vertices.size()) * ssf2t::kQuadVertexStride;
   ctx.r3.u64 = bytes;
-  __imp__sub_821738A0(ctx, base);
+  __imp__sub_821738C0(ctx, base);
   const uint32_t address = ctx.r3.u32;
   WriteVertices(base, address, vertices);
   ctx.r3.u64 = bytes;
-  __imp__sub_821738F0(ctx, base);
+  __imp__sub_82173910(ctx, base);
   ctx.r3.u64 = ssf2t::kQuadPrimitive;
   ctx.r4.u64 = vertices.size();
   ctx.r5.u64 = address;
-  __imp__sub_823F75D8(ctx, base);
+  __imp__sub_823F7D48(ctx, base);
 }
 
 bool IsQuadCall(const PPCContext& ctx) {
@@ -115,7 +115,7 @@ void DrawCharacterSelectBackground(PPCContext& ctx, uint8_t* base) {
            ssf2t::CharacterSelectWarp(original, aspect, texture, mesh);
   }
   if (!fill) {
-    __imp__sub_823F75D8(ctx, base);
+    __imp__sub_823F7D48(ctx, base);
     return;
   }
   const uint32_t caller = uint32_t(ctx.lr);
@@ -129,7 +129,7 @@ void DrawCharacterSelectSidePanel(PPCContext& ctx, uint8_t* base, uint32_t calle
   const bool skip = IsQuadCall(ctx) &&
                     ssf2t::SkipsSidePanel(CharacterSelectFillActive(base), SidePanelPathMatches(base), caller);
   if (!skip) {
-    __imp__sub_823F75D8(ctx, base);
+    __imp__sub_823F7D48(ctx, base);
   }
 }
 
@@ -145,7 +145,7 @@ void DrawVersusBackground(PPCContext& ctx, uint8_t* base) {
     extend = VersusFillActive(base) && ssf2t::BackgroundExtensionPieces(center, aspect, extensions);
   }
   const uint32_t caller = uint32_t(ctx.lr);
-  __imp__sub_823F75D8(ctx, base);
+  __imp__sub_823F7D48(ctx, base);
   if (!extend) {
     return;
   }
@@ -166,30 +166,30 @@ void SetFightAreaFill(bool fill) {
 }  // namespace ssf2t
 
 // The fight world is drawn inside these two calls; the HUD is drawn after them.
-REX_EXTERN(__imp__sub_82181AA8);
-REX_HOOK_RAW(sub_82181AA8) {
+REX_EXTERN(__imp__sub_82181AB8);
+REX_HOOK_RAW(sub_82181AB8) {
   ++g_scene_depth;
-  __imp__sub_82181AA8(ctx, base);
+  __imp__sub_82181AB8(ctx, base);
   --g_scene_depth;
 }
 
-REX_EXTERN(__imp__sub_823ED578);
-REX_HOOK_RAW(sub_823ED578) {
+REX_EXTERN(__imp__sub_823EDC68);
+REX_HOOK_RAW(sub_823EDC68) {
   ++g_scene_depth;
-  __imp__sub_823ED578(ctx, base);
+  __imp__sub_823EDC68(ctx, base);
   --g_scene_depth;
 }
 
-REX_EXTERN(__imp__sub_823EBB28);
-REX_HOOK_RAW(sub_823EBB28) {
+REX_EXTERN(__imp__sub_823EC218);
+REX_HOOK_RAW(sub_823EC218) {
   g_in_projection_setup = true;
-  __imp__sub_823EBB28(ctx, base);
+  __imp__sub_823EC218(ctx, base);
   g_in_projection_setup = false;
 }
 
 // Ortho(left f1, right f2, ...): Fill slides the window with the camera and keeps its width.
-REX_EXTERN(__imp__sub_823F5118);
-REX_HOOK_RAW(sub_823F5118) {
+REX_EXTERN(__imp__sub_823F5888);
+REX_HOOK_RAW(sub_823F5888) {
   if (g_scene_depth > 0 && g_in_projection_setup && FillActive(base)) {
     const float left = float(ctx.f1.f64);
     const float right = float(ctx.f2.f64);
@@ -197,22 +197,22 @@ REX_HOOK_RAW(sub_823F5118) {
     ctx.f1.f64 = double(left + shift);
     ctx.f2.f64 = double(right + shift);
   }
-  __imp__sub_823F5118(ctx, base);
+  __imp__sub_823F5888(ctx, base);
 }
 
 // Draws the black side quads of the fight, Character Select and VS; Fill 16:9 leaves them out.
-REX_EXTERN(__imp__sub_82177590);
-REX_HOOK_RAW(sub_82177590) {
+REX_EXTERN(__imp__sub_821775B0);
+REX_HOOK_RAW(sub_821775B0) {
   const bool pre_fight = PreFightFillActive(base);
   if (FillActive(base) || pre_fight) {
     return;
   }
-  __imp__sub_82177590(ctx, base);
+  __imp__sub_821775B0(ctx, base);
 }
 
 // Draws one quad from user vertices; Fill warps the Character Select background, drops its side panels and extends
 // the VS background here.
-REX_HOOK_RAW(sub_823F75D8) {
+REX_HOOK_RAW(sub_823F7D48) {
   const uint32_t caller = uint32_t(ctx.lr);
   if (caller == ssf2t::kCharacterSelectQuadReturn) {
     DrawCharacterSelectBackground(ctx, base);
@@ -221,6 +221,6 @@ REX_HOOK_RAW(sub_823F75D8) {
   } else if (ssf2t::SidePanelAt(caller) != ssf2t::SidePanel::kNone) {
     DrawCharacterSelectSidePanel(ctx, base, caller);
   } else {
-    __imp__sub_823F75D8(ctx, base);
+    __imp__sub_823F7D48(ctx, base);
   }
 }

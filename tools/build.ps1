@@ -34,6 +34,7 @@ $GameData = Join-Path $Root 'game\extracted'
 $UserData = Join-Path $BuildDir 'user_data'
 $Exe = Join-Path $BuildDir 'ssf2t_hd_remix.exe'
 $XexSha256 = '6E1C2F9ED7D1102A311A5F5626563527EDA5F85B2FBE8DB8405B866DED3F31EE'
+$XexpSha256 = 'A2E8E66B482C5D3A0D3A5D3F67A3CECB7A12CE1F6189196694FD3E765910606C'
 
 $VsRoot = Get-VisualStudioRoot
 $VsDevCmd = Join-Path $VsRoot 'Common7\Tools\VsDevCmd.bat'
@@ -50,6 +51,9 @@ foreach ($tool in @($VsDevCmd, $ClangXX, $LldLink, $CMake, $Ninja)) {
 $Xex = Join-Path $Root 'game\extracted\default.xex'
 if (-not (Test-Path $Xex)) { throw "Missing $Xex (extract the XBLA package into game\extracted first)" }
 if ((Get-FileHash $Xex -Algorithm SHA256).Hash -ne $XexSha256) { throw "Unsupported $Xex (expected SHA-256 $XexSha256)" }
+$Xexp = Join-Path $Root 'game\extracted\default.xexp'
+if (-not (Test-Path $Xexp)) { throw "Missing $Xexp (extract the Title Update package into game\extracted with tools\extract_stfs.ps1)" }
+if ((Get-FileHash $Xexp -Algorithm SHA256).Hash -ne $XexpSha256) { throw "Unsupported $Xexp (expected SHA-256 $XexpSha256, Title Update 0.0.2.3)" }
 if (-not (Test-Path (Join-Path $SdkRoot 'lib\cmake\rexglue'))) { throw 'Missing tools\rexglue (run tools\codegen.ps1 first)' }
 if (-not (Test-Path (Join-Path $Root 'generated\default\sources.cmake'))) { throw 'Missing generated\default (run tools\codegen.ps1 first)' }
 

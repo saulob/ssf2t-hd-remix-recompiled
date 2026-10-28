@@ -74,10 +74,14 @@ ssf2t::StartupDiagnostics Sample() {
   diagnostics.display.aspect = "16:9";
   diagnostics.game.title_id = 0x584108A4;
   diagnostics.game.executable = "default.xex";
+  diagnostics.game.version = "0.0.1.3";
   diagnostics.game.size = 3932160;
   diagnostics.game.sha256 = "ABCDEF";
   diagnostics.game.fingerprint = "crc32:B734F075";
   diagnostics.game.status = "verified";
+  diagnostics.game.update_version = "0.0.2.3";
+  diagnostics.game.update_fingerprint = "crc32:38DE2310";
+  diagnostics.game.update_sha256 = "A2E8";
   diagnostics.gameplay.simulation = "60Hz";
   diagnostics.gameplay.present = "guest 60Hz | host VBlank (VSync On)";
   diagnostics.graphics.render_percent = 100;
@@ -130,9 +134,11 @@ void TestStartupBlock() {
                   "vendor/device=10DE/2786"));
   CHECK(Has(text, "Runtime display: 2560x1440@144Hz | scale=225% | monitor=1 | fullscreen | window=1280x720 | "
                   "output=2560x1440 | aspect=16:9"));
-  CHECK(Has(text, "Runtime game: title_id=584108A4 | default.xex | size=3932160 | "
+  CHECK(Has(text, "Runtime game: title_id=584108A4 | default.xex | version=0.0.1.3 | size=3932160 | "
                   "fingerprint=crc32:B734F075 | status=verified"));
   CHECK(Has(text, "Runtime game sha256: ABCDEF"));
+  CHECK(Has(text, "Runtime title update: default.xexp | version=0.0.2.3 | fingerprint=crc32:38DE2310"));
+  CHECK(Has(text, "Runtime title update sha256: A2E8"));
   CHECK(Has(text, "Runtime timing: simulation=60Hz | "
                   "present=guest 60Hz | host VBlank (VSync On)"));
   CHECK(Has(text, "Runtime renderer: render=100% 1280x720 | guest=1280x720 | host_targets=4/4 | resolve=1x | "

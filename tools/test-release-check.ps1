@@ -20,6 +20,8 @@ $Cases = [ordered]@{
     'game file'          = @{ Path = 'game\default.xex' }
     'game file mixed'    = @{ Path = 'game\Default.xex' }
     'game file upper'    = @{ Path = 'DEFAULT.XEX' }
+    'title update'       = @{ Path = 'game\default.xexp' }
+    'any xexp'           = @{ Path = 'other.xexp' }
     'asset archive'      = @{ Path = 'flog_x360.fpg' }
     'pdb'                = @{ Path = 'ssf2t_hd_remix.pdb' }
     'updater pdb'        = @{ Path = 'trg-updater.pdb' }

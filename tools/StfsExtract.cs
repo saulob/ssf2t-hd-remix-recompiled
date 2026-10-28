@@ -21,7 +21,12 @@ public static class StfsExtract
 
     // Title ID from the package header (big-endian at 0x360), or 0 when the
     // file is not a LIVE/PIRS/CON package. Reads only the header.
-    public static uint TitleId(string pkg)
+    public static uint TitleId(string pkg) { return HeaderWord(pkg, 0x360); }
+
+    // Content type at 0x344: 0x000D0000 for the game, 0x000B0000 for a title update.
+    public static uint ContentType(string pkg) { return HeaderWord(pkg, 0x344); }
+
+    static uint HeaderWord(string pkg, int offset)
     {
         var head = new byte[0x364];
         using (var f = File.OpenRead(pkg))
@@ -30,7 +35,7 @@ public static class StfsExtract
         }
         string magic = Encoding.ASCII.GetString(head, 0, 4);
         if (magic != "LIVE" && magic != "PIRS" && magic != "CON ") return 0;
-        return (uint)(head[0x360] << 24 | head[0x361] << 16 | head[0x362] << 8 | head[0x363]);
+        return (uint)(head[offset] << 24 | head[offset + 1] << 16 | head[offset + 2] << 8 | head[offset + 3]);
     }
 
     static long BlockToOffset(long block)

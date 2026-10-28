@@ -108,6 +108,9 @@ std::vector<std::string> FormatStartupDiagnostics(const StartupDiagnostics& diag
   std::string game = "Runtime game: title_id=" + Hex(diagnostics.game.title_id, 8) + " | " +
                      (diagnostics.game.executable.empty() ? std::string("unknown")
                                                           : FileNameOnly(diagnostics.game.executable));
+  if (!diagnostics.game.version.empty()) {
+    game += " | version=" + diagnostics.game.version;
+  }
   if (diagnostics.game.size > 0) {
     game += " | size=" + std::to_string(diagnostics.game.size);
   }
@@ -120,6 +123,19 @@ std::vector<std::string> FormatStartupDiagnostics(const StartupDiagnostics& diag
   lines.push_back(std::move(game));
   if (!diagnostics.game.sha256.empty()) {
     lines.push_back("Runtime game sha256: " + diagnostics.game.sha256);
+  }
+  if (!diagnostics.game.update_version.empty() || !diagnostics.game.update_fingerprint.empty()) {
+    std::string update = "Runtime title update: default.xexp";
+    if (!diagnostics.game.update_version.empty()) {
+      update += " | version=" + diagnostics.game.update_version;
+    }
+    if (!diagnostics.game.update_fingerprint.empty()) {
+      update += " | fingerprint=" + diagnostics.game.update_fingerprint;
+    }
+    lines.push_back(std::move(update));
+  }
+  if (!diagnostics.game.update_sha256.empty()) {
+    lines.push_back("Runtime title update sha256: " + diagnostics.game.update_sha256);
   }
 
   lines.push_back("Runtime timing: simulation=" + diagnostics.gameplay.simulation +

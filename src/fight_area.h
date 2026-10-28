@@ -35,15 +35,15 @@ constexpr const char* FightAreaValue(int segment) {
 }
 
 // The fight draws two opaque black quads over the 16-unit margins of its 640x480 canvas; they are the side bars.
-constexpr uint32_t kFightMaskDrawer = 0x82177590;
+constexpr uint32_t kFightMaskDrawer = 0x821775B0;
 constexpr uint32_t kFightMaskDrawerWords[] = {
     0x7D8802A6, 0x9181FFF8, 0x9421FF60, 0x39600000, 0x91610050, 0x39600000, 0x91610054,
-    0x3D6083C2, 0x896BA828, 0x2C0B0000, 0x4182002C, 0x3D6083E3, 0x816B7F68, 0x2F0B0000,
-    0x419A001C, 0x3D6083E1, 0x896B9DB0, 0x2C0B0000, 0x4082000C, 0x39600040, 0x91610054,
+    0x3D6083C2, 0x896BA8A8, 0x2C0B0000, 0x4182002C, 0x3D6083E4, 0x816B8480, 0x2F0B0000,
+    0x419A001C, 0x3D6083E1, 0x896BA2C8, 0x2C0B0000, 0x4082000C, 0x39600040, 0x91610054,
 };
-constexpr uint32_t kWidescreenDisplayFlag = 0x83C1A828;
-constexpr uint32_t kWidescreenMode = 0x83E37F68;
-constexpr uint32_t kFightActiveFlag = 0x83E09DB0;
+constexpr uint32_t kWidescreenDisplayFlag = 0x83C1A8A8;
+constexpr uint32_t kWidescreenMode = 0x83E38480;
+constexpr uint32_t kFightActiveFlag = 0x83E0A2C8;
 
 // `code` is the guest memory at kFightMaskDrawer. The words include the loads of the three globals above.
 inline bool IsFightMaskDrawer(const uint8_t* code) {
@@ -58,11 +58,11 @@ inline bool IsFightMaskDrawer(const uint8_t* code) {
 }
 
 inline constexpr uint32_t kWidescreenAspect = 0x83A21350;
-inline constexpr uint32_t kFightCameraX = 0x83E384D8;
+inline constexpr uint32_t kFightCameraX = 0x83E389F8;
 inline constexpr float kFightCanvasWidth = 640.0f;
 inline constexpr float kFightFillMargin = 16.0f;
 
-// Fill needs the widescreen fight projection (the sub_823EBB28 branch that keeps a 640-unit width) and a usable camera.
+// Fill needs the widescreen fight projection (the sub_823EC218 branch that keeps a 640-unit width) and a usable camera.
 constexpr bool FightFillActive(bool fill, uint8_t widescreen_display, uint32_t widescreen_mode, uint8_t fight_active,
                                float aspect, float camera_x) {
   return fill && widescreen_display != 0 && widescreen_mode == 1 && fight_active != 0 && aspect != 1.0f &&
@@ -91,23 +91,23 @@ struct FightRenderFunction {
   std::span<const uint32_t> words;
 };
 
-inline constexpr uint32_t kSceneDraw = 0x82181AA8;
-inline constexpr uint32_t kProjectionSetup = 0x823EBB28;
-inline constexpr uint32_t kOrtho = 0x823F5118;
-inline constexpr uint32_t kFightRender = 0x823ED578;
+inline constexpr uint32_t kSceneDraw = 0x82181AB8;
+inline constexpr uint32_t kProjectionSetup = 0x823EC218;
+inline constexpr uint32_t kOrtho = 0x823F5888;
+inline constexpr uint32_t kFightRender = 0x823EDC68;
 
 inline constexpr uint32_t kSceneDrawWords[] = {
     0x7D8802A6, 0x9181FFF8, 0x9421FEF0, 0x39600001, 0x99610050, 0x3D6083A2,
-    0x896B127F, 0x2C0B0000, 0x418200B0, 0x3D6083E1, 0x896B9DB0, 0x2C0B0000,
+    0x896B127F, 0x2C0B0000, 0x418200B0, 0x3D6083E1, 0x896BA2C8, 0x2C0B0000,
 };
 inline constexpr uint32_t kProjectionSetupWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FC90, 0xD0210384, 0xD041038C, 0x38600007, 0x48008ED9, 0x480088BD,
+    0x7D8802A6, 0x9181FFF8, 0x9421FC90, 0xD0210384, 0xD041038C, 0x38600007, 0x48008F59, 0x4800893D,
 };
 inline constexpr uint32_t kOrthoWords[] = {
     0x7D8802A6, 0x9181FFF8, 0x9421FF60, 0xEC062828, 0x3D608200, 0xED420828, 0x3D408200, 0xED241828,
 };
 inline constexpr uint32_t kFightRenderWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0xFBC1FFE8, 0xFBE1FFF0, 0xDBE1FFE0, 0x9421FAD0, 0x480068A9, 0x2C030000,
+    0x7D8802A6, 0x9181FFF8, 0xFBC1FFE8, 0xFBE1FFF0, 0xDBE1FFE0, 0x9421FAD0, 0x48006929, 0x2C030000,
 };
 
 inline const FightRenderFunction kFightRenderFunctions[] = {
@@ -143,7 +143,7 @@ inline bool FightRenderPathMatches(const uint8_t* base) {
 
 // Outside fights the mask quads still show at the edges of the wider non-fight projection. VS is told apart by the
 // match flow halfwords; Character Select by the HD background, which stays set for the whole visible screen.
-inline constexpr uint32_t kGameRam = 0x83E09CC0;
+inline constexpr uint32_t kGameRam = 0x83E0A1D8;
 inline constexpr uint32_t kMainModeOffset = 0x0;
 inline constexpr uint32_t kGameModeOffset = 0x4;
 inline constexpr uint32_t kMatchStepOffset = 0x8;
@@ -238,34 +238,34 @@ inline bool CharacterSelectFillActive(bool fill, const uint8_t* base) {
                                            LoadPreFightScene(base));
 }
 
-inline constexpr uint32_t kMainModeDispatch = 0x8223DD58;
-inline constexpr uint32_t kGameModeDispatch = 0x8223DCF0;
-inline constexpr uint32_t kMatchStepDispatch = 0x8223DC30;
+inline constexpr uint32_t kMainModeDispatch = 0x8223DE80;
+inline constexpr uint32_t kGameModeDispatch = 0x8223DE18;
+inline constexpr uint32_t kMatchStepDispatch = 0x8223DD58;
 inline constexpr uint32_t kMainModeTable = 0x83A2D040;
 inline constexpr uint32_t kGameModeTable = 0x83A2D01C;
 inline constexpr uint32_t kMatchStepTable = 0x83A2CFC8;
 
 // Each dispatcher reads its halfword and jumps through table[value / 2].
 inline constexpr uint32_t kMainModeDispatchWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x816B52DC, 0xA16B0000, 0x3D4083CD, 0x394A52CC,
-    0xB16A0002, 0x3D6083CD, 0x396B52CC, 0xA16B0002, 0x7D6B0734, 0x556B083C, 0x3D4083A3, 0x394AD040,
+    0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x816B57F4, 0xA16B0000, 0x3D4083CD, 0x394A57E4,
+    0xB16A0002, 0x3D6083CD, 0x396B57E4, 0xA16B0002, 0x7D6B0734, 0x556B083C, 0x3D4083A3, 0x394AD040,
 };
 inline constexpr uint32_t kGameModeDispatchWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083C1, 0x39400000, 0x994B3390, 0x3D6083CD, 0x816B52DC,
-    0xA16B0004, 0x3D4083CD, 0x394A52CC, 0xB16A0002, 0x3D6083CD, 0x396B52CC, 0xA16B0002, 0x7D6B0734,
+    0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083C1, 0x39400000, 0x994B3410, 0x3D6083CD, 0x816B57F4,
+    0xA16B0004, 0x3D4083CD, 0x394A57E4, 0xB16A0002, 0x3D6083CD, 0x396B57E4, 0xA16B0002, 0x7D6B0734,
     0x556B083C, 0x3D4083A3, 0x394AD01C,
 };
 inline constexpr uint32_t kMatchStepDispatchWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x816B52DC, 0xA16B0008, 0x3D4083CD, 0x394A52CC,
-    0xB16A0002, 0x3D6083CD, 0x396B52CC, 0xA16B0002, 0x7D6B0734, 0x556B083C, 0x3D4083A3, 0x394ACFC8,
+    0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x816B57F4, 0xA16B0008, 0x3D4083CD, 0x394A57E4,
+    0xB16A0002, 0x3D6083CD, 0x396B57E4, 0xA16B0002, 0x7D6B0734, 0x556B083C, 0x3D4083A3, 0x394ACFC8,
 };
-inline constexpr uint32_t kMainModeTableWords[] = {0x82238EA0, kGameModeDispatch};
-inline constexpr uint32_t kGameModeTableWords[] = {0x82238FD0, 0x82239088, kMatchStepDispatch};
+inline constexpr uint32_t kMainModeTableWords[] = {0x82238FC8, kGameModeDispatch};
+inline constexpr uint32_t kGameModeTableWords[] = {0x822390F8, 0x822391B0, kMatchStepDispatch};
 // Step 4 shows the win counts, then starts the fight.
-inline constexpr uint32_t kMatchStepTableWords[] = {0x822390C0, 0x82239150, 0x82239230};
+inline constexpr uint32_t kMatchStepTableWords[] = {0x822391E8, 0x82239278, 0x82239358};
 
 // The scene draw picks the HD background from kHdBackground; 2 draws the Character Select screen texture.
-inline constexpr uint32_t kHdBackgroundDraw = 0x8217A088;
+inline constexpr uint32_t kHdBackgroundDraw = 0x8217A0A8;
 inline constexpr uint32_t kHdBackgroundDrawWords[] = {
     0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083A2, 0x896B127F, 0x2C0B0000, 0x4082000C, 0x38600000,
     0x480000A4, 0x39600000, 0x99610050, 0x3D6083A2, 0x816B130C, 0x91610054, 0x81610054, 0x2F0B0002,
@@ -273,37 +273,37 @@ inline constexpr uint32_t kHdBackgroundDrawWords[] = {
 };
 
 // Each background is one 4-vertex quad submitted through kQuadDraw; these are its two call sites.
-inline constexpr uint32_t kQuadDraw = 0x823F75D8;
-inline constexpr uint32_t kCharacterSelectBackgroundDraw = 0x82174F20;
-inline constexpr uint32_t kScrollingBackgroundDraw = 0x82174C70;
-inline constexpr uint32_t kCharacterSelectQuadCall = 0x821750CC;
-inline constexpr uint32_t kScrollingQuadCall = 0x82174EFC;
-inline constexpr uint32_t kCharacterSelectQuadReturn = 0x821750DC;
-inline constexpr uint32_t kScrollingQuadReturn = 0x82174F0C;
-inline constexpr uint32_t kQuadDrawWords[] = {0x7D8802A6, 0x496085D1, 0x9421FF90, 0x7C7F1B78,
+inline constexpr uint32_t kQuadDraw = 0x823F7D48;
+inline constexpr uint32_t kCharacterSelectBackgroundDraw = 0x82174F40;
+inline constexpr uint32_t kScrollingBackgroundDraw = 0x82174C90;
+inline constexpr uint32_t kCharacterSelectQuadCall = 0x821750EC;
+inline constexpr uint32_t kScrollingQuadCall = 0x82174F1C;
+inline constexpr uint32_t kCharacterSelectQuadReturn = 0x821750FC;
+inline constexpr uint32_t kScrollingQuadReturn = 0x82174F2C;
+inline constexpr uint32_t kQuadDrawWords[] = {0x7D8802A6, 0x496085C1, 0x9421FF90, 0x7C7F1B78,
                                               0x38600001, 0x7C9E2378, 0x7CBD2B78, 0x48002E2D};
 inline constexpr uint32_t kCharacterSelectBackgroundDrawWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FEF0, 0x3D6083BE, 0x806B5AB0, 0x4BFFEA65, 0x48283619, 0x38600060,
+    0x7D8802A6, 0x9181FFF8, 0x9421FEF0, 0x3D6083BE, 0x806B5B30, 0x4BFFEA65, 0x48283D69, 0x38600060,
 };
 inline constexpr uint32_t kScrollingBackgroundDrawWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FEF0, 0x38800000, 0x38600000, 0x48282A0D, 0x3D6083BE, 0x806B5ABC,
+    0x7D8802A6, 0x9181FFF8, 0x9421FEF0, 0x38800000, 0x38600000, 0x4828315D, 0x3D6083BE, 0x806B5B3C,
 };
-inline constexpr uint32_t kCharacterSelectQuadCallWords[] = {0x80A10090, 0x38800004, 0x38600006, 0x48282501};
-inline constexpr uint32_t kScrollingQuadCallWords[] = {0x80A10094, 0x38800004, 0x38600006, 0x482826D1};
+inline constexpr uint32_t kCharacterSelectQuadCallWords[] = {0x80A10090, 0x38800004, 0x38600006, 0x48282C51};
+inline constexpr uint32_t kScrollingQuadCallWords[] = {0x80A10094, 0x38800004, 0x38600006, 0x48282E21};
 
 // For HD background 2 or 9 the scene draw also puts backgrounds\WorldMapLeft and WorldMapRight in the 96 units
 // beside the Character Select background, through kQuadDraw from these two call sites.
-inline constexpr uint32_t kSidePanelDraw = 0x82174870;
-inline constexpr uint32_t kLeftSidePanelQuadCall = 0x82174A7C;
-inline constexpr uint32_t kRightSidePanelQuadCall = 0x82174C4C;
-inline constexpr uint32_t kLeftSidePanelQuadReturn = 0x82174A8C;
-inline constexpr uint32_t kRightSidePanelQuadReturn = 0x82174C5C;
+inline constexpr uint32_t kSidePanelDraw = 0x82174890;
+inline constexpr uint32_t kLeftSidePanelQuadCall = 0x82174A9C;
+inline constexpr uint32_t kRightSidePanelQuadCall = 0x82174C6C;
+inline constexpr uint32_t kLeftSidePanelQuadReturn = 0x82174AAC;
+inline constexpr uint32_t kRightSidePanelQuadReturn = 0x82174C7C;
 inline constexpr uint32_t kSidePanelDrawWords[] = {
     0x7D8802A6, 0x9181FFF8, 0x9421FE60, 0x3D6083A2, 0x816B130C, 0x91610190, 0x81610190,
     0x2F0B0002, 0x419A0014, 0x81610190, 0x2F0B0009, 0x419A0008, 0x48000028, 0x3D6083BE,
 };
-inline constexpr uint32_t kLeftSidePanelQuadCallWords[] = {0x80A100D0, 0x38800004, 0x38600006, 0x48282B51};
-inline constexpr uint32_t kRightSidePanelQuadCallWords[] = {0x80A100D0, 0x38800004, 0x38600006, 0x48282981};
+inline constexpr uint32_t kLeftSidePanelQuadCallWords[] = {0x80A100D0, 0x38800004, 0x38600006, 0x482832A1};
+inline constexpr uint32_t kRightSidePanelQuadCallWords[] = {0x80A100D0, 0x38800004, 0x38600006, 0x482830D1};
 
 inline const FightRenderFunction kSidePanelFunctions[] = {
     {kSidePanelDraw, kSidePanelDrawWords},
@@ -334,12 +334,12 @@ constexpr bool SkipsSidePanel(bool character_select_fill, bool path_matches, uin
 }
 
 // The game's per-draw vertex scratch: reserve returns the space, commit advances past it.
-inline constexpr uint32_t kVertexReserve = 0x821738A0;
-inline constexpr uint32_t kVertexCommit = 0x821738F0;
+inline constexpr uint32_t kVertexReserve = 0x821738C0;
+inline constexpr uint32_t kVertexCommit = 0x82173910;
 inline constexpr uint32_t kVertexReserveWords[] = {0x7D8802A6, 0x9181FFF8, 0xFBE1FFF0, 0x9421FFA0,
                                                    0x3FE083E4, 0x39630003, 0x3D2083E4, 0x556A003A};
-inline constexpr uint32_t kVertexCommitWords[] = {0x3D2083E4, 0x39630003, 0x556A003A, 0x8169D8FC,
-                                                  0x7D6A5A14, 0x9169D8FC, 0x4E800020};
+inline constexpr uint32_t kVertexCommitWords[] = {0x3D2083E4, 0x39630003, 0x556A003A, 0x8169DE1C,
+                                                  0x7D6A5A14, 0x9169DE1C, 0x4E800020};
 
 inline constexpr uint32_t kQuadPrimitive = 6;
 inline constexpr uint32_t kQuadVertices = 4;
@@ -717,26 +717,26 @@ constexpr bool CharacterSelectWarp(const QuadVertices& center, float aspect, Tex
   return true;
 }
 
-// sub_82174F20 binds the game texture *(kCharacterSelectTexture) + 4 through sub_823F5AB8, which passes the D3D
+// sub_82174F40 binds the game texture *(kCharacterSelectTexture) + 4 through sub_823F6228, which passes the D3D
 // texture embedded at +28 of it to D3DDevice_SetTexture. SetTexture reads that texture's fetch constant at +28 and
 // keeps the GPU's copy for sampler 0 in the device's fetch constant shadow.
-inline constexpr uint32_t kCharacterSelectTexture = 0x83BE5AB0;
+inline constexpr uint32_t kCharacterSelectTexture = 0x83BE5B30;
 inline constexpr uint32_t kGameTextureD3D = 4 + 28;
 inline constexpr uint32_t kD3DTextureFetch = 28;
-inline constexpr uint32_t kDevicePointer = 0x83E5DA18;
+inline constexpr uint32_t kDevicePointer = 0x83E5DF38;
 inline constexpr uint32_t kDeviceTextures = 0x3100;
 inline constexpr uint32_t kDeviceFetchConstants = 0x480;
 
-inline constexpr uint32_t kTextureHeader = 0x82173998;
-inline constexpr uint32_t kBindSampler0 = 0x823F8550;
-inline constexpr uint32_t kBindTexture = 0x823F5AB8;
-inline constexpr uint32_t kXdkSetTexture = 0x839A6E68;
+inline constexpr uint32_t kTextureHeader = 0x821739B8;
+inline constexpr uint32_t kBindSampler0 = 0x823F8CC0;
+inline constexpr uint32_t kBindTexture = 0x823F6228;
+inline constexpr uint32_t kXdkSetTexture = 0x839A75C8;
 inline constexpr uint32_t kTextureHeaderWords[] = {0x38630004, 0x4E800020};
 inline constexpr uint32_t kBindSampler0Words[] = {0x7C641B78, 0x38600000, 0x4BFFD560};
 inline constexpr uint32_t kBindTextureWords[] = {
-    0x7D8802A6, 0x4960A0F1, 0x9421FF90, 0x7C9F2378, 0x7C7E1B78, 0x2B1F0000, 0x419A0040,
+    0x7D8802A6, 0x4960A0E1, 0x9421FF90, 0x7C9F2378, 0x7C7E1B78, 0x2B1F0000, 0x419A0040,
     0x817F0050, 0x38BF001C, 0x2B0B0000, 0x419A0034, 0x3FA083E6, 0x38C00000, 0x38800000,
-    0x64C68000, 0x807DDA18, 0x495B1371, 0x807DDA18, 0x3CC04000, 0x80BF0050, 0x38800001,
+    0x64C68000, 0x807DDF38, 0x495B1361, 0x807DDF38, 0x3CC04000, 0x80BF0050, 0x38800001,
 };
 inline constexpr uint32_t kXdkSetTextureWords[] = {
     0x7D8802A6, 0x48058D1D, 0x9421FF40, 0x39640C40, 0x7C7F1B78, 0x557D103A, 0x2B050000,

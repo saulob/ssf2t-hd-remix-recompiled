@@ -13,8 +13,10 @@
 #include <rex/logging.h>
 #include <rex/rex_app.h>
 #include <rex/runtime.h>
+#include <rex/system.h>
 #include <rex/version.h>
 #include <rex/system/kernel_state.h>
+#include <rex/system/user_module.h>
 #include <rex/ui/flags.h>
 #include <rex/ui/windowed_app_context.h>
 
@@ -198,6 +200,23 @@ class SuperStreetFighterApp : public rex::ReXApp {
     return std::nullopt;
   }
 
+  // The recompiled code belongs to the updated executable; any other image in guest memory must not run.
+  void OnPostLoadXexImage() override {
+    const std::string loaded = LoadedExecutableVersion();
+    if (loaded == kTitleUpdateVersion) {
+      REXLOG_INFO("Game executable: version {} (Title Update applied)", loaded);
+      return;
+    }
+    const std::string message = "The game executable loaded as version " + (loaded.empty() ? "unknown" : loaded) +
+                                ", but this port needs version " + kTitleUpdateVersion + ": default.xex " +
+                                kXexVersion + " with its Title Update default.xexp. Install both packages from the "
+                                "launcher's Play page.";
+    REXLOG_ERROR("{}", message);
+    rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, message);
+    PrepareHardExit();
+    std::_Exit(1);
+  }
+
   void LaunchModule() override {
     const int monitor = game_settings_.GetInt("monitor", std::atoi(rex::cvar::GetFlagByName("monitor").c_str()));
     StartupWindowInfo startup_window;
@@ -295,9 +314,25 @@ class SuperStreetFighterApp : public rex::ReXApp {
         return {Utf8(game_data_root()), "Ready", true};
       case GameFiles::kUnsupported:
         return {Utf8(game_data_root()), "Unsupported version", false};
+      case GameFiles::kUpdateMissing:
+        return {Utf8(game_data_root()), "Title Update required", false};
+      case GameFiles::kUpdateUnsupported:
+        return {Utf8(game_data_root()), "Unsupported Title Update", false};
       default:
         return {Utf8(game_data_root()), "Setup required", false};
     }
+  }
+
+  std::string LoadedExecutableVersion() const {
+    if (!runtime() || !runtime()->kernel_state()) {
+      return {};
+    }
+    auto module = runtime()->kernel_state()->GetExecutableModule();
+    rex::xex2_opt_execution_info* info = nullptr;
+    if (!module || XFAILED(module->GetOptHeader(rex::XEX_HEADER_EXECUTION_INFO, &info)) || info == nullptr) {
+      return {};
+    }
+    return FormatXexVersion(info->version_value);
   }
 
   bool GameInputActive() const {

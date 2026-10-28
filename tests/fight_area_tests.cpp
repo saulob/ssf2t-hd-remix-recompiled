@@ -911,7 +911,7 @@ void TestCharacterSelectWarpIsUnchanged() {
 }
 
 void TestCharacterSelectSidePanels() {
-  constexpr uint32_t kLeft = 0x82174A8C, kRight = 0x82174C5C;
+  constexpr uint32_t kLeft = 0x82174AAC, kRight = 0x82174C7C;
   CHECK(kLeftSidePanelQuadReturn == kLeft && kRightSidePanelQuadReturn == kRight);
   CHECK(SidePanelAt(kLeft) == SidePanel::kLeft && SidePanelAt(kRight) == SidePanel::kRight);
   for (const uint32_t other : {kCharacterSelectQuadReturn, kScrollingQuadReturn, kLeft - 4, kRight + 4, 0u}) {
@@ -1102,19 +1102,19 @@ void TestWiring() {
   CHECK(launcher.find("{\"Original\", \"Fill 16:9\"}") != std::string::npos);
   CHECK(launcher.find("kLetterboxSetting, LetterboxFromSegment(i)") != std::string::npos);
   const std::string hook = ReadSource("fight_area_hook.cpp");
-  CHECK(hook.find("REX_HOOK_RAW(sub_82177590)") != std::string::npos);
-  CHECK(hook.find("REX_HOOK_RAW(sub_823F5118)") != std::string::npos);
-  CHECK(hook.find("REX_HOOK_RAW(sub_823EBB28)") != std::string::npos);
-  CHECK(hook.find("REX_HOOK_RAW(sub_82181AA8)") != std::string::npos);
-  CHECK(hook.find("REX_HOOK_RAW(sub_823ED578)") != std::string::npos);
+  CHECK(hook.find("REX_HOOK_RAW(sub_821775B0)") != std::string::npos);
+  CHECK(hook.find("REX_HOOK_RAW(sub_823F5888)") != std::string::npos);
+  CHECK(hook.find("REX_HOOK_RAW(sub_823EC218)") != std::string::npos);
+  CHECK(hook.find("REX_HOOK_RAW(sub_82181AB8)") != std::string::npos);
+  CHECK(hook.find("REX_HOOK_RAW(sub_823EDC68)") != std::string::npos);
   CHECK(hook.find("RenderPathMatches(base) && ssf2t::FightFillActive") != std::string::npos);
   CHECK(hook.find("PreFightPathMatches(base) && ssf2t::PreFightFillActive") != std::string::npos);
   CHECK(hook.find("const bool pre_fight = PreFightFillActive(base);") != std::string::npos);
   CHECK(hook.find("if (FillActive(base) || pre_fight) {") != std::string::npos);
   CHECK(hook.find("  if (g_scene_depth > 0 && g_in_projection_setup && FillActive(base)) {") != std::string::npos);
-  CHECK(hook.find("REX_HOOK_RAW(sub_823F75D8)") != std::string::npos);
-  CHECK(hook.find("REX_HOOK_RAW(sub_82174F20)") == std::string::npos);
-  CHECK(hook.find("REX_HOOK_RAW(sub_82174C70)") == std::string::npos);
+  CHECK(hook.find("REX_HOOK_RAW(sub_823F7D48)") != std::string::npos);
+  CHECK(hook.find("REX_HOOK_RAW(sub_82174F40)") == std::string::npos);
+  CHECK(hook.find("REX_HOOK_RAW(sub_82174C90)") == std::string::npos);
   CHECK(hook.find("if (caller == ssf2t::kCharacterSelectQuadReturn) {") != std::string::npos);
   CHECK(hook.find("} else if (caller == ssf2t::kScrollingQuadReturn) {") != std::string::npos);
   CHECK(hook.find("    DrawCharacterSelectBackground(ctx, base);") != std::string::npos);
@@ -1131,8 +1131,8 @@ void TestWiring() {
     return n;
   };
   CHECK(count(select, "DrawStrip(") == 1 && count(select, "DrawStrip(ctx, base, strip);") == 1);
-  CHECK(select.find("  if (!fill) {\n    __imp__sub_823F75D8(ctx, base);\n    return;\n  }") != std::string::npos);
-  CHECK(count(select, "__imp__sub_823F75D8(ctx, base);") == 1);
+  CHECK(select.find("  if (!fill) {\n    __imp__sub_823F7D48(ctx, base);\n    return;\n  }") != std::string::npos);
+  CHECK(count(select, "__imp__sub_823F7D48(ctx, base);") == 1);
   CHECK(select.find("fill = CharacterSelectFillActive(base) && ssf2t::LoadCharacterSelectTextureSize(base, texture) "
                     "&&\n           ssf2t::CharacterSelectWarp(original, aspect, texture, mesh);") !=
         std::string::npos);
@@ -1141,8 +1141,8 @@ void TestWiring() {
   CHECK(hook.find("WriteVertices(base, ctx.r5") == std::string::npos);
   CHECK(hook.find("ssf2t::GuestHostOffset(address)") != std::string::npos);
   size_t unhooked_draws = 0;
-  for (size_t at = hook.find("__imp__sub_823F75D8(ctx, base);"); at != std::string::npos;
-       at = hook.find("__imp__sub_823F75D8(ctx, base);", at + 1)) {
+  for (size_t at = hook.find("__imp__sub_823F7D48(ctx, base);"); at != std::string::npos;
+       at = hook.find("__imp__sub_823F7D48(ctx, base);", at + 1)) {
     ++unhooked_draws;
   }
   CHECK(unhooked_draws == 5);
@@ -1153,10 +1153,10 @@ void TestWiring() {
   CHECK(panel_start != std::string::npos);
   CHECK(panel.find("const bool skip = IsQuadCall(ctx) &&\n                    ssf2t::SkipsSidePanel("
                    "CharacterSelectFillActive(base), SidePanelPathMatches(base), caller);") != std::string::npos);
-  CHECK(count(panel, "__imp__sub_823F75D8(ctx, base);") == 1 && count(panel, "if (!skip) {") == 1);
+  CHECK(count(panel, "__imp__sub_823F7D48(ctx, base);") == 1 && count(panel, "if (!skip) {") == 1);
   CHECK(count(panel, "DrawStrip(") == 0 && count(panel, "Versus") == 0);
-  CHECK(hook.find("\n  sub_823F75D8(ctx, base);") == std::string::npos);
-  const size_t extension_draw = hook.find("  __imp__sub_823F75D8(ctx, base);\n  if (!extend) {");
+  CHECK(hook.find("\n  sub_823F7D48(ctx, base);") == std::string::npos);
+  const size_t extension_draw = hook.find("  __imp__sub_823F7D48(ctx, base);\n  if (!extend) {");
   CHECK(extension_draw != std::string::npos);
   CHECK(extension_draw < hook.find("    DrawStrip(ctx, base, extensions.pieces[i].quad);"));
   CHECK(hook.find("ssf2t::BackgroundExtensionPieces(center, aspect, extensions)") != std::string::npos);
@@ -1164,7 +1164,7 @@ void TestWiring() {
         std::string::npos);
   CHECK(hook.find("PreFightPathMatches(base) && ssf2t::VersusFillActive(true, base)") != std::string::npos);
   CHECK(hook.find("kBackgroundRect") == std::string::npos);
-  CHECK(hook.find("sub_823F51D8") == std::string::npos);
+  CHECK(hook.find("sub_823F5948") == std::string::npos);
   size_t f1_writes = 0;
   for (size_t at = hook.find("ctx.f1.f64 ="); at != std::string::npos; at = hook.find("ctx.f1.f64 =", at + 1)) {
     ++f1_writes;
@@ -1177,7 +1177,7 @@ void TestWiring() {
   CHECK(fight_block != std::string::npos);
   CHECK(fight_ortho.find("ctx.f3") == std::string::npos && fight_ortho.find("ctx.f4") == std::string::npos);
   CHECK(fight_ortho.find("ssf2t::OrthoShift(left, right,") != std::string::npos);
-  CHECK(kFightMaskDrawer == 0x82177590);
+  CHECK(kFightMaskDrawer == 0x821775B0);
 }
 
 void TestRenderPathFingerprints() {

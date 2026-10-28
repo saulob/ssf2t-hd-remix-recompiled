@@ -197,10 +197,11 @@ bool IsProtectedRelativePath(std::string_view normalized_path) {
       "game", "game-install-temp", "game-install-backup", "user_data", "user_data.migrating", "logs", "cache",
       "content", "save", "saves", "dlc", "584108a4", "screenshot", "screenshots"};
   static constexpr const char* kProtectedFiles[] = {
-      "default.xex", "flog_x360.fpg", "savegames.dat", "settings.toml", "settings.toml.bak", "settings.toml.invalid"};
+      "default.xex", "default.xexp", "flog_x360.fpg", "savegames.dat", "settings.toml", "settings.toml.bak",
+      "settings.toml.invalid"};
   static constexpr const char* kProtectedExtensions[] = {
-      ".xex", ".xsh", ".xpso", ".fpg", ".sav", ".log", ".dmp", ".pdb", ".ilk", ".obj", ".bak", ".tmp", ".invalid",
-      ".part", ".zip", ".appimage", ".7z", ".rar", ".tar", ".gz"};
+      ".xex", ".xexp", ".xsh", ".xpso", ".fpg", ".sav", ".log", ".dmp", ".pdb", ".ilk", ".obj", ".bak", ".tmp",
+      ".invalid", ".part", ".zip", ".appimage", ".7z", ".rar", ".tar", ".gz"};
 
   const std::string path = Lower(normalized_path);
   size_t start = 0;

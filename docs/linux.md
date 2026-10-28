@@ -17,7 +17,8 @@ on Windows only. On Linux the runtime prefers the dedicated GPU, and the usual s
 - A Vulkan driver (Mesa RADV on most AMD and Intel PCs)
 - An X11 or Wayland desktop
 - `zenity` or `kdialog` for the launcher's file picker, and `xdg-open` for its folder buttons
-- Your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade package, game version 0.0.1.3 (see the README)
+- Your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade package (game version 0.0.1.3) and its Title Update #1
+  package (version 0.0.2.3); see the README
 
 The AppImage carries the C++ runtime of its build machine (GCC 13 or newer). It is used only when the system's own copy
 is older than GCC 13.
@@ -30,7 +31,8 @@ is older than GCC 13.
 3. Run it. The launcher opens.
 4. On the **Play** page click **Install from package...** and pick your Xbox Live Arcade package. The game files are
    copied into a `game` folder next to the AppImage.
-5. Wait for **Ready to play**, then press **PLAY**.
+5. Click **Install from package...** again and pick the Title Update package.
+6. Wait for **Ready to play**, then press **PLAY**.
 
 Steam Deck is not a tested target for v0.2.1. Adding the AppImage as a non-Steam game should work, but nobody has tried it.
 
@@ -76,7 +78,8 @@ if they differ. Restarting from the launcher starts the original AppImage file, 
 ## Building the AppImage
 
 Run on Linux or WSL, after `tools/codegen.ps1` has generated `generated/default` on Windows and with your own
-`game/extracted/default.xex` in place (it is only read to check that the generated code is current):
+`game/extracted/default.xex` and its Title Update `game/extracted/default.xexp` in place (they are only read to check that
+the generated code is current):
 
 ```sh
 tools/package-linux.sh            # incremental Release build, then package

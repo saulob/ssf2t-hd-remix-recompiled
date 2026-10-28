@@ -1,5 +1,12 @@
-# Manual analysis fixes for SSF2T HD Remix (default.xex, title 584108A4)
+# Manual analysis fixes for SSF2T HD Remix (default.xex with Title Update 0.0.2.3, title 584108A4)
 
 [functions]
 # Tail-branch target with no function start in .pdata and no usable data reference; kept manual.
-0x824521C0 = {}
+0x82452D00 = {}
+# this-adjust thunks reached only from vtables, after the zero word that ends sub_839DE1D8; the scanner rates them below
+# HIGH because of that gap.
+0x839DE2E0 = { end = 0x839DE2E8 }
+0x839DE2E8 = { end = 0x839DE2F0 }
+0x839DE2F0 = { end = 0x839DE2F8 }
+0x839DE2F8 = { end = 0x839DE300 }
+0x839DE300 = { end = 0x839DE308 }

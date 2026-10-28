@@ -24,10 +24,12 @@ It scans the decrypted image (`game\analysis\default.image.bin`) for code addres
 
 ## Current discovery state
 
-- Unique code targets: 7,646. Unregistered: 452.
-- HIGH: 17 new, plus 2 manual starts confirmed (19 in `discovered-functions.toml`).
-- LOW: 386 (most rejected because the address is inside a `.pdata` extent or enters another function). EH: 66. Jump-table references: 37 rejected.
-- Manual override left: `0x824521C0` (a tail-branch target with no usable reference; the scanner cannot confirm it).
+For the Title Update image (0.0.2.3, `python -I tools\xex_image.py`):
+
+- Unique code targets: 7,646. Unregistered: 450.
+- HIGH: 20 (in `discovered-functions.toml`).
+- LOW: 384 (most rejected because the address is inside a `.pdata` extent or enters another function). EH: 66.
+- Manual overrides: `0x82452D00` (a tail-branch target with no usable reference; the scanner cannot confirm it) and the five vtable this-adjust thunks `0x839DE2E0`..`0x839DE300`, which the scanner rates below HIGH because a padding word precedes them.
 - Oversized functions (55): each is a `.pdata`-covered compiler function of 0.3 to 8.6 MB. Their interior addresses are not function starts, so they are not split. The warnings are expected.
 
 ## Assets

@@ -48,10 +48,14 @@ struct DisplayIdentity {
 struct GameIdentity {
   uint32_t title_id = 0;
   std::string executable;
+  std::string version;
   uint64_t size = 0;
   std::string sha256;
   std::string fingerprint;
   std::string status;
+  std::string update_version;  // the version default.xexp updates the game to
+  std::string update_fingerprint;
+  std::string update_sha256;
 };
 
 struct LauncherDisplayIdentity {

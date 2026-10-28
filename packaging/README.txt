@@ -12,13 +12,15 @@ https://github.com/saulob/ssf2t-hd-remix-recompiled
 NO GAME FILES ARE INCLUDED
 --------------------------
 You need your own copy of the game: the Super Street Fighter II Turbo HD Remix
-Xbox Live Arcade package. This port only runs this exact release:
+Xbox Live Arcade package and its official Title Update #1. The port is built
+from the updated game, so it needs both:
 
   Title ID:      584108A4
   Media ID:      37B7D7D3
-  Game version:  0.0.1.3 (Xbox Live Arcade)
+  Game package:  game version 0.0.1.3 (Xbox Live Arcade, default.xex)
+  Title Update:  Title Update #1, updates the game to 0.0.2.3 (default.xexp)
 
-Any other version is refused by the launcher.
+Any other version is refused by the launcher, which names the version it found.
 
 
 REQUIREMENTS
@@ -28,8 +30,8 @@ REQUIREMENTS
 - The latest Microsoft Visual C++ Redistributable 2015-2022 (x64). Most PCs
   have it. If Windows reports a missing VCRUNTIME140.dll or MSVCP140.dll,
   install it from https://aka.ms/vs/17/release/vc_redist.x64.exe
-- Your own game package, plus about 400 MB of free disk space next to the
-  program for the game files
+- Your own game package and its Title Update package, plus about 400 MB of
+  free disk space next to the program for the game files
 
 
 INSTALL
@@ -42,10 +44,15 @@ INSTALL
    Xbox 360 hard drive it is in Content\0000000000000000\584108A4\000D0000\
 5. Wait while the launcher checks the package and copies the game files into
    the "game" folder next to the program.
-6. When the Play page says "Ready to play", press PLAY.
+6. Click "Install from package..." again and select the Title Update package.
+   On an Xbox 360 hard drive it is in
+   Content\0000000000000000\584108A4\000B0000\
+   The launcher recognises which package is which, so the order does not
+   matter. Only the update's default.xexp is copied.
+7. When the Play page says "Ready to play", press PLAY.
 
 To repair the game files, use "Reinstall from package..." on the Play page.
-Your settings and saves are kept.
+Your settings and saves are kept, and so is an installed Title Update.
 
 
 UPDATES

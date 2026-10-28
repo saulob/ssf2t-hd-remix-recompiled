@@ -199,12 +199,15 @@ void TestToggleOverlay() {
 void TestHookTargetCheck() {
   uint8_t code[8] = {};
   StoreBE32(code, 0, 0x38800000);
-  StoreBE32(code, 4, 0x48057BE0);
+  StoreBE32(code, 4, 0x48057C68);
   CHECK(IsShowAchievementsWrapper(code));
   StoreBE32(code, 0, 0x38800001);
   CHECK(!IsShowAchievementsWrapper(code));
   StoreBE32(code, 0, 0x38800000);
-  StoreBE32(code, 4, 0x48057BE4);
+  StoreBE32(code, 4, 0x48057C6C);
+  CHECK(!IsShowAchievementsWrapper(code));
+  // The 0.0.1.3 wrapper branches to the same import thunk from another address; it must not match.
+  StoreBE32(code, 4, 0x48057BE0);
   CHECK(!IsShowAchievementsWrapper(code));
 }
 

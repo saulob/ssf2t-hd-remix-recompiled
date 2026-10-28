@@ -10,7 +10,8 @@ the HIGH-confidence ones to config/discovered-functions.toml.
 
 Adapted from tools/find-missing-functions.py of hard-corps-uprising-recompiled and
 geometry-wars-retro-evolved-2-recompiled. Needs a codegen run (generated/default) and the
-decrypted image game/analysis/default.image.bin.
+decrypted image game/analysis/default.image.bin (python -I tools/xex_image.py: default.xex with its
+Title Update applied).
 """
 import bisect
 import hashlib
@@ -24,7 +25,7 @@ from dataclasses import dataclass, field
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 IMAGE_PATH = os.path.join(ROOT, 'game', 'analysis', 'default.image.bin')
-IMAGE_SHA256 = '59bb31afe495df559a3523251541bf7080d6377b4b5568fe2145f8e328f7768d'
+IMAGE_SHA256 = '5304d4d651e5337b293a55e32a60d9504d5e9b9cfa20a7e80115d67260c1053e'
 IMAGE_SIZE = 0x2C10000
 GEN = os.path.join(ROOT, 'generated', 'default')
 OVERRIDES = os.path.join(ROOT, 'config', 'overrides.toml')
@@ -32,12 +33,12 @@ DISCOVERED = os.path.join(ROOT, 'config', 'discovered-functions.toml')
 REPORT = os.path.join(ROOT, 'build', 'missing-functions-report.txt')
 
 BASE = 0x82000000
-RDATA = (0x82000400, 0x821574AC)
-PDATA = (0x82157600, 0x8216D190)
-TEXT = (0x82170000, 0x83A1C244)
-IMPORTS = (0x83A1B624, 0x83A1C244)
+RDATA = (0x82000400, 0x8215750C)
+PDATA = (0x82157600, 0x8216D198)
+TEXT = (0x82170000, 0x83A1CA2C)
+IMPORTS = (0x83A1BE0C, 0x83A1CA2C)
 CODE = (TEXT[0], IMPORTS[0])
-DATA = (0x83A20000, 0x84BD2B98)
+DATA = (0x83A20000, 0x84BD30B8)
 CXX_EH_MAGIC = 0x19930520
 MAX_HIGH_BYTES = 0x400
 
@@ -852,7 +853,7 @@ def main(argv):
     if len(IMG) != IMAGE_SIZE:
         sys.exit(f'{IMAGE_PATH}: unexpected size 0x{len(IMG):X}')
     if hashlib.sha256(IMG).hexdigest() != IMAGE_SHA256:
-        sys.exit(f'{IMAGE_PATH}: not the supported image dump')
+        sys.exit(f'{IMAGE_PATH}: not the supported image dump (python -I tools/xex_image.py)')
     if '--verify' in argv:
         return 0 if verify() else 1
 

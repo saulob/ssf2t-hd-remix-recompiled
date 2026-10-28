@@ -588,6 +588,8 @@ void TestPaths() {
   CHECK(IsProtectedRelativePath("game/default.xex"));
   CHECK(IsProtectedRelativePath("game/extracted/flog_x360.fpg"));
   CHECK(IsProtectedRelativePath("game/extracted/default.xex"));
+  CHECK(IsProtectedRelativePath("game/default.xexp"));
+  CHECK(IsProtectedRelativePath("default.xexp"));
   CHECK(IsProtectedRelativePath("user_data/584108A4/savegames.dat"));
   CHECK(IsProtectedRelativePath("savegames.dat"));
   CHECK(IsProtectedRelativePath("game-install-temp/default.xex"));

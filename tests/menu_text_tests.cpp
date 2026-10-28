@@ -115,8 +115,8 @@ int main() {
   const size_t sources = cmake.find("set(SSF2T_SOURCES");
   const size_t sources_end = cmake.find(')', sources);
   CHECK(sources != std::string::npos && cmake.substr(sources, sources_end - sources).find("src/menu_text_hook.cpp") != std::string::npos);
-  CHECK(Has(hook, "REX_HOOK_RAW(sub_82439830)") && Has(hook, "REX_EXTERN(__imp__sub_82439830)"));
-  CHECK(Has(hook, "__imp__sub_82439830(ctx, base)"));
+  CHECK(Has(hook, "REX_HOOK_RAW(sub_82439FA0)") && Has(hook, "REX_EXTERN(__imp__sub_82439FA0)"));
+  CHECK(Has(hook, "__imp__sub_82439FA0(ctx, base)"));
   CHECK(Has(hook, "PatchMainMenuExitBuffer"));
 
   std::printf("%d checks, %d failures\n", g_checks, g_failures);

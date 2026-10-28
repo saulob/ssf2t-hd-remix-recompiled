@@ -253,6 +253,12 @@ std::string GameStateName(GameFiles state) {
       return "unsupported version";
     case GameFiles::kMissing:
       return "missing";
+    case GameFiles::kUpdateMissing:
+      return "title update missing";
+    case GameFiles::kUpdateUnsupported:
+      return "unsupported title update";
+    case GameFiles::kUpdateOnly:
+      return "title update installed, game missing";
   }
   return "unknown";
 }
@@ -564,9 +570,17 @@ void LogStartupDiagnostics(const GameSettings& settings, const MonitorInfo& disp
     diagnostics.game.fingerprint = crc;
   }
   diagnostics.game.status = GameStateName(game.state);
+  diagnostics.game.version = game.xex_version;
+  diagnostics.game.update_version = game.xexp_version;
+  if (game.xexp_crc32 != 0) {
+    char crc[16];
+    std::snprintf(crc, sizeof(crc), "crc32:%08X", game.xexp_crc32);
+    diagnostics.game.update_fingerprint = crc;
+  }
   std::string hash_error;
   if (game.state == GameFiles::kReady) {
     diagnostics.game.sha256 = trg::update::Sha256FileHex(game_dir / "default.xex", hash_error);
+    diagnostics.game.update_sha256 = trg::update::Sha256FileHex(game_dir / kTitleUpdateFile, hash_error);
   }
 
   diagnostics.gameplay.simulation = "60Hz";

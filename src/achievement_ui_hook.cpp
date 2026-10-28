@@ -19,11 +19,11 @@ void SetAchievementsOpener(std::function<void()> open) {
 }  // namespace ssf2t
 
 // XamShowAchievementsUI(user): opens the overlay instead of ReXGlue's stub. The game ignores the result.
-REX_EXTERN(__imp__sub_839C3D20);
-REX_HOOK_RAW(sub_839C3D20) {
+REX_EXTERN(__imp__sub_839C4480);
+REX_HOOK_RAW(sub_839C4480) {
   static const bool wrapper_matches = ssf2t::IsShowAchievementsWrapper(base + ssf2t::kShowAchievementsWrapper);
   if (!g_open || !wrapper_matches) {
-    __imp__sub_839C3D20(ctx, base);
+    __imp__sub_839C4480(ctx, base);
     return;
   }
   g_open();

@@ -8,8 +8,8 @@
 namespace ssf2t {
 
 // The game's wrapper around XamShowAchievementsUI: `li r4,0` then a tail branch to the import thunk.
-constexpr uint32_t kShowAchievementsWrapper = 0x839C3D20;
-constexpr uint32_t kShowAchievementsWrapperWords[2] = {0x38800000, 0x48057BE0};
+constexpr uint32_t kShowAchievementsWrapper = 0x839C4480;
+constexpr uint32_t kShowAchievementsWrapperWords[2] = {0x38800000, 0x48057C68};
 
 // `code` is the guest memory at kShowAchievementsWrapper.
 inline bool IsShowAchievementsWrapper(const uint8_t* code) {

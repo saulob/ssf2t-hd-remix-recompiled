@@ -120,18 +120,18 @@ std::unique_ptr<rex::ui::ImmediateTexture> LoadHeaderArt(rex::ui::ImmediateDrawe
 trg::Fonts g_fonts;
 float g_font_density = 1.0f;
 
-GameFiles CheckAndLogGameFiles(const std::filesystem::path& game_dir) {
+GameCheck CheckAndLogGameFiles(const std::filesystem::path& game_dir) {
   const GameCheck check = CheckGameFiles(game_dir);
-  if (check.state == GameFiles::kUnsupported && check.xex_crc32 != 0) {
-    REXLOG_WARN("default.xex is not the supported version (CRC32 {:08X})", check.xex_crc32);
+  if (check.state == GameFiles::kUnsupported || check.state == GameFiles::kUpdateUnsupported) {
+    REXLOG_WARN("{}", GameFilesLogText(check));
   }
-  return check.state;
+  return check;
 }
 
 // Written by the install job, read once the Task has finished.
 struct InstallOutcome {
   InstallResult result;
-  GameFiles files = GameFiles::kMissing;
+  GameCheck files;
 };
 
 // The theme's only alert colours; destructive actions use them instead of the accent.
@@ -181,9 +181,9 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         paths_(std::move(paths)),
         cb_(std::move(callbacks)),
         settings_(settings),
-        game_files_(CheckAndLogGameFiles(paths_.game_dir)),
         monitors_(ListMonitors()),
         graphics_adapters_(ListGraphicsAdapters()) {
+    SetGameFiles(CheckAndLogGameFiles(paths_.game_dir));
     header_art_ = LoadHeaderArt(paths_.immediate_drawer);
     launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
     updater_ = std::make_unique<trg::update::UpdateController>(MakeUpdateConfig(PortFolder()));
@@ -512,39 +512,44 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   }
 
   void PagePlay(trg::Ui& ui) {
-    const std::string dir = Utf8(paths_.game_dir);
     if (install_.running()) {
       ui.StatusCard(trg::Status::kBusy, "Installing game files", nullptr, std::max(0.0f, install_.fraction()));
     } else {
-      switch (game_files_) {
-        case GameFiles::kReady:
-          ui.StatusCard(trg::Status::kReady, "Ready to play", dir.c_str());
-          break;
-        case GameFiles::kUnsupported:
-          ui.StatusCard(trg::Status::kAttention, "Different version of the game",
-                        DescribeInstall(InstallStatus::kWrongVersion).text);
-          break;
-        case GameFiles::kMissing:
-          ui.StatusCard(trg::Status::kAttention, "Game files needed",
-                        "This port requires your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade package.");
-          break;
-      }
+      const trg::Status status = game_files_ == GameFiles::kReady ? trg::Status::kReady : trg::Status::kAttention;
+      ui.StatusCard(status, play_card_.title.c_str(), play_card_.detail.empty() ? nullptr : play_card_.detail.c_str());
     }
     if (!install_failure_.empty()) {
       DrawFailure(ui, install_failure_, install_failure_text_);
+    } else if (!install_.running() && game_files_ != GameFiles::kReady) {
+      ui.Help(game_files_problem_.c_str());
     }
     if (paths_.game_dir.empty()) {
       ui.Help("No game folder was given: start the game with --game_data_root.");
     } else {
       ui.Row("Game package",
-             "Title ID: 584108A4. No game files are included with this port; the package's files (about 370 MB) are "
-             "copied next to the program.");
+             "Title ID: 584108A4. This port requires your own Xbox Live Arcade game package and its Title Update "
+             "#1. Install Game and Install Title Update each take their own package, in either order; the "
+             "launcher extracts what each one needs. No game files or Title Update files are included with this "
+             "port.");
       if (!ui.TaskProgress(install_)) {
-        const bool clicked = game_files_ == GameFiles::kReady
-                                 ? ImGui::Button("Reinstall from package...", ImVec2(-FLT_MIN, 0))
-                                 : ui.AccentButton("Install from package...");
-        if (clicked) {
-          BrowseAndInstall();
+        const GameButtons buttons = DescribeGameButtons(game_files_);
+        const float gap = 8 * ui.scale();
+        const float button_width = (ImGui::GetContentRegionAvail().x - gap) / 2.0f;
+        const bool game_clicked = buttons.game_installed
+                                       ? ImGui::Button(buttons.game_label.c_str(), ImVec2(button_width, 0))
+                                       : ui.AccentButton(buttons.game_label.c_str(), ImVec2(button_width, 0));
+        ImGui::SameLine(0, gap);
+        const bool update_clicked = buttons.update_installed
+                                         ? ImGui::Button(buttons.update_label.c_str(), ImVec2(button_width, 0))
+                                         : ui.AccentButton(buttons.update_label.c_str(), ImVec2(button_width, 0));
+        if (game_clicked) {
+          BrowseAndInstall(InstallKind::kGame);
+        } else if (update_clicked) {
+          if (buttons.update_installed) {
+            RemoveTitleUpdateClicked();
+          } else {
+            BrowseAndInstall(InstallKind::kTitleUpdate);
+          }
         }
       }
     }
@@ -561,13 +566,15 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     ui.Spacer(4);
   }
 
-  void BrowseAndInstall() {
+  void BrowseAndInstall(InstallKind kind) {
     PollInstall();
     if (install_.running()) {
       return;
     }
-    const std::string picked = trg::BrowseForFile("Select your Super Street Fighter II Turbo HD Remix Xbox Live Arcade package",
-                                                  {{"Xbox Live Arcade package", "*"}});
+    const char* title = kind == InstallKind::kGame
+                             ? "Select the Super Street Fighter II Turbo HD Remix Xbox Live Arcade package"
+                             : "Select the Super Street Fighter II Turbo HD Remix Title Update #1 package";
+    const std::string picked = trg::BrowseForFile(title, {{"Xbox 360 package", "*"}});
     if (picked.empty()) {
       if (trg::FileDialogUnavailable()) {
         launcher_->SetStatus("Could not open the file picker. Install xdg-desktop-portal, zenity, or kdialog.", 8.0);
@@ -580,7 +587,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     outcome_ = std::make_shared<InstallOutcome>();
     const bool started = install_.Start(
         "Reading package...",
-        [outcome = outcome_, package = PathFromUtf8(picked), game_dir = paths_.game_dir](trg::Task& task) {
+        [outcome = outcome_, package = PathFromUtf8(picked), game_dir = paths_.game_dir, kind](trg::Task& task) {
           InstallHooks hooks;
           hooks.phase = [&task](const char* text) {
             task.SetLabel(text);
@@ -590,15 +597,32 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
             task.Progress(static_cast<long long>(done), static_cast<long long>(total));
             return !task.cancelled();
           };
-          outcome->result = InstallFromPackage(package, game_dir, hooks);
+          outcome->result = InstallFromPackage(package, game_dir, kind, hooks);
           if (outcome->result.ok()) {
-            outcome->files = CheckGameFiles(game_dir).state;
+            outcome->files = CheckGameFiles(game_dir);
           }
           return outcome->result.ok() ? std::string() : std::string(DescribeInstall(outcome->result.status).title);
         });
     if (started) {
       REXLOG_INFO("Installing game files from {}", PathFromUtf8(picked).filename().string());
     }
+  }
+
+  void RemoveTitleUpdateClicked() {
+    const RemoveResult result = RemoveTitleUpdate(paths_.game_dir);
+    install_failure_.clear();
+    install_failure_text_.clear();
+    achievements_.reset();
+    SetGameFiles(result.files);
+    const InstallMessage message = DescribeRemoved(result);
+    REXLOG_INFO("{}", message.title);
+    launcher_->SetStatus(message.title + ". " + message.text, 6.0);
+  }
+
+  void SetGameFiles(const GameCheck& check) {
+    game_files_ = check.state;
+    game_files_problem_ = DescribeGameFilesProblem(check);
+    play_card_ = DescribePlayCard(check);
   }
 
   // Runs every frame so a finished install is picked up whichever page is open.
@@ -612,15 +636,18 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
       return;
     }
     const InstallResult& result = outcome->result;
-    const InstallMessage message = DescribeInstall(result.status);
+    const InstallMessage message =
+        result.ok() ? DescribeInstalled(result, outcome->files.state) : DescribeInstall(result);
     if (result.ok() || result.status == InstallStatus::kCancelled) {
       if (result.ok()) {
-        game_files_ = outcome->files;
-        REXLOG_INFO("Game files installed: {} files, {} bytes", result.files, result.bytes);
+        SetGameFiles(outcome->files);
+        REXLOG_INFO("{} installed: {} files, {} bytes", result.title_update ? "Title Update" : "Game files",
+                    result.files, result.bytes);
+        REXLOG_INFO("{}", GameFilesLogText(outcome->files));
       } else {
         REXLOG_INFO("Game install cancelled");
       }
-      launcher_->SetStatus(std::string(message.title) + ". " + message.text, 6.0);
+      launcher_->SetStatus(message.title + ". " + message.text, 6.0);
       return;
     }
     REXLOG_WARN("Game install failed: {} ({})", message.title, result.detail);
@@ -984,7 +1011,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     }
     ui.Info("Port version", SSF2T_PORT_VERSION);
     ui.Info("Libraries", "ReXGlue SDK " REXGLUE_VERSION_STRING "   \xC2\xB7   TRG Launcher " SSF2T_TRG_VERSION);
-    ui.Info("Game", "Xbox Live Arcade, title 584108A4, game version 0.0.1.3");
+    ui.Info("Game", "Xbox Live Arcade, title 584108A4, game version 0.0.2.3 (Title Update #1)");
     ui.Link(DisplayUrl(kRepositoryUrl).c_str(), kRepositoryUrl);
   }
 
@@ -1002,7 +1029,9 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   LauncherPaths paths_;
   LauncherCallbacks cb_;
   GameSettings& settings_;
-  GameFiles game_files_;
+  GameFiles game_files_ = GameFiles::kMissing;
+  std::string game_files_problem_;
+  PlayCardText play_card_;
   std::vector<MonitorInfo> monitors_;
   std::vector<GraphicsAdapter> graphics_adapters_;
   std::unique_ptr<rex::ui::ImmediateTexture> header_art_;
@@ -1103,7 +1132,7 @@ bool g_skipped_once = false;
 bool ShouldShowLauncher(const std::filesystem::path& game_dir) {
   g_skipped_once = REXCVAR_GET(ssf2t_skip_launcher);
   rex::cvar::ResetToDefault("ssf2t_skip_launcher");
-  return LauncherWanted(CheckAndLogGameFiles(game_dir) == GameFiles::kReady, g_skipped_once, ShiftHeld(),
+  return LauncherWanted(CheckAndLogGameFiles(game_dir).state == GameFiles::kReady, g_skipped_once, ShiftHeld(),
                         REXCVAR_GET(ssf2t_launcher));
 }
 

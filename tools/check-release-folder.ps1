@@ -16,10 +16,10 @@ $RequiredFiles = @('ssf2t_hd_remix.exe', 'trg-updater.exe', 'rexruntime.dll', 'r
 $LicenseFiles = @('ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt')
 $AssetFiles = @('assets\launcher\header-art.png')
 # Names that mean game data, a package, saves, settings, caches or logs.
-$ForbiddenNames = @('default.xex', 'game', 'game-install-temp', 'game-install-backup', 'user_data', 'user_data.migrating',
+$ForbiddenNames = @('default.xex', 'default.xexp', 'game', 'game-install-temp', 'game-install-backup', 'user_data', 'user_data.migrating',
     'content', 'cache', 'logs', 'settings.toml', 'settings.toml.bak', 'flog_x360.fpg', '584108A4', 'renderdoc', 'renderdoc.dll',
     'vulkan-1.dll')
-$ForbiddenPatterns = @('*.xex', '*.fpg', '*.log', '*.dmp', '*.pdb', '*.debug', '*.xsh', '*.xpso', '*.bak', '*.tmp', '*.sav', 'VkLayer_*', 'renderdoc*',
+$ForbiddenPatterns = @('*.xex', '*.xexp', '*.fpg', '*.log', '*.dmp', '*.pdb', '*.debug', '*.xsh', '*.xpso', '*.bak', '*.tmp', '*.sav', 'VkLayer_*', 'renderdoc*',
     'TracyClient*', '*.pyc', '*.obj', '*.lib', '*.ilk', '*.orig', '*.rej', '*.rdc', 'Thumbs.db', 'desktop.ini', '.git*')
 $PackageMagic = @('LIVE', 'PIRS', 'CON ', 'XEX2')
 $Markers = @('DEBUG_SAULO')

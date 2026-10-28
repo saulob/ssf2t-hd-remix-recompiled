@@ -4,6 +4,9 @@ sdk_version = "0.10.0"
 game_root = "game/extracted"
 
 [entrypoint]
+# ReXGlue applies the Title Update beside it, default.xexp (0.0.2.3, SHA-256
+# A2E8E66B482C5D3A0D3A5D3F67A3CECB7A12CE1F6189196694FD3E765910606C). Codegen does not track that file, so its
+# hash is kept here to make a different update re-run codegen.
 file_path = "game/extracted/default.xex"
 out_directory_path = "generated/default"
 includes = ["config/overrides.toml", "config/discovered-functions.toml"]

@@ -104,9 +104,9 @@ scan_appdir() {  # appdir label [extra_paths...]
     rel="${item#"$appdir"/}"
     base="$(basename "$item")"
     case "${base,,}" in
-      default.xex | game | game-install-temp | game-install-backup | user_data | cache | logs | settings.toml | 584108a4 | \
+      default.xex | default.xexp | game | game-install-temp | game-install-backup | user_data | cache | logs | settings.toml | 584108a4 | \
         '$systemupdate') problem "forbidden name: $rel" ;;
-      *.xex | *.iso | *.fpg | *.log | *.dmp | *.pdb | *.debug | *.bak | *.tmp | *.sav | *.invalid | *.pyc | *~ | settings.toml.*) problem "forbidden file type: $rel" ;;
+      *.xex | *.xexp | *.iso | *.fpg | *.log | *.dmp | *.pdb | *.debug | *.bak | *.tmp | *.sav | *.invalid | *.pyc | *~ | settings.toml.*) problem "forbidden file type: $rel" ;;
     esac
     case "${base,,}" in
       *renderdoc* | *vklayer* | *.json | implicit_layer.d | explicit_layer.d) problem "RenderDoc or Vulkan layer file: $rel" ;;
@@ -206,6 +206,7 @@ find "$WORK/third_party/trg-launcher" "$WORK/patches/trg-launcher" -type f \
 # The build re-runs codegen (Windows only here) when an input listed in codegen.d is missing or newer.
 mkdir -p "$WORK/game/extracted"
 cp -p "$(find "$ROOT/game/extracted" -maxdepth 1 -iname default.xex | head -n 1)" "$WORK/game/extracted/default.xex"
+cp -p "$ROOT/game/extracted/default.xexp" "$WORK/game/extracted/default.xexp"
 sed -i -E "s#[A-Za-z]:/[^ ]*/ssf2t-hd-remix-recompiled#$WORK#g" "$WORK/generated/default/codegen.d"
 if grep -qE '[A-Za-z]:/' "$WORK/generated/default/codegen.d"; then fail "generated/default/codegen.d still names Windows paths"; fi
 

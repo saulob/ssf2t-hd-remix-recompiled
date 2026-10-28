@@ -309,9 +309,9 @@ void TestNoCheatsAdded() {
 void TestTimerHookIsOnlyTheTick() {
   const std::string hook = ReadSource("infinite_time.cpp");
   CHECK(CountOccurrences(hook, "REX_HOOK_RAW(") == 1);
-  CHECK(hook.find("REX_HOOK_RAW(sub_8224ED58)") != std::string::npos);
+  CHECK(hook.find("REX_HOOK_RAW(sub_8224EDA0)") != std::string::npos);
   CHECK(hook.find("ssf2t::SkipTimerTick(enabled, supported, TimerCodeMatches(base))") != std::string::npos);
-  CHECK(hook.find("__imp__sub_8224ED58(ctx, base);") != std::string::npos);
+  CHECK(hook.find("__imp__sub_8224EDA0(ctx, base);") != std::string::npos);
   CHECK(hook.find("REX_STORE") == std::string::npos);
   CHECK(hook.find("StoreBE") == std::string::npos);
 }
@@ -359,9 +359,13 @@ void TestSupportedXexConstants() {
   CHECK(kXexSize == 3932160);
   CHECK(kXexCrc32 == 0xB734F075);
   CHECK(std::string_view(kXexSha256) == "6e1c2f9ed7d1102a311a5f5626563527eda5f85b2fbe8db8405b866ded3f31ee");
+  CHECK(kXexpSize == 2166784);
+  CHECK(kXexpCrc32 == 0x38DE2310);
+  CHECK(std::string_view(kXexpSha256) == "a2e8e66b482c5d3a0d3a5d3f67a3cecb7a12ce1f6189196694fd3e765910606c");
   CHECK(ReadSource("infinite_time.cpp").find("CheckGameFiles(game_dir).state != GameFiles::kReady") !=
         std::string::npos);
   CHECK(ReadSource("infinite_time.cpp").find("== kXexSha256") != std::string::npos);
+  CHECK(ReadSource("infinite_time.cpp").find("== kXexpSha256") != std::string::npos);
 }
 
 // The decrypted image is not in the repository; the check runs only where it was extracted.
@@ -388,6 +392,10 @@ void TestSupportedXexOnDisk() {
   std::string error;
   CHECK(trg::update::Sha256FileHex(game_dir / "default.xex", error) == kXexSha256);
   CHECK(error.empty());
+  if (std::filesystem::is_regular_file(game_dir / kTitleUpdateFile, ec)) {
+    CHECK(trg::update::Sha256FileHex(game_dir / kTitleUpdateFile, error) == kXexpSha256);
+    CHECK(error.empty());
+  }
 }
 
 }  // namespace
