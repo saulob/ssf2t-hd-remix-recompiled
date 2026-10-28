@@ -29,12 +29,13 @@ is older than GCC 13.
 2. Make it executable: right-click it > **Properties** > **Permissions** > **Is executable**, or
    `chmod +x SSF2THDRemix-v*-x86_64.AppImage`.
 3. Run it. The launcher opens.
-4. On the **Play** page click **Install from package...** and pick your Xbox Live Arcade package. The game files are
+4. On the **Play** page click **Install Game** and pick your Xbox Live Arcade package. The game files are
    copied into a `game` folder next to the AppImage.
-5. Click **Install from package...** again and pick the Title Update package.
-6. Wait for **Ready to play**, then press **PLAY**.
+5. Click **Install Title Update** and pick the Title Update #1 package. The two are installed separately, in either
+   order, and only `default.xexp` is taken from the update.
+6. Wait for **Ready to play**, then press **PLAY**. It stays disabled until both are installed.
 
-Steam Deck is not a tested target for v0.2.1. Adding the AppImage as a non-Steam game should work, but nobody has tried it.
+Steam Deck is not a tested target for v0.2.2. Adding the AppImage as a non-Steam game should work, but nobody has tried it.
 
 ### If the AppImage does not start
 
@@ -84,7 +85,7 @@ the generated code is current):
 ```sh
 tools/package-linux.sh            # incremental Release build, then package
 tools/package-linux.sh --clean    # clean Release build first
-tools/package-linux.sh --verify-only dist/SSF2THDRemix-v0.2.1-x86_64.AppImage
+tools/package-linux.sh --verify-only dist/SSF2THDRemix-v0.2.2-x86_64.AppImage
 tools/test.sh                     # headless tests, after tools/build.sh
 ```
 

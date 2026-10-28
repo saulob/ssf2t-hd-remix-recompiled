@@ -1,6 +1,5 @@
 #include "launcher_achievements.h"
 
-#include <chrono>
 #include <string>
 
 #include <rex/cvar.h>
@@ -27,9 +26,6 @@ LauncherAchievements::LauncherAchievements(const std::filesystem::path& game_dir
                                            const std::filesystem::path& user_dir, uint32_t language,
                                            rex::ui::ImmediateDrawer* immediate_drawer)
     : language_(language) {
-  // DEBUG_SAULO: brackets the runtime built on the UI thread, where issue #9's log stops.
-  const auto debug_saulo_start = std::chrono::steady_clock::now();
-  REXLOG_INFO("DEBUG_SAULO launcher achievements: building runtime");
   std::error_code ec;
   auto runtime = std::make_unique<Runtime>(std::filesystem::absolute(game_dir, ec),
                                            std::filesystem::absolute(user_dir, ec));
@@ -49,22 +45,9 @@ LauncherAchievements::LauncherAchievements(const std::filesystem::path& game_dir
   runtime->icons = std::make_unique<rex::ui::AchievementIconCache>(immediate_drawer, &runtime->runtime);
   runtime_ = std::move(runtime);
   ok_ = !entries_.empty();
-  REXLOG_INFO("DEBUG_SAULO launcher achievements: ready in {} ms",
-              std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
-                                                                    debug_saulo_start)
-                  .count());
 }
 
-LauncherAchievements::~LauncherAchievements() {
-  // DEBUG_SAULO: brackets the teardown that runs before Play and on a language change.
-  const auto debug_saulo_start = std::chrono::steady_clock::now();
-  REXLOG_INFO("DEBUG_SAULO launcher achievements: releasing runtime");
-  runtime_.reset();
-  REXLOG_INFO("DEBUG_SAULO launcher achievements: released in {} ms",
-              std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
-                                                                    debug_saulo_start)
-                  .count());
-}
+LauncherAchievements::~LauncherAchievements() = default;
 
 ImTextureID LauncherAchievements::Icon(const rex::system::AchievementInfo& info) {
   if (!runtime_ || !runtime_->icons) return {};

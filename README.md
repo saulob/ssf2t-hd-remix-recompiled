@@ -17,7 +17,7 @@
 ## Features
 
 - **Native static recompilation**: the game's own code, not an emulator. Windows, plus an experimental Linux AppImage.
-- **TRG launcher** with a game package installer, display and graphics options, and an Achievements page.
+- **TRG launcher** with separate game package and Title Update installers, display and graphics options, and an Achievements page.
 - **Launcher updates**: the launcher checks GitHub releases once per start and installs a newer release only when you choose UPDATE NOW. Game files, saves, settings and logs are kept.
 - **Display**: Windowed or Borderless Fullscreen (**F11**), window size, monitor and VSync. Per-monitor high-DPI support, and the game window opens where and how large you chose.
 - **Presentation**: Letterbox keeps the picture's proportions, Stretch fills the window. Aspect ratios 16:9, 16:10, 21:9, 32:9, 4:3 and 5:4.
@@ -54,18 +54,18 @@ The launcher tells the two packages apart by their content type, checks the Titl
 
 ## Installing
 
-1. Download **SSF2THDRemix-v0.2.1-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
+1. Download **SSF2THDRemix-v0.2.2-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
 2. Run **ssf2t_hd_remix.exe**. The launcher opens.
-3. On the **Play** page click **Install from package...** and pick your game package. It is one file with a long hexadecimal name and no extension. On an Xbox 360 drive it is in `Content\0000000000000000\584108A4\000D0000\`.
-4. Click **Install from package...** again and pick the Title Update package (`Content\0000000000000000\584108A4\000B0000\` on an Xbox 360 drive). The order does not matter; the launcher recognises each package and copies only the update's `default.xexp`.
-5. Wait until **Ready to play** appears. The game files (about 370 MB) are copied into the `game` folder next to the program.
-6. Press **PLAY**.
+3. On the **Play** page click **Install Game** and pick your game package. It is one file with a long hexadecimal name and no extension. On an Xbox 360 drive it is in `Content\0000000000000000\584108A4\000D0000\`.
+4. Click **Install Title Update** and pick the Title Update #1 package (`Content\0000000000000000\584108A4\000B0000\` on an Xbox 360 drive). The two packages are installed separately and either can go first. Installing one does not install the other, and each button refuses the other kind of package.
+5. Wait until **Ready to play** appears. The game files (about 370 MB) are copied into the `game` folder next to the program; from the Title Update the launcher takes only `default.xexp`.
+6. Press **PLAY**. It stays disabled until the game package and Title Update #1 are both installed (game version `0.0.2.3`).
 
-**No game files are included** in the release. **Reinstall from package...** repairs the game files and keeps your settings and saves.
+**No game files and no Title Update files are included** in the release. **Reinstall Game** repairs the game files and keeps your settings, saves and an installed Title Update. **Remove Title Update** deletes only `default.xexp` from the `game` folder; the game files, saves, settings and achievements are not touched. The game cannot be played without the Title Update.
 
 ### Linux AppImage (experimental)
 
-Download **SSF2THDRemix-v0.2.1-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
+Download **SSF2THDRemix-v0.2.2-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
 
 ### Windows SmartScreen
 
@@ -75,7 +75,7 @@ Windows may warn the first time you run the program, because the release is not 
 
 Your choices are saved to `settings.toml` in the `user_data` folder next to the program. To turn the launcher off, set **Show this launcher** to **Off** on the Play page. Hold **Shift** while starting to bring it back.
 
-- **Play**: package install and reinstall, status
+- **Play**: status, Install Game or Reinstall Game, Install Title Update or Remove Title Update
 - **Display**: Display mode, Window size, Monitor, Aspect Ratio, VSync, Presentation (Letterbox or Stretch) and Fight Area (Original or Fill 16:9)
 - **Graphics**: Graphics card, Render resolution, Internal render resolution, Anti-aliasing, Multisampling, Texture filtering
 - **Gameplay**: Language, frame rate and render resolution in the title, frame counter

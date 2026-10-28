@@ -18,8 +18,8 @@
 # The AppImage runtime (the part that mounts the AppImage before AppRun runs) is built from the pinned AppImage/type2-runtime
 # source with the project's patch (tools/build-appimage-runtime.sh): that needs root or sudo, network access the first time,
 # and is skipped while the pins and patches are unchanged.
-# Needs generated/default from tools/codegen.ps1 (Windows) and the game's default.xex at game/extracted, which only the
-# guest-code freshness check reads (tools/check-guest-code.sh); neither is packaged.
+# Needs generated/default from tools/codegen.ps1 (Windows) and the game's default.xex and its Title Update default.xexp at
+# game/extracted, which only the guest-code freshness check reads (tools/check-guest-code.sh); none is packaged.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

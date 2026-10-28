@@ -38,21 +38,25 @@ INSTALL
 -------
 1. Extract the ZIP anywhere you can write to (not "Program Files").
 2. Run ssf2t_hd_remix.exe. The launcher opens.
-3. On the Play page, click "Install from package...".
+3. On the Play page, click "Install Game".
 4. Select your Super Street Fighter II Turbo HD Remix Xbox Live Arcade
    package. It is one file with a long hexadecimal name and no extension. On an
    Xbox 360 hard drive it is in Content\0000000000000000\584108A4\000D0000\
 5. Wait while the launcher checks the package and copies the game files into
    the "game" folder next to the program.
-6. Click "Install from package..." again and select the Title Update package.
-   On an Xbox 360 hard drive it is in
+6. Click "Install Title Update" and select the Title Update #1 package. On an
+   Xbox 360 hard drive it is in
    Content\0000000000000000\584108A4\000B0000\
-   The launcher recognises which package is which, so the order does not
-   matter. Only the update's default.xexp is copied.
-7. When the Play page says "Ready to play", press PLAY.
+   The two packages are installed separately, in either order. Installing one
+   does not install the other, and each button refuses the other package. The
+   launcher takes only the update's default.xexp from it.
+7. When the Play page says "Ready to play", press PLAY. PLAY stays disabled
+   until the game package and Title Update #1 are both installed.
 
-To repair the game files, use "Reinstall from package..." on the Play page.
-Your settings and saves are kept, and so is an installed Title Update.
+To repair the game files, use "Reinstall Game" on the Play page. Your settings
+and saves are kept, and so is an installed Title Update. "Remove Title Update"
+deletes only default.xexp from the "game" folder; the game cannot be played
+without it.
 
 
 UPDATES
@@ -129,8 +133,8 @@ Third-party components keep their own licenses. Their license files and
 notices are in the "licenses" folder: ReXGlue-LICENSE.txt and
 THIRD-PARTY-LICENSES.txt.
 
-The launcher is TRG Launcher 1.1.0 (https://github.com/TekRantGaming/trg-launcher).
-The referenced revision contains no explicit license file.
+The launcher is TRG Launcher 1.1.0 (https://github.com/TekRantGaming/trg-launcher),
+licensed under the MIT License (see licenses\THIRD-PARTY-LICENSES.txt).
 
 Game files are not included and are not covered by this project's license.
 This port is not affiliated with or endorsed by the makers or publishers of

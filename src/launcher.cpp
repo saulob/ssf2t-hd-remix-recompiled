@@ -528,9 +528,9 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     } else {
       ui.Row("Game package",
              "Title ID: 584108A4. This port requires your own Xbox Live Arcade game package and its Title Update "
-             "#1. Install Game and Install Title Update each take their own package, in either order; the "
-             "launcher extracts what each one needs. No game files or Title Update files are included with this "
-             "port.");
+             "#1. Install Game and Install Title Update each take their own package, in either order; installing "
+             "one does not install the other, and the launcher extracts what each one needs. No game files or "
+             "Title Update files are included with this port.");
       if (!ui.TaskProgress(install_)) {
         const GameButtons buttons = DescribeGameButtons(game_files_);
         const float gap = 8 * ui.scale();

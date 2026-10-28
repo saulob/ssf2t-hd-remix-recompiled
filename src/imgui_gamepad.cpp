@@ -19,8 +19,6 @@
 #include <windows.h>
 #endif
 
-#include <rex/logging.h>  // DEBUG_SAULO
-
 namespace ssf2t {
 namespace {
 
@@ -136,13 +134,6 @@ void ImGuiGamepad::Update(ImGuiIO& io) {
     }
   }
   if (!ProgramInForeground()) {
-    // DEBUG_SAULO: once per run, shows that a controller was in use while this program was in the background.
-    static bool debug_saulo_logged = false;
-    if (!debug_saulo_logged && (std::find(down.begin(), down.end(), true) != down.end() ||
-                                *std::max_element(amount.begin(), amount.end()) > 0.0f)) {
-      debug_saulo_logged = true;
-      REXLOG_INFO("DEBUG_SAULO controller input ignored: another program is in the foreground");
-    }
     down = {};
     amount = {};
   }

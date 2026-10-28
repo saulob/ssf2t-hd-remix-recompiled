@@ -45,7 +45,7 @@ bool HasEntry(const fs::path& dir, const char* name) {
   return false;
 }
 
-bool Contains(const std::string& text, const char* part) {
+bool Contains(const std::string& text, const std::string& part) {
   return text.find(part) != std::string::npos;
 }
 

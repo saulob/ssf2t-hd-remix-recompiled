@@ -568,8 +568,7 @@ inline constexpr TextureBox kCharacterSelectGlobeHalo{{491.0 / 1920.0, 1408.0 / 
                                                       {157.0 / 1024.0, 706.0 / 1024.0}};
 inline constexpr TextureBox kCharacterSelectProtected{{0.2, 0.8}, {0.09375, 0.890625}};
 static_assert(Contains(kCharacterSelectProtected, kCharacterSelectGlobeHalo));
-// The texture range Fill stretches to the screen edges; stretched, the dark left-edge artwork and the bright last rows
-// read as a border.
+// The texture range Fill stretches to the screen edges, without the edge rows that would read as a border.
 inline constexpr TextureBox kCharacterSelectSource{{0.05, 1.0}, {0.0, 0.9921875}};
 static_assert(Contains(kCharacterSelectSource, kCharacterSelectProtected));
 
@@ -717,9 +716,8 @@ constexpr bool CharacterSelectWarp(const QuadVertices& center, float aspect, Tex
   return true;
 }
 
-// sub_82174F40 binds the game texture *(kCharacterSelectTexture) + 4 through sub_823F6228, which passes the D3D
-// texture embedded at +28 of it to D3DDevice_SetTexture. SetTexture reads that texture's fetch constant at +28 and
-// keeps the GPU's copy for sampler 0 in the device's fetch constant shadow.
+// The Character Select background texture: its D3D texture is embedded at +28 and SetTexture keeps the GPU's copy of
+// its fetch constant for sampler 0 in the device's shadow.
 inline constexpr uint32_t kCharacterSelectTexture = 0x83BE5B30;
 inline constexpr uint32_t kGameTextureD3D = 4 + 28;
 inline constexpr uint32_t kD3DTextureFetch = 28;

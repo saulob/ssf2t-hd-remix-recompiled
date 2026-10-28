@@ -4,7 +4,7 @@
   debug output or developer paths. Reads the folder only; exits 1 and lists the problems when it is not clean.
 
 .EXAMPLE
-  .\tools\check-release-folder.ps1 dist\SSF2THDRemix-v0.2.1-windows-x64
+  .\tools\check-release-folder.ps1 dist\SSF2THDRemix-v0.2.2-windows-x64
 #>
 param(
     [Parameter(Mandatory)][string]$Folder
