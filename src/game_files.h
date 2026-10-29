@@ -4,7 +4,10 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
+
+#include "title_update_image.h"
 
 namespace ssf2t {
 
@@ -12,8 +15,8 @@ inline constexpr uint32_t kTitleId = 0x584108A4;
 inline constexpr uint32_t kGameContentType = 0x000D0000;
 inline constexpr uint32_t kTitleUpdateContentType = 0x000B0000;
 
-// The code is recompiled from default.xex with its Title Update applied (see tools/codegen.ps1). ReXGlue applies
-// default.xexp beside default.xex whenever it loads it.
+// Two recompiled images ship in the executable: default.xex alone (0.0.1.3) and default.xex with the Title Update
+// applied (0.0.2.3). ReXGlue applies default.xexp beside default.xex whenever it loads it.
 inline constexpr char kXexVersion[] = "0.0.1.3";
 inline constexpr uint64_t kXexSize = 3932160;
 inline constexpr uint32_t kXexCrc32 = 0xB734F075;
@@ -26,15 +29,40 @@ inline constexpr char kXexpSha256[] = "a2e8e66b482c5d3a0d3a5d3f67a3cecb7a12ce1f6
 inline constexpr char kAssetArchive[] = "flog_x360.fpg";
 inline constexpr uint64_t kAssetArchiveSize = 378257408;
 
-enum class GameFiles { kReady, kMissing, kUnsupported, kUpdateMissing, kUpdateUnsupported, kUpdateOnly };
+// kReady: the supported default.xex, with or without the supported default.xexp. A build without the Title Update
+// image treats any default.xexp as unsupported.
+enum class GameFiles { kReady, kMissing, kUnsupported, kUpdateUnsupported, kUpdateOnly };
+
+// The recompiled image that runs the installed files.
+enum class GuestVersion { kBase013, kTitleUpdate023 };
+
+constexpr const char* GuestExecutableVersion(GuestVersion guest) {
+  return guest == GuestVersion::kTitleUpdate023 ? kTitleUpdateVersion : kXexVersion;
+}
 
 struct GameCheck {
   GameFiles state = GameFiles::kMissing;
+  GuestVersion guest = GuestVersion::kBase013;  // meaningful when state is kReady
   uint32_t xex_crc32 = 0;   // set when default.xex was read
   uint32_t xexp_crc32 = 0;  // set when default.xexp was read
   std::string xex_version;   // from the XEX headers, empty when unreadable
   std::string xexp_version;  // the version the Title Update produces
 };
+
+// The image to run for `check`; empty unless the files are ready and this program holds that image.
+struct HostGuests {
+  bool title_update = true;  // the 0.0.1.3 image is always present
+};
+inline constexpr HostGuests kBuiltGuests{kTitleUpdateImageBuilt};
+
+std::optional<GuestVersion> SelectGuest(const GameCheck& check, HostGuests host = kBuiltGuests);
+
+// The installed files changed after `running` was chosen and now call for the other image.
+bool NeedsOtherGuest(const GameCheck& check, GuestVersion running, HostGuests host = kBuiltGuests);
+
+// The executable the runtime loaded must be the version of the image that was chosen to run it.
+bool LoadedVersionMatches(GuestVersion selected, const std::string& loaded);
+std::string DescribeLoadedVersionMismatch(GuestVersion selected, const std::string& loaded);
 
 // An XEX version word as a.b.c.d (4, 4, 16 and 8 bits).
 std::string FormatXexVersion(uint32_t value);
@@ -48,23 +76,24 @@ GameCheck CheckGameFiles(const std::filesystem::path& game_dir);
 std::string GameFilesLogText(const GameCheck& check);
 
 // What the Play page says about files that are not ready: what was found and what this port needs.
-std::string DescribeGameFilesProblem(const GameCheck& check);
+std::string DescribeGameFilesProblem(const GameCheck& check, HostGuests host = kBuiltGuests);
 
 struct PlayCardText {
   std::string title;   // status and, once known, the installed revision's identity
   std::string detail;  // short technical line: detected or expected version and title ID
 };
 // The Play page's status-card text, built only from the same check used to decide whether Play is allowed.
-PlayCardText DescribePlayCard(const GameCheck& check);
+PlayCardText DescribePlayCard(const GameCheck& check, HostGuests host = kBuiltGuests);
 
 struct GameButtons {
   std::string game_label;    // "Install Game" or "Reinstall Game"
   std::string update_label;  // "Install Title Update" or "Remove Title Update"
   bool game_installed = false;
   bool update_installed = false;
+  bool update_available = true;  // Install Title Update is offered only where the program can run the update
 };
 // The Play page's two package buttons, driven by the same check as the status card.
-GameButtons DescribeGameButtons(GameFiles state);
+GameButtons DescribeGameButtons(const GameCheck& check, HostGuests host = kBuiltGuests);
 
 enum class InstallStatus {
   kInstalled,

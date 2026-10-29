@@ -196,36 +196,84 @@ void TestToggleOverlay() {
   CHECK(ToggleOverlay(false, true) == OverlayToggle::kNone);
 }
 
-void TestHookTargetCheck() {
-  uint8_t code[8] = {};
-  StoreBE32(code, 0, 0x38800000);
-  StoreBE32(code, 4, 0x48057C68);
-  CHECK(IsShowAchievementsWrapper(code));
-  StoreBE32(code, 0, 0x38800001);
-  CHECK(!IsShowAchievementsWrapper(code));
-  StoreBE32(code, 0, 0x38800000);
-  StoreBE32(code, 4, 0x48057C6C);
-  CHECK(!IsShowAchievementsWrapper(code));
-  // The 0.0.1.3 wrapper branches to the same import thunk from another address; it must not match.
-  StoreBE32(code, 4, 0x48057BE0);
-  CHECK(!IsShowAchievementsWrapper(code));
+void WriteWrapper(uint8_t* code, const uint32_t (&words)[2]) {
+  StoreBE32(code, 0, words[0]);
+  StoreBE32(code, 4, words[1]);
 }
 
-// The decrypted image is not in the repository; the check runs only where it was extracted.
-void TestHookTargetInRealImage() {
-  const std::filesystem::path image = std::filesystem::path(SSF2T_SOURCE_DIR) / "game" / "analysis" / "default.image.bin";
+void TestHookTargetCheck() {
+  uint8_t code[8] = {};
+  WriteWrapper(code, TitleUpdate023Achievements::kShowAchievementsWrapperWords);
+  CHECK(IsShowAchievementsWrapper<TitleUpdate023Achievements>(code));
+  StoreBE32(code, 0, 0x38800001);
+  CHECK(!IsShowAchievementsWrapper<TitleUpdate023Achievements>(code));
+  StoreBE32(code, 0, 0x38800000);
+  StoreBE32(code, 4, 0x48057C6C);
+  CHECK(!IsShowAchievementsWrapper<TitleUpdate023Achievements>(code));
+}
+
+void TestBaseHookTargetCheck() {
+  uint8_t code[8] = {};
+  WriteWrapper(code, Base013Achievements::kShowAchievementsWrapperWords);
+  CHECK(IsShowAchievementsWrapper<Base013Achievements>(code));
+  StoreBE32(code, 0, 0x38800001);
+  CHECK(!IsShowAchievementsWrapper<Base013Achievements>(code));
+  StoreBE32(code, 0, 0x38800000);
+  StoreBE32(code, 4, 0x48057BE4);
+  CHECK(!IsShowAchievementsWrapper<Base013Achievements>(code));
+}
+
+void TestVersionsHoldTheirOwnWrapper() {
+  CHECK(Base013Achievements::kShowAchievementsWrapper == 0x839C3D20);
+  CHECK(Base013Achievements::kShowAchievementsWrapperWords[0] == 0x38800000);
+  CHECK(Base013Achievements::kShowAchievementsWrapperWords[1] == 0x48057BE0);
+  CHECK(TitleUpdate023Achievements::kShowAchievementsWrapper == 0x839C4480);
+  CHECK(TitleUpdate023Achievements::kShowAchievementsWrapperWords[0] == 0x38800000);
+  CHECK(TitleUpdate023Achievements::kShowAchievementsWrapperWords[1] == 0x48057C68);
+  CHECK(Base013Achievements::kShowAchievementsWrapper != TitleUpdate023Achievements::kShowAchievementsWrapper);
+  CHECK(Base013Achievements::kShowAchievementsWrapperWords[1] != TitleUpdate023Achievements::kShowAchievementsWrapperWords[1]);
+
+  // One version's wrapper never satisfies the other version's check.
+  uint8_t code[8] = {};
+  WriteWrapper(code, Base013Achievements::kShowAchievementsWrapperWords);
+  CHECK(IsShowAchievementsWrapper<Base013Achievements>(code));
+  CHECK(!IsShowAchievementsWrapper<TitleUpdate023Achievements>(code));
+  WriteWrapper(code, TitleUpdate023Achievements::kShowAchievementsWrapperWords);
+  CHECK(IsShowAchievementsWrapper<TitleUpdate023Achievements>(code));
+  CHECK(!IsShowAchievementsWrapper<Base013Achievements>(code));
+}
+
+void TestHookSymbolsPerTree() {
+  const std::string hook = ReadSource("achievement_ui_hook.cpp");
+  CHECK(Has(hook, "REX_HOOK_RAW(base013_sub_839C3D20)") && Has(hook, "REX_EXTERN(__imp__base013_sub_839C3D20)"));
+  CHECK(Has(hook, "REX_HOOK_RAW(tu023_sub_839C4480)") && Has(hook, "REX_EXTERN(__imp__tu023_sub_839C4480)"));
+  CHECK(Has(hook, "ShowAchievements<ssf2t::Base013Achievements>(ctx, base, __imp__base013_sub_839C3D20)"));
+  CHECK(Has(hook, "ShowAchievements<ssf2t::TitleUpdate023Achievements>(ctx, base, __imp__tu023_sub_839C4480)"));
+  CHECK(!Has(hook, "REX_HOOK_RAW(sub_"));
+}
+
+bool ReadImageWords(const char* image_name, uint32_t address, uint8_t (&words)[8]) {
+  const std::filesystem::path image = std::filesystem::path(SSF2T_SOURCE_DIR) / "game" / "analysis" / image_name;
   std::ifstream in(image, std::ios::binary);
   if (!in) {
-    std::printf("  skipped: no decrypted image\n");
-    return;
+    std::printf("  skipped: no decrypted image %s\n", image_name);
+    return false;
   }
   constexpr uint32_t kImageBase = 0x82000000;
-  const std::streamoff offset = kShowAchievementsWrapper - kImageBase;
-  uint8_t words[8] = {};
-  in.seekg(offset);
+  in.seekg(address - kImageBase);
   in.read(reinterpret_cast<char*>(words), sizeof(words));
-  CHECK(in.gcount() == 8);
-  CHECK(IsShowAchievementsWrapper(words));
+  return in.gcount() == 8;
+}
+
+// The decrypted images are not in the repository; the checks run only where they were extracted.
+void TestHookTargetInRealImage() {
+  uint8_t words[8] = {};
+  if (ReadImageWords("default.image.bin", TitleUpdate023Achievements::kShowAchievementsWrapper, words)) {
+    CHECK(IsShowAchievementsWrapper<TitleUpdate023Achievements>(words));
+  }
+  if (ReadImageWords("default-0.0.1.3.image.bin", Base013Achievements::kShowAchievementsWrapper, words)) {
+    CHECK(IsShowAchievementsWrapper<Base013Achievements>(words));
+  }
 }
 
 void TestLauncherPageOrder() {
@@ -330,6 +378,9 @@ int main() {
       {"game input neutral while modal open", TestGameInputIsNeutralWhileModalOpen},
       {"F7 toggle", TestToggleOverlay},
       {"hook target check", TestHookTargetCheck},
+      {"base hook target check", TestBaseHookTargetCheck},
+      {"versions hold their own wrapper", TestVersionsHoldTheirOwnWrapper},
+      {"hook symbols per tree", TestHookSymbolsPerTree},
       {"hook target in real image", TestHookTargetInRealImage},
       {"launcher page order", TestLauncherPageOrder},
       {"launcher page is read-only", TestLauncherPageIsReadOnly},

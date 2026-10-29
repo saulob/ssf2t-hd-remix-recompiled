@@ -34,21 +34,314 @@ constexpr const char* FightAreaValue(int segment) {
   return segment == 1 ? kFightAreaFill : kFightAreaOriginal;
 }
 
-// The fight draws two opaque black quads over the 16-unit margins of its 640x480 canvas; they are the side bars.
-constexpr uint32_t kFightMaskDrawer = 0x821775B0;
-constexpr uint32_t kFightMaskDrawerWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FF60, 0x39600000, 0x91610050, 0x39600000, 0x91610054,
-    0x3D6083C2, 0x896BA8A8, 0x2C0B0000, 0x4182002C, 0x3D6083E4, 0x816B8480, 0x2F0B0000,
-    0x419A001C, 0x3D6083E1, 0x896BA2C8, 0x2C0B0000, 0x4082000C, 0x39600040, 0x91610054,
+struct FightRenderFunction {
+  uint32_t address;
+  std::span<const uint32_t> words;
 };
-constexpr uint32_t kWidescreenDisplayFlag = 0x83C1A8A8;
-constexpr uint32_t kWidescreenMode = 0x83E38480;
-constexpr uint32_t kFightActiveFlag = 0x83E0A2C8;
 
-// `code` is the guest memory at kFightMaskDrawer. The words include the loads of the three globals above.
+inline constexpr uint32_t kMainModeTable = 0x83A2D040;
+inline constexpr uint32_t kGameModeTable = 0x83A2D01C;
+inline constexpr uint32_t kMatchStepTable = 0x83A2CFC8;
+
+inline constexpr uint32_t kOrthoWords[] = {
+    0x7D8802A6, 0x9181FFF8, 0x9421FF60, 0xEC062828, 0x3D608200, 0xED420828, 0x3D408200, 0xED241828,
+};
+
+// The scene draw picks the HD background from kHdBackground; 2 draws the Character Select screen texture.
+inline constexpr uint32_t kHdBackgroundDrawWords[] = {
+    0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083A2, 0x896B127F, 0x2C0B0000, 0x4082000C, 0x38600000,
+    0x480000A4, 0x39600000, 0x99610050, 0x3D6083A2, 0x816B130C, 0x91610054, 0x81610054, 0x2F0B0002,
+    0x419A0044, 0x81610054, 0x2F0B0003, 0x419A0048,
+};
+
+inline constexpr uint32_t kSidePanelDrawWords[] = {
+    0x7D8802A6, 0x9181FFF8, 0x9421FE60, 0x3D6083A2, 0x816B130C, 0x91610190, 0x81610190,
+    0x2F0B0002, 0x419A0014, 0x81610190, 0x2F0B0009, 0x419A0008, 0x48000028, 0x3D6083BE,
+};
+
+inline constexpr uint32_t kTextureHeaderWords[] = {0x38630004, 0x4E800020};
+
+inline constexpr uint32_t kBindSampler0Words[] = {0x7C641B78, 0x38600000, 0x4BFFD560};
+
+inline constexpr uint32_t kXdkSetTextureWords[] = {
+    0x7D8802A6, 0x48058D1D, 0x9421FF40, 0x39640C40, 0x7C7F1B78, 0x557D103A, 0x2B050000,
+    0x7F9DF82E, 0x419A00E4, 0x83650030, 0x39640030, 0x80E50020, 0x5769653E, 0x8345002C,
+    0x1D6B0018, 0x8325001C, 0x83050024, 0x82E50028, 0x54EA653E, 0x7D6BFA14, 0x39290200,
+};
+
+// The guest addresses and code signatures of one game version; both structs hold the same members. A signature
+// that is identical in both versions is shared above.
+struct Base013Fight {
+  // The fight draws two opaque black quads over the 16-unit margins of its 640x480 canvas; they are the side bars.
+  static constexpr uint32_t kFightMaskDrawer = 0x82177590;
+  static constexpr uint32_t kFightMaskDrawerWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FF60, 0x39600000, 0x91610050, 0x39600000, 0x91610054,
+      0x3D6083C2, 0x896BA828, 0x2C0B0000, 0x4182002C, 0x3D6083E3, 0x816B7F68, 0x2F0B0000,
+      0x419A001C, 0x3D6083E1, 0x896B9DB0, 0x2C0B0000, 0x4082000C, 0x39600040, 0x91610054,
+  };
+  static constexpr uint32_t kWidescreenDisplayFlag = 0x83C1A828;
+  static constexpr uint32_t kWidescreenMode = 0x83E37F68;
+  static constexpr uint32_t kFightActiveFlag = 0x83E09DB0;
+  static constexpr uint32_t kFightCameraX = 0x83E384D8;
+
+  static constexpr uint32_t kSceneDraw = 0x82181AA8;
+  static constexpr uint32_t kProjectionSetup = 0x823EBB28;
+  static constexpr uint32_t kOrtho = 0x823F5118;
+  static constexpr uint32_t kFightRender = 0x823ED578;
+  static constexpr uint32_t kSceneDrawWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FEF0, 0x39600001, 0x99610050, 0x3D6083A2,
+      0x896B127F, 0x2C0B0000, 0x418200B0, 0x3D6083E1, 0x896B9DB0, 0x2C0B0000,
+  };
+  static constexpr uint32_t kProjectionSetupWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FC90, 0xD0210384, 0xD041038C, 0x38600007, 0x48008ED9, 0x480088BD,
+  };
+  static constexpr uint32_t kFightRenderWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0xFBC1FFE8, 0xFBE1FFF0, 0xDBE1FFE0, 0x9421FAD0, 0x480068A9, 0x2C030000,
+  };
+  static constexpr FightRenderFunction kFightRenderFunctions[] = {
+      {kSceneDraw, kSceneDrawWords},
+      {kProjectionSetup, kProjectionSetupWords},
+      {kOrtho, kOrthoWords},
+      {kFightRender, kFightRenderWords},
+  };
+
+  // Outside fights the mask quads still show at the edges of the wider non-fight projection. VS is told apart by the
+  // match flow halfwords; Character Select by the HD background, which stays set for the whole visible screen.
+  static constexpr uint32_t kGameRam = 0x83E09CC0;
+  static constexpr uint32_t kMainModeDispatch = 0x8223DD58;
+  static constexpr uint32_t kGameModeDispatch = 0x8223DCF0;
+  static constexpr uint32_t kMatchStepDispatch = 0x8223DC30;
+  // Each dispatcher reads its halfword and jumps through table[value / 2].
+  static constexpr uint32_t kMainModeDispatchWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x816B52DC, 0xA16B0000, 0x3D4083CD, 0x394A52CC,
+      0xB16A0002, 0x3D6083CD, 0x396B52CC, 0xA16B0002, 0x7D6B0734, 0x556B083C, 0x3D4083A3, 0x394AD040,
+  };
+  static constexpr uint32_t kGameModeDispatchWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083C1, 0x39400000, 0x994B3390, 0x3D6083CD, 0x816B52DC,
+      0xA16B0004, 0x3D4083CD, 0x394A52CC, 0xB16A0002, 0x3D6083CD, 0x396B52CC, 0xA16B0002, 0x7D6B0734,
+      0x556B083C, 0x3D4083A3, 0x394AD01C,
+  };
+  static constexpr uint32_t kMatchStepDispatchWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x816B52DC, 0xA16B0008, 0x3D4083CD, 0x394A52CC,
+      0xB16A0002, 0x3D6083CD, 0x396B52CC, 0xA16B0002, 0x7D6B0734, 0x556B083C, 0x3D4083A3, 0x394ACFC8,
+  };
+  static constexpr uint32_t kMainModeTableWords[] = {0x82238EA0, kGameModeDispatch};
+  static constexpr uint32_t kGameModeTableWords[] = {0x82238FD0, 0x82239088, kMatchStepDispatch};
+  // Step 4 shows the win counts, then starts the fight.
+  static constexpr uint32_t kMatchStepTableWords[] = {0x822390C0, 0x82239150, 0x82239230};
+  static constexpr uint32_t kHdBackgroundDraw = 0x8217A088;
+
+  // Each background is one 4-vertex quad submitted through kQuadDraw; these are its two call sites.
+  static constexpr uint32_t kQuadDraw = 0x823F75D8;
+  static constexpr uint32_t kCharacterSelectBackgroundDraw = 0x82174F20;
+  static constexpr uint32_t kScrollingBackgroundDraw = 0x82174C70;
+  static constexpr uint32_t kCharacterSelectQuadCall = 0x821750CC;
+  static constexpr uint32_t kScrollingQuadCall = 0x82174EFC;
+  static constexpr uint32_t kCharacterSelectQuadReturn = 0x821750DC;
+  static constexpr uint32_t kScrollingQuadReturn = 0x82174F0C;
+  static constexpr uint32_t kQuadDrawWords[] = {0x7D8802A6, 0x496085D1, 0x9421FF90, 0x7C7F1B78,
+                                                0x38600001, 0x7C9E2378, 0x7CBD2B78, 0x48002E2D};
+  static constexpr uint32_t kCharacterSelectBackgroundDrawWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FEF0, 0x3D6083BE, 0x806B5AB0, 0x4BFFEA65, 0x48283619, 0x38600060,
+  };
+  static constexpr uint32_t kScrollingBackgroundDrawWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FEF0, 0x38800000, 0x38600000, 0x48282A0D, 0x3D6083BE, 0x806B5ABC,
+  };
+  static constexpr uint32_t kCharacterSelectQuadCallWords[] = {0x80A10090, 0x38800004, 0x38600006, 0x48282501};
+  static constexpr uint32_t kScrollingQuadCallWords[] = {0x80A10094, 0x38800004, 0x38600006, 0x482826D1};
+
+  // For HD background 2 or 9 the scene draw also puts backgrounds\WorldMapLeft and WorldMapRight in the 96 units
+  // beside the Character Select background, through kQuadDraw from these two call sites.
+  static constexpr uint32_t kSidePanelDraw = 0x82174870;
+  static constexpr uint32_t kLeftSidePanelQuadCall = 0x82174A7C;
+  static constexpr uint32_t kRightSidePanelQuadCall = 0x82174C4C;
+  static constexpr uint32_t kLeftSidePanelQuadReturn = 0x82174A8C;
+  static constexpr uint32_t kRightSidePanelQuadReturn = 0x82174C5C;
+  static constexpr uint32_t kLeftSidePanelQuadCallWords[] = {0x80A100D0, 0x38800004, 0x38600006, 0x48282B51};
+  static constexpr uint32_t kRightSidePanelQuadCallWords[] = {0x80A100D0, 0x38800004, 0x38600006, 0x48282981};
+  static constexpr FightRenderFunction kSidePanelFunctions[] = {
+      {kSidePanelDraw, kSidePanelDrawWords},
+      {kLeftSidePanelQuadCall, kLeftSidePanelQuadCallWords},
+      {kRightSidePanelQuadCall, kRightSidePanelQuadCallWords},
+  };
+
+  // The game's per-draw vertex scratch: reserve returns the space, commit advances past it.
+  static constexpr uint32_t kVertexReserve = 0x821738A0;
+  static constexpr uint32_t kVertexCommit = 0x821738F0;
+  static constexpr uint32_t kVertexReserveWords[] = {0x7D8802A6, 0x9181FFF8, 0xFBE1FFF0, 0x9421FFA0,
+                                                     0x3FE083E4, 0x39630003, 0x3D2083E4, 0x556A003A};
+  static constexpr uint32_t kVertexCommitWords[] = {0x3D2083E4, 0x39630003, 0x556A003A, 0x8169D8FC,
+                                                    0x7D6A5A14, 0x9169D8FC, 0x4E800020};
+  static constexpr FightRenderFunction kPreFightFunctions[] = {
+      {kMainModeDispatch, kMainModeDispatchWords},
+      {kGameModeDispatch, kGameModeDispatchWords},
+      {kMatchStepDispatch, kMatchStepDispatchWords},
+      {kMainModeTable, kMainModeTableWords},
+      {kGameModeTable, kGameModeTableWords},
+      {kMatchStepTable, kMatchStepTableWords},
+      {kHdBackgroundDraw, kHdBackgroundDrawWords},
+      {kCharacterSelectBackgroundDraw, kCharacterSelectBackgroundDrawWords},
+      {kScrollingBackgroundDraw, kScrollingBackgroundDrawWords},
+      {kQuadDraw, kQuadDrawWords},
+      {kCharacterSelectQuadCall, kCharacterSelectQuadCallWords},
+      {kScrollingQuadCall, kScrollingQuadCallWords},
+      {kVertexReserve, kVertexReserveWords},
+      {kVertexCommit, kVertexCommitWords},
+  };
+
+  // The Character Select background texture holder and the device pointer SetTexture keeps its shadow in.
+  static constexpr uint32_t kCharacterSelectTexture = 0x83BE5AB0;
+  static constexpr uint32_t kDevicePointer = 0x83E5DA18;
+  static constexpr uint32_t kTextureHeader = 0x82173998;
+  static constexpr uint32_t kBindSampler0 = 0x823F8550;
+  static constexpr uint32_t kBindTexture = 0x823F5AB8;
+  static constexpr uint32_t kXdkSetTexture = 0x839A6E68;
+  static constexpr uint32_t kBindTextureWords[] = {
+      0x7D8802A6, 0x4960A0F1, 0x9421FF90, 0x7C9F2378, 0x7C7E1B78, 0x2B1F0000, 0x419A0040,
+      0x817F0050, 0x38BF001C, 0x2B0B0000, 0x419A0034, 0x3FA083E6, 0x38C00000, 0x38800000,
+      0x64C68000, 0x807DDA18, 0x495B1371, 0x807DDA18, 0x3CC04000, 0x80BF0050, 0x38800001,
+  };
+  static constexpr FightRenderFunction kTextureBindFunctions[] = {
+      {kTextureHeader, kTextureHeaderWords},
+      {kBindSampler0, kBindSampler0Words},
+      {kBindTexture, kBindTextureWords},
+      {kXdkSetTexture, kXdkSetTextureWords},
+  };
+};
+
+struct TitleUpdate023Fight {
+  static constexpr uint32_t kFightMaskDrawer = 0x821775B0;
+  static constexpr uint32_t kFightMaskDrawerWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FF60, 0x39600000, 0x91610050, 0x39600000, 0x91610054,
+      0x3D6083C2, 0x896BA8A8, 0x2C0B0000, 0x4182002C, 0x3D6083E4, 0x816B8480, 0x2F0B0000,
+      0x419A001C, 0x3D6083E1, 0x896BA2C8, 0x2C0B0000, 0x4082000C, 0x39600040, 0x91610054,
+  };
+  static constexpr uint32_t kWidescreenDisplayFlag = 0x83C1A8A8;
+  static constexpr uint32_t kWidescreenMode = 0x83E38480;
+  static constexpr uint32_t kFightActiveFlag = 0x83E0A2C8;
+  static constexpr uint32_t kFightCameraX = 0x83E389F8;
+
+  static constexpr uint32_t kSceneDraw = 0x82181AB8;
+  static constexpr uint32_t kProjectionSetup = 0x823EC218;
+  static constexpr uint32_t kOrtho = 0x823F5888;
+  static constexpr uint32_t kFightRender = 0x823EDC68;
+  static constexpr uint32_t kSceneDrawWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FEF0, 0x39600001, 0x99610050, 0x3D6083A2,
+      0x896B127F, 0x2C0B0000, 0x418200B0, 0x3D6083E1, 0x896BA2C8, 0x2C0B0000,
+  };
+  static constexpr uint32_t kProjectionSetupWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FC90, 0xD0210384, 0xD041038C, 0x38600007, 0x48008F59, 0x4800893D,
+  };
+  static constexpr uint32_t kFightRenderWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0xFBC1FFE8, 0xFBE1FFF0, 0xDBE1FFE0, 0x9421FAD0, 0x48006929, 0x2C030000,
+  };
+  static constexpr FightRenderFunction kFightRenderFunctions[] = {
+      {kSceneDraw, kSceneDrawWords},
+      {kProjectionSetup, kProjectionSetupWords},
+      {kOrtho, kOrthoWords},
+      {kFightRender, kFightRenderWords},
+  };
+
+  static constexpr uint32_t kGameRam = 0x83E0A1D8;
+  static constexpr uint32_t kMainModeDispatch = 0x8223DE80;
+  static constexpr uint32_t kGameModeDispatch = 0x8223DE18;
+  static constexpr uint32_t kMatchStepDispatch = 0x8223DD58;
+  static constexpr uint32_t kMainModeDispatchWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x816B57F4, 0xA16B0000, 0x3D4083CD, 0x394A57E4,
+      0xB16A0002, 0x3D6083CD, 0x396B57E4, 0xA16B0002, 0x7D6B0734, 0x556B083C, 0x3D4083A3, 0x394AD040,
+  };
+  static constexpr uint32_t kGameModeDispatchWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083C1, 0x39400000, 0x994B3410, 0x3D6083CD, 0x816B57F4,
+      0xA16B0004, 0x3D4083CD, 0x394A57E4, 0xB16A0002, 0x3D6083CD, 0x396B57E4, 0xA16B0002, 0x7D6B0734,
+      0x556B083C, 0x3D4083A3, 0x394AD01C,
+  };
+  static constexpr uint32_t kMatchStepDispatchWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x816B57F4, 0xA16B0008, 0x3D4083CD, 0x394A57E4,
+      0xB16A0002, 0x3D6083CD, 0x396B57E4, 0xA16B0002, 0x7D6B0734, 0x556B083C, 0x3D4083A3, 0x394ACFC8,
+  };
+  static constexpr uint32_t kMainModeTableWords[] = {0x82238FC8, kGameModeDispatch};
+  static constexpr uint32_t kGameModeTableWords[] = {0x822390F8, 0x822391B0, kMatchStepDispatch};
+  static constexpr uint32_t kMatchStepTableWords[] = {0x822391E8, 0x82239278, 0x82239358};
+  static constexpr uint32_t kHdBackgroundDraw = 0x8217A0A8;
+
+  static constexpr uint32_t kQuadDraw = 0x823F7D48;
+  static constexpr uint32_t kCharacterSelectBackgroundDraw = 0x82174F40;
+  static constexpr uint32_t kScrollingBackgroundDraw = 0x82174C90;
+  static constexpr uint32_t kCharacterSelectQuadCall = 0x821750EC;
+  static constexpr uint32_t kScrollingQuadCall = 0x82174F1C;
+  static constexpr uint32_t kCharacterSelectQuadReturn = 0x821750FC;
+  static constexpr uint32_t kScrollingQuadReturn = 0x82174F2C;
+  static constexpr uint32_t kQuadDrawWords[] = {0x7D8802A6, 0x496085C1, 0x9421FF90, 0x7C7F1B78,
+                                                0x38600001, 0x7C9E2378, 0x7CBD2B78, 0x48002E2D};
+  static constexpr uint32_t kCharacterSelectBackgroundDrawWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FEF0, 0x3D6083BE, 0x806B5B30, 0x4BFFEA65, 0x48283D69, 0x38600060,
+  };
+  static constexpr uint32_t kScrollingBackgroundDrawWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FEF0, 0x38800000, 0x38600000, 0x4828315D, 0x3D6083BE, 0x806B5B3C,
+  };
+  static constexpr uint32_t kCharacterSelectQuadCallWords[] = {0x80A10090, 0x38800004, 0x38600006, 0x48282C51};
+  static constexpr uint32_t kScrollingQuadCallWords[] = {0x80A10094, 0x38800004, 0x38600006, 0x48282E21};
+
+  static constexpr uint32_t kSidePanelDraw = 0x82174890;
+  static constexpr uint32_t kLeftSidePanelQuadCall = 0x82174A9C;
+  static constexpr uint32_t kRightSidePanelQuadCall = 0x82174C6C;
+  static constexpr uint32_t kLeftSidePanelQuadReturn = 0x82174AAC;
+  static constexpr uint32_t kRightSidePanelQuadReturn = 0x82174C7C;
+  static constexpr uint32_t kLeftSidePanelQuadCallWords[] = {0x80A100D0, 0x38800004, 0x38600006, 0x482832A1};
+  static constexpr uint32_t kRightSidePanelQuadCallWords[] = {0x80A100D0, 0x38800004, 0x38600006, 0x482830D1};
+  static constexpr FightRenderFunction kSidePanelFunctions[] = {
+      {kSidePanelDraw, kSidePanelDrawWords},
+      {kLeftSidePanelQuadCall, kLeftSidePanelQuadCallWords},
+      {kRightSidePanelQuadCall, kRightSidePanelQuadCallWords},
+  };
+
+  static constexpr uint32_t kVertexReserve = 0x821738C0;
+  static constexpr uint32_t kVertexCommit = 0x82173910;
+  static constexpr uint32_t kVertexReserveWords[] = {0x7D8802A6, 0x9181FFF8, 0xFBE1FFF0, 0x9421FFA0,
+                                                     0x3FE083E4, 0x39630003, 0x3D2083E4, 0x556A003A};
+  static constexpr uint32_t kVertexCommitWords[] = {0x3D2083E4, 0x39630003, 0x556A003A, 0x8169DE1C,
+                                                    0x7D6A5A14, 0x9169DE1C, 0x4E800020};
+  static constexpr FightRenderFunction kPreFightFunctions[] = {
+      {kMainModeDispatch, kMainModeDispatchWords},
+      {kGameModeDispatch, kGameModeDispatchWords},
+      {kMatchStepDispatch, kMatchStepDispatchWords},
+      {kMainModeTable, kMainModeTableWords},
+      {kGameModeTable, kGameModeTableWords},
+      {kMatchStepTable, kMatchStepTableWords},
+      {kHdBackgroundDraw, kHdBackgroundDrawWords},
+      {kCharacterSelectBackgroundDraw, kCharacterSelectBackgroundDrawWords},
+      {kScrollingBackgroundDraw, kScrollingBackgroundDrawWords},
+      {kQuadDraw, kQuadDrawWords},
+      {kCharacterSelectQuadCall, kCharacterSelectQuadCallWords},
+      {kScrollingQuadCall, kScrollingQuadCallWords},
+      {kVertexReserve, kVertexReserveWords},
+      {kVertexCommit, kVertexCommitWords},
+  };
+
+  static constexpr uint32_t kCharacterSelectTexture = 0x83BE5B30;
+  static constexpr uint32_t kDevicePointer = 0x83E5DF38;
+  static constexpr uint32_t kTextureHeader = 0x821739B8;
+  static constexpr uint32_t kBindSampler0 = 0x823F8CC0;
+  static constexpr uint32_t kBindTexture = 0x823F6228;
+  static constexpr uint32_t kXdkSetTexture = 0x839A75C8;
+  static constexpr uint32_t kBindTextureWords[] = {
+      0x7D8802A6, 0x4960A0E1, 0x9421FF90, 0x7C9F2378, 0x7C7E1B78, 0x2B1F0000, 0x419A0040,
+      0x817F0050, 0x38BF001C, 0x2B0B0000, 0x419A0034, 0x3FA083E6, 0x38C00000, 0x38800000,
+      0x64C68000, 0x807DDF38, 0x495B1361, 0x807DDF38, 0x3CC04000, 0x80BF0050, 0x38800001,
+  };
+  static constexpr FightRenderFunction kTextureBindFunctions[] = {
+      {kTextureHeader, kTextureHeaderWords},
+      {kBindSampler0, kBindSampler0Words},
+      {kBindTexture, kBindTextureWords},
+      {kXdkSetTexture, kXdkSetTextureWords},
+  };
+};
+
+// `code` is the guest memory at G::kFightMaskDrawer. The words include the loads of the three globals.
+template <typename G>
 inline bool IsFightMaskDrawer(const uint8_t* code) {
   uint32_t offset = 0;
-  for (const uint32_t word : kFightMaskDrawerWords) {
+  for (const uint32_t word : G::kFightMaskDrawerWords) {
     if (LoadBE32(code, offset) != word) {
       return false;
     }
@@ -58,21 +351,21 @@ inline bool IsFightMaskDrawer(const uint8_t* code) {
 }
 
 inline constexpr uint32_t kWidescreenAspect = 0x83A21350;
-inline constexpr uint32_t kFightCameraX = 0x83E389F8;
 inline constexpr float kFightCanvasWidth = 640.0f;
 inline constexpr float kFightFillMargin = 16.0f;
 
-// Fill needs the widescreen fight projection (the sub_823EC218 branch that keeps a 640-unit width) and a usable camera.
+// Fill needs the widescreen fight projection (the projection setup branch that keeps a 640-unit width) and a usable camera.
 constexpr bool FightFillActive(bool fill, uint8_t widescreen_display, uint32_t widescreen_mode, uint8_t fight_active,
                                float aspect, float camera_x) {
   return fill && widescreen_display != 0 && widescreen_mode == 1 && fight_active != 0 && aspect != 1.0f &&
          std::isfinite(camera_x);
 }
 
+template <typename G>
 inline bool FightFillActive(bool fill, const uint8_t* base) {
-  return FightFillActive(fill, base[kWidescreenDisplayFlag], LoadBE32(base, kWidescreenMode), base[kFightActiveFlag],
-                         std::bit_cast<float>(LoadBE32(base, kWidescreenAspect)),
-                         std::bit_cast<float>(LoadBE32(base, kFightCameraX)));
+  return FightFillActive(fill, base[G::kWidescreenDisplayFlag], LoadBE32(base, G::kWidescreenMode),
+                         base[G::kFightActiveFlag], std::bit_cast<float>(LoadBE32(base, kWidescreenAspect)),
+                         std::bit_cast<float>(LoadBE32(base, G::kFightCameraX)));
 }
 
 // Canvas units to slide the visible window: +16 at the left camera limit, -16 at the right one.
@@ -86,37 +379,6 @@ constexpr float OrthoShift(float left, float right, float camera_x) {
   return FightShift(camera_x) * (right - left) / kFightCanvasWidth;
 }
 
-struct FightRenderFunction {
-  uint32_t address;
-  std::span<const uint32_t> words;
-};
-
-inline constexpr uint32_t kSceneDraw = 0x82181AB8;
-inline constexpr uint32_t kProjectionSetup = 0x823EC218;
-inline constexpr uint32_t kOrtho = 0x823F5888;
-inline constexpr uint32_t kFightRender = 0x823EDC68;
-
-inline constexpr uint32_t kSceneDrawWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FEF0, 0x39600001, 0x99610050, 0x3D6083A2,
-    0x896B127F, 0x2C0B0000, 0x418200B0, 0x3D6083E1, 0x896BA2C8, 0x2C0B0000,
-};
-inline constexpr uint32_t kProjectionSetupWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FC90, 0xD0210384, 0xD041038C, 0x38600007, 0x48008F59, 0x4800893D,
-};
-inline constexpr uint32_t kOrthoWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FF60, 0xEC062828, 0x3D608200, 0xED420828, 0x3D408200, 0xED241828,
-};
-inline constexpr uint32_t kFightRenderWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0xFBC1FFE8, 0xFBE1FFF0, 0xDBE1FFE0, 0x9421FAD0, 0x48006929, 0x2C030000,
-};
-
-inline const FightRenderFunction kFightRenderFunctions[] = {
-    {kSceneDraw, kSceneDrawWords},
-    {kProjectionSetup, kProjectionSetupWords},
-    {kOrtho, kOrthoWords},
-    {kFightRender, kFightRenderWords},
-};
-
 inline bool MatchesWords(const uint8_t* base, const FightRenderFunction& function) {
   uint32_t offset = 0;
   for (const uint32_t word : function.words) {
@@ -129,11 +391,12 @@ inline bool MatchesWords(const uint8_t* base, const FightRenderFunction& functio
 }
 
 // Fill acts only when the mask drawer and every function it hooks or relies on is the expected code.
+template <typename G>
 inline bool FightRenderPathMatches(const uint8_t* base) {
-  if (!IsFightMaskDrawer(base + kFightMaskDrawer)) {
+  if (!IsFightMaskDrawer<G>(base + G::kFightMaskDrawer)) {
     return false;
   }
-  for (const FightRenderFunction& function : kFightRenderFunctions) {
+  for (const FightRenderFunction& function : G::kFightRenderFunctions) {
     if (!MatchesWords(base, function)) {
       return false;
     }
@@ -141,9 +404,6 @@ inline bool FightRenderPathMatches(const uint8_t* base) {
   return true;
 }
 
-// Outside fights the mask quads still show at the edges of the wider non-fight projection. VS is told apart by the
-// match flow halfwords; Character Select by the HD background, which stays set for the whole visible screen.
-inline constexpr uint32_t kGameRam = 0x83E0A1D8;
 inline constexpr uint32_t kMainModeOffset = 0x0;
 inline constexpr uint32_t kGameModeOffset = 0x4;
 inline constexpr uint32_t kMatchStepOffset = 0x8;
@@ -199,8 +459,9 @@ inline MatchFlow ReadMatchFlow(const uint8_t* ram) {
 }
 
 // The game RAM is a 64 KiB-aligned allocation in the physical heap; any other value means it is not set up.
+template <typename G>
 inline bool LoadMatchFlow(const uint8_t* base, MatchFlow& flow) {
-  const uint32_t ram = LoadBE32(base, kGameRam);
+  const uint32_t ram = LoadBE32(base, G::kGameRam);
   if (ram == 0 || (ram & 0xFFFF) != 0) {
     return false;
   }
@@ -208,16 +469,18 @@ inline bool LoadMatchFlow(const uint8_t* base, MatchFlow& flow) {
   return true;
 }
 
+template <typename G>
 inline PreFightScene LoadPreFightScene(const uint8_t* base) {
   MatchFlow flow{};
   return {IsCharacterSelectBackground(base[kHdBackgroundEnabled], LoadBE32(base, kHdBackground)),
-          LoadMatchFlow(base, flow) && IsVersus(flow)};
+          LoadMatchFlow<G>(base, flow) && IsVersus(flow)};
 }
 
+template <typename G>
 inline bool PreFightFillActive(bool fill, const uint8_t* base) {
-  return fill && PreFightFillActive(true, base[kWidescreenDisplayFlag], LoadBE32(base, kWidescreenMode),
-                                    base[kFightActiveFlag], std::bit_cast<float>(LoadBE32(base, kWidescreenAspect)),
-                                    LoadPreFightScene(base));
+  return fill && PreFightFillActive(true, base[G::kWidescreenDisplayFlag], LoadBE32(base, G::kWidescreenMode),
+                                    base[G::kFightActiveFlag], std::bit_cast<float>(LoadBE32(base, kWidescreenAspect)),
+                                    LoadPreFightScene<G>(base));
 }
 
 constexpr bool VersusFillActive(bool fill, uint8_t widescreen_display, uint32_t widescreen_mode, uint8_t fight_active,
@@ -225,94 +488,24 @@ constexpr bool VersusFillActive(bool fill, uint8_t widescreen_display, uint32_t 
   return fill && WidescreenOutsideFight(widescreen_display, widescreen_mode, fight_active, aspect) && scene.versus;
 }
 
+template <typename G>
 inline bool VersusFillActive(bool fill, const uint8_t* base) {
-  return fill && VersusFillActive(true, base[kWidescreenDisplayFlag], LoadBE32(base, kWidescreenMode),
-                                  base[kFightActiveFlag], std::bit_cast<float>(LoadBE32(base, kWidescreenAspect)),
-                                  LoadPreFightScene(base));
+  return fill && VersusFillActive(true, base[G::kWidescreenDisplayFlag], LoadBE32(base, G::kWidescreenMode),
+                                  base[G::kFightActiveFlag], std::bit_cast<float>(LoadBE32(base, kWidescreenAspect)),
+                                  LoadPreFightScene<G>(base));
 }
 
+template <typename G>
 inline bool CharacterSelectFillActive(bool fill, const uint8_t* base) {
-  return fill && CharacterSelectFillActive(true, base[kWidescreenDisplayFlag], LoadBE32(base, kWidescreenMode),
-                                           base[kFightActiveFlag],
+  return fill && CharacterSelectFillActive(true, base[G::kWidescreenDisplayFlag], LoadBE32(base, G::kWidescreenMode),
+                                           base[G::kFightActiveFlag],
                                            std::bit_cast<float>(LoadBE32(base, kWidescreenAspect)),
-                                           LoadPreFightScene(base));
+                                           LoadPreFightScene<G>(base));
 }
 
-inline constexpr uint32_t kMainModeDispatch = 0x8223DE80;
-inline constexpr uint32_t kGameModeDispatch = 0x8223DE18;
-inline constexpr uint32_t kMatchStepDispatch = 0x8223DD58;
-inline constexpr uint32_t kMainModeTable = 0x83A2D040;
-inline constexpr uint32_t kGameModeTable = 0x83A2D01C;
-inline constexpr uint32_t kMatchStepTable = 0x83A2CFC8;
-
-// Each dispatcher reads its halfword and jumps through table[value / 2].
-inline constexpr uint32_t kMainModeDispatchWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x816B57F4, 0xA16B0000, 0x3D4083CD, 0x394A57E4,
-    0xB16A0002, 0x3D6083CD, 0x396B57E4, 0xA16B0002, 0x7D6B0734, 0x556B083C, 0x3D4083A3, 0x394AD040,
-};
-inline constexpr uint32_t kGameModeDispatchWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083C1, 0x39400000, 0x994B3410, 0x3D6083CD, 0x816B57F4,
-    0xA16B0004, 0x3D4083CD, 0x394A57E4, 0xB16A0002, 0x3D6083CD, 0x396B57E4, 0xA16B0002, 0x7D6B0734,
-    0x556B083C, 0x3D4083A3, 0x394AD01C,
-};
-inline constexpr uint32_t kMatchStepDispatchWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x816B57F4, 0xA16B0008, 0x3D4083CD, 0x394A57E4,
-    0xB16A0002, 0x3D6083CD, 0x396B57E4, 0xA16B0002, 0x7D6B0734, 0x556B083C, 0x3D4083A3, 0x394ACFC8,
-};
-inline constexpr uint32_t kMainModeTableWords[] = {0x82238FC8, kGameModeDispatch};
-inline constexpr uint32_t kGameModeTableWords[] = {0x822390F8, 0x822391B0, kMatchStepDispatch};
-// Step 4 shows the win counts, then starts the fight.
-inline constexpr uint32_t kMatchStepTableWords[] = {0x822391E8, 0x82239278, 0x82239358};
-
-// The scene draw picks the HD background from kHdBackground; 2 draws the Character Select screen texture.
-inline constexpr uint32_t kHdBackgroundDraw = 0x8217A0A8;
-inline constexpr uint32_t kHdBackgroundDrawWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083A2, 0x896B127F, 0x2C0B0000, 0x4082000C, 0x38600000,
-    0x480000A4, 0x39600000, 0x99610050, 0x3D6083A2, 0x816B130C, 0x91610054, 0x81610054, 0x2F0B0002,
-    0x419A0044, 0x81610054, 0x2F0B0003, 0x419A0048,
-};
-
-// Each background is one 4-vertex quad submitted through kQuadDraw; these are its two call sites.
-inline constexpr uint32_t kQuadDraw = 0x823F7D48;
-inline constexpr uint32_t kCharacterSelectBackgroundDraw = 0x82174F40;
-inline constexpr uint32_t kScrollingBackgroundDraw = 0x82174C90;
-inline constexpr uint32_t kCharacterSelectQuadCall = 0x821750EC;
-inline constexpr uint32_t kScrollingQuadCall = 0x82174F1C;
-inline constexpr uint32_t kCharacterSelectQuadReturn = 0x821750FC;
-inline constexpr uint32_t kScrollingQuadReturn = 0x82174F2C;
-inline constexpr uint32_t kQuadDrawWords[] = {0x7D8802A6, 0x496085C1, 0x9421FF90, 0x7C7F1B78,
-                                              0x38600001, 0x7C9E2378, 0x7CBD2B78, 0x48002E2D};
-inline constexpr uint32_t kCharacterSelectBackgroundDrawWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FEF0, 0x3D6083BE, 0x806B5B30, 0x4BFFEA65, 0x48283D69, 0x38600060,
-};
-inline constexpr uint32_t kScrollingBackgroundDrawWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FEF0, 0x38800000, 0x38600000, 0x4828315D, 0x3D6083BE, 0x806B5B3C,
-};
-inline constexpr uint32_t kCharacterSelectQuadCallWords[] = {0x80A10090, 0x38800004, 0x38600006, 0x48282C51};
-inline constexpr uint32_t kScrollingQuadCallWords[] = {0x80A10094, 0x38800004, 0x38600006, 0x48282E21};
-
-// For HD background 2 or 9 the scene draw also puts backgrounds\WorldMapLeft and WorldMapRight in the 96 units
-// beside the Character Select background, through kQuadDraw from these two call sites.
-inline constexpr uint32_t kSidePanelDraw = 0x82174890;
-inline constexpr uint32_t kLeftSidePanelQuadCall = 0x82174A9C;
-inline constexpr uint32_t kRightSidePanelQuadCall = 0x82174C6C;
-inline constexpr uint32_t kLeftSidePanelQuadReturn = 0x82174AAC;
-inline constexpr uint32_t kRightSidePanelQuadReturn = 0x82174C7C;
-inline constexpr uint32_t kSidePanelDrawWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FE60, 0x3D6083A2, 0x816B130C, 0x91610190, 0x81610190,
-    0x2F0B0002, 0x419A0014, 0x81610190, 0x2F0B0009, 0x419A0008, 0x48000028, 0x3D6083BE,
-};
-inline constexpr uint32_t kLeftSidePanelQuadCallWords[] = {0x80A100D0, 0x38800004, 0x38600006, 0x482832A1};
-inline constexpr uint32_t kRightSidePanelQuadCallWords[] = {0x80A100D0, 0x38800004, 0x38600006, 0x482830D1};
-
-inline const FightRenderFunction kSidePanelFunctions[] = {
-    {kSidePanelDraw, kSidePanelDrawWords},
-    {kLeftSidePanelQuadCall, kLeftSidePanelQuadCallWords},
-    {kRightSidePanelQuadCall, kRightSidePanelQuadCallWords},
-};
-
+template <typename G>
 inline bool SidePanelPathMatches(const uint8_t* base) {
-  for (const FightRenderFunction& function : kSidePanelFunctions) {
+  for (const FightRenderFunction& function : G::kSidePanelFunctions) {
     if (!MatchesWords(base, function)) {
       return false;
     }
@@ -322,51 +515,29 @@ inline bool SidePanelPathMatches(const uint8_t* base) {
 
 enum class SidePanel { kNone, kLeft, kRight };
 
+template <typename G>
 constexpr SidePanel SidePanelAt(uint32_t caller) {
-  return caller == kLeftSidePanelQuadReturn    ? SidePanel::kLeft
-         : caller == kRightSidePanelQuadReturn ? SidePanel::kRight
+  return caller == G::kLeftSidePanelQuadReturn    ? SidePanel::kLeft
+         : caller == G::kRightSidePanelQuadReturn ? SidePanel::kRight
                                                : SidePanel::kNone;
 }
 
 // Fill leaves the side panels out: they stop at the background's own rectangle and would hide the filled edges.
+template <typename G>
 constexpr bool SkipsSidePanel(bool character_select_fill, bool path_matches, uint32_t caller) {
-  return character_select_fill && path_matches && SidePanelAt(caller) != SidePanel::kNone;
+  return character_select_fill && path_matches && SidePanelAt<G>(caller) != SidePanel::kNone;
 }
-
-// The game's per-draw vertex scratch: reserve returns the space, commit advances past it.
-inline constexpr uint32_t kVertexReserve = 0x821738C0;
-inline constexpr uint32_t kVertexCommit = 0x82173910;
-inline constexpr uint32_t kVertexReserveWords[] = {0x7D8802A6, 0x9181FFF8, 0xFBE1FFF0, 0x9421FFA0,
-                                                   0x3FE083E4, 0x39630003, 0x3D2083E4, 0x556A003A};
-inline constexpr uint32_t kVertexCommitWords[] = {0x3D2083E4, 0x39630003, 0x556A003A, 0x8169DE1C,
-                                                  0x7D6A5A14, 0x9169DE1C, 0x4E800020};
 
 inline constexpr uint32_t kQuadPrimitive = 6;
 inline constexpr uint32_t kQuadVertices = 4;
 inline constexpr uint32_t kQuadVertexStride = 24;
 
-inline const FightRenderFunction kPreFightFunctions[] = {
-    {kMainModeDispatch, kMainModeDispatchWords},
-    {kGameModeDispatch, kGameModeDispatchWords},
-    {kMatchStepDispatch, kMatchStepDispatchWords},
-    {kMainModeTable, kMainModeTableWords},
-    {kGameModeTable, kGameModeTableWords},
-    {kMatchStepTable, kMatchStepTableWords},
-    {kHdBackgroundDraw, kHdBackgroundDrawWords},
-    {kCharacterSelectBackgroundDraw, kCharacterSelectBackgroundDrawWords},
-    {kScrollingBackgroundDraw, kScrollingBackgroundDrawWords},
-    {kQuadDraw, kQuadDrawWords},
-    {kCharacterSelectQuadCall, kCharacterSelectQuadCallWords},
-    {kScrollingQuadCall, kScrollingQuadCallWords},
-    {kVertexReserve, kVertexReserveWords},
-    {kVertexCommit, kVertexCommitWords},
-};
-
+template <typename G>
 inline bool PreFightPathMatches(const uint8_t* base) {
-  if (!IsFightMaskDrawer(base + kFightMaskDrawer)) {
+  if (!IsFightMaskDrawer<G>(base + G::kFightMaskDrawer)) {
     return false;
   }
-  for (const FightRenderFunction& function : kPreFightFunctions) {
+  for (const FightRenderFunction& function : G::kPreFightFunctions) {
     if (!MatchesWords(base, function)) {
       return false;
     }
@@ -718,39 +889,14 @@ constexpr bool CharacterSelectWarp(const QuadVertices& center, float aspect, Tex
 
 // The Character Select background texture: its D3D texture is embedded at +28 and SetTexture keeps the GPU's copy of
 // its fetch constant for sampler 0 in the device's shadow.
-inline constexpr uint32_t kCharacterSelectTexture = 0x83BE5B30;
 inline constexpr uint32_t kGameTextureD3D = 4 + 28;
 inline constexpr uint32_t kD3DTextureFetch = 28;
-inline constexpr uint32_t kDevicePointer = 0x83E5DF38;
 inline constexpr uint32_t kDeviceTextures = 0x3100;
 inline constexpr uint32_t kDeviceFetchConstants = 0x480;
 
-inline constexpr uint32_t kTextureHeader = 0x821739B8;
-inline constexpr uint32_t kBindSampler0 = 0x823F8CC0;
-inline constexpr uint32_t kBindTexture = 0x823F6228;
-inline constexpr uint32_t kXdkSetTexture = 0x839A75C8;
-inline constexpr uint32_t kTextureHeaderWords[] = {0x38630004, 0x4E800020};
-inline constexpr uint32_t kBindSampler0Words[] = {0x7C641B78, 0x38600000, 0x4BFFD560};
-inline constexpr uint32_t kBindTextureWords[] = {
-    0x7D8802A6, 0x4960A0E1, 0x9421FF90, 0x7C9F2378, 0x7C7E1B78, 0x2B1F0000, 0x419A0040,
-    0x817F0050, 0x38BF001C, 0x2B0B0000, 0x419A0034, 0x3FA083E6, 0x38C00000, 0x38800000,
-    0x64C68000, 0x807DDF38, 0x495B1361, 0x807DDF38, 0x3CC04000, 0x80BF0050, 0x38800001,
-};
-inline constexpr uint32_t kXdkSetTextureWords[] = {
-    0x7D8802A6, 0x48058D1D, 0x9421FF40, 0x39640C40, 0x7C7F1B78, 0x557D103A, 0x2B050000,
-    0x7F9DF82E, 0x419A00E4, 0x83650030, 0x39640030, 0x80E50020, 0x5769653E, 0x8345002C,
-    0x1D6B0018, 0x8325001C, 0x83050024, 0x82E50028, 0x54EA653E, 0x7D6BFA14, 0x39290200,
-};
-
-inline const FightRenderFunction kTextureBindFunctions[] = {
-    {kTextureHeader, kTextureHeaderWords},
-    {kBindSampler0, kBindSampler0Words},
-    {kBindTexture, kBindTextureWords},
-    {kXdkSetTexture, kXdkSetTextureWords},
-};
-
+template <typename G>
 inline bool TextureBindPathMatches(const uint8_t* base) {
-  for (const FightRenderFunction& function : kTextureBindFunctions) {
+  for (const FightRenderFunction& function : G::kTextureBindFunctions) {
     if (!MatchesWords(base, function)) {
       return false;
     }
@@ -779,9 +925,10 @@ constexpr bool FetchTextureSize(const TextureFetch& fetch, TextureSize& size) {
 
 // The size of the texture on sampler 0, provided it is the Character Select background's and the GPU's copy of its
 // fetch constant still describes it.
+template <typename G>
 inline bool LoadCharacterSelectTextureSize(const uint8_t* base, TextureSize& size) {
-  const uint32_t holder = LoadBE32(base, kCharacterSelectTexture);
-  const uint32_t device = LoadBE32(base, kDevicePointer);
+  const uint32_t holder = LoadBE32(base, G::kCharacterSelectTexture);
+  const uint32_t device = LoadBE32(base, G::kDevicePointer);
   if (holder == 0 || device == 0) {
     return false;
   }

@@ -234,7 +234,6 @@ InstallResult InstallGame(stfs::Package& pkg, const std::filesystem::path& targe
   const GameCheck staged = CheckGameFiles(staging);
   switch (staged.state) {
     case GameFiles::kReady:
-    case GameFiles::kUpdateMissing:
     case GameFiles::kUpdateUnsupported:
       break;
     case GameFiles::kUnsupported: {
@@ -404,7 +403,8 @@ GameCheck CheckGameFiles(const std::filesystem::path& game_dir) {
   }
   const auto patch = game_dir / kTitleUpdateFile;
   if (!std::filesystem::is_regular_file(patch, ec)) {
-    check.state = GameFiles::kUpdateMissing;
+    check.state = GameFiles::kReady;
+    check.guest = GuestVersion::kBase013;
     return check;
   }
   check.state = GameFiles::kUpdateUnsupported;
@@ -413,7 +413,30 @@ GameCheck CheckGameFiles(const std::filesystem::path& game_dir) {
     return check;
   }
   check.state = GameFiles::kReady;
+  check.guest = GuestVersion::kTitleUpdate023;
   return check;
+}
+
+std::optional<GuestVersion> SelectGuest(const GameCheck& check, HostGuests host) {
+  if (check.state != GameFiles::kReady || (check.guest == GuestVersion::kTitleUpdate023 && !host.title_update)) {
+    return std::nullopt;
+  }
+  return check.guest;
+}
+
+bool NeedsOtherGuest(const GameCheck& check, GuestVersion running, HostGuests host) {
+  const std::optional<GuestVersion> wanted = SelectGuest(check, host);
+  return wanted && *wanted != running;
+}
+
+bool LoadedVersionMatches(GuestVersion selected, const std::string& loaded) {
+  return loaded == GuestExecutableVersion(selected);
+}
+
+std::string DescribeLoadedVersionMismatch(GuestVersion selected, const std::string& loaded) {
+  return "The game executable loaded as version " + (loaded.empty() ? std::string("unknown") : loaded) +
+         ", but the installed game files call for version " + GuestExecutableVersion(selected) +
+         ". Reinstall the game package from the launcher's Play page.";
 }
 
 std::string GameFilesLogText(const GameCheck& check) {
@@ -435,9 +458,6 @@ std::string GameFilesLogText(const GameCheck& check) {
     case GameFiles::kUnsupported:
       state = "unsupported version";
       break;
-    case GameFiles::kUpdateMissing:
-      state = "Title Update missing";
-      break;
     case GameFiles::kUpdateUnsupported:
       state = "unsupported Title Update";
       break;
@@ -452,7 +472,8 @@ std::string GameFilesLogText(const GameCheck& check) {
   if (check.xex_crc32 != 0) {
     text += ", CRC32 " + Hex32(check.xex_crc32);
   }
-  if (check.state == GameFiles::kReady || check.state == GameFiles::kUpdateUnsupported) {
+  if ((check.state == GameFiles::kReady && check.guest == GuestVersion::kTitleUpdate023) ||
+      check.state == GameFiles::kUpdateUnsupported) {
     text += std::string("; ") + kTitleUpdateFile;
     if (!check.xexp_version.empty()) {
       text += " to " + check.xexp_version;
@@ -462,15 +483,15 @@ std::string GameFilesLogText(const GameCheck& check) {
     }
   }
   if (check.state == GameFiles::kUnsupported || check.state == GameFiles::kUpdateUnsupported) {
-    text += std::string("; expected default.xex ") + kXexVersion + " CRC32 " + Hex32(kXexCrc32) + " with " +
+    text += std::string("; expected default.xex ") + kXexVersion + " CRC32 " + Hex32(kXexCrc32) + ", optional " +
             kTitleUpdateFile + " to " + kTitleUpdateVersion + " CRC32 " + Hex32(kXexpCrc32);
   }
   return text + ")";
 }
 
-std::string DescribeGameFilesProblem(const GameCheck& check) {
-  const std::string needed = std::string("This port needs game version ") + kXexVersion + " with Title Update #1 (" +
-                             kTitleUpdateVersion + ").";
+std::string DescribeGameFilesProblem(const GameCheck& check, HostGuests host) {
+  const std::string needed = std::string("This port needs game version ") + kXexVersion +
+                             "; Title Update #1 (" + kTitleUpdateVersion + ") is optional.";
   const auto crc = [](uint32_t value) { return value != 0 ? ", CRC32 " + Hex32(value) : std::string(); };
   switch (check.state) {
     case GameFiles::kUnsupported:
@@ -478,39 +499,37 @@ std::string DescribeGameFilesProblem(const GameCheck& check) {
              (check.xex_version.empty() ? std::string("not a supported game executable")
                                         : "version " + check.xex_version + crc(check.xex_crc32)) +
              ". " + needed;
-    case GameFiles::kUpdateMissing:
-      return "Installing the game package does not install the Title Update. Click Install Title Update and select "
-             "the Title Update package. On an Xbox 360 drive it is in "
-             "Content\\0000000000000000\\584108A4\\000B0000\\. " +
-             needed;
     case GameFiles::kUpdateUnsupported:
       return "The installed default.xexp " +
              (check.xexp_version.empty() ? std::string("is not a supported Title Update")
                                          : "updates the game to " + check.xexp_version + crc(check.xexp_crc32)) +
-             ". " + needed;
+             ". Click Remove Title Update, or install the supported Title Update #1 over it. " + needed;
     case GameFiles::kUpdateOnly:
       return "The Title Update is installed and will be kept. Click Install Game and select the Xbox Live Arcade "
              "game package. " +
              needed;
     case GameFiles::kMissing:
-      return "This port requires your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade package and its "
-             "Title Update #1, installed separately with Install Game and Install Title Update.";
+      return "This port requires your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade game package, "
+             "installed with Install Game. Title Update #1 is optional and is installed with Install Title Update.";
     case GameFiles::kReady:
+      if (check.guest == GuestVersion::kTitleUpdate023 && !host.title_update) {
+        return "This copy of the program cannot run the installed Title Update. Click Remove Title Update to play game version " +
+               std::string(kXexVersion) + ".";
+      }
       break;
   }
   return {};
 }
 
-PlayCardText DescribePlayCard(const GameCheck& check) {
+PlayCardText DescribePlayCard(const GameCheck& check, HostGuests host) {
   const std::string title_id = Hex32(kTitleId);
   switch (check.state) {
     case GameFiles::kReady:
-      return {"Ready to play \xC2\xB7 Title Update #1",
-              "GAME VER " + std::string(kTitleUpdateVersion) + " \xC2\xB7 TITLE ID " + title_id};
-    case GameFiles::kUpdateMissing:
-      return {"Title Update #1 needed",
-              "GAME VER " + (check.xex_version.empty() ? std::string(kXexVersion) : check.xex_version) +
-                  " \xC2\xB7 TITLE ID " + title_id};
+      if (check.guest == GuestVersion::kTitleUpdate023 && !host.title_update) {
+        return {"Title Update not playable here", "Remove it to play GAME VER " + std::string(kXexVersion) + " \xC2\xB7 TITLE ID " + title_id};
+      }
+      return {check.guest == GuestVersion::kTitleUpdate023 ? "Ready to play \xC2\xB7 Title Update #1" : "Ready to play",
+              "GAME VER " + std::string(GuestExecutableVersion(check.guest)) + " \xC2\xB7 TITLE ID " + title_id};
     case GameFiles::kUpdateOnly:
       return {"Game package needed",
               "Title Update #1 installed \xC2\xB7 GAME VER target " + std::string(kTitleUpdateVersion)};
@@ -525,14 +544,13 @@ PlayCardText DescribePlayCard(const GameCheck& check) {
     case GameFiles::kMissing:
       break;
   }
-  return {"Game package needed", "Install the game package and its Title Update #1 to play."};
+  return {"Game package needed", "Install the game package to play. Title Update #1 is optional."};
 }
 
-GameButtons DescribeGameButtons(GameFiles state) {
+GameButtons DescribeGameButtons(const GameCheck& check, HostGuests host) {
   GameButtons buttons;
-  switch (state) {
+  switch (check.state) {
     case GameFiles::kReady:
-    case GameFiles::kUpdateMissing:
     case GameFiles::kUpdateUnsupported:
     case GameFiles::kUnsupported:
       buttons.game_installed = true;
@@ -541,18 +559,20 @@ GameButtons DescribeGameButtons(GameFiles state) {
     case GameFiles::kUpdateOnly:
       break;
   }
-  switch (state) {
+  switch (check.state) {
     case GameFiles::kReady:
+      buttons.update_installed = check.guest == GuestVersion::kTitleUpdate023;
+      break;
     case GameFiles::kUpdateOnly:
     case GameFiles::kUpdateUnsupported:
       buttons.update_installed = true;
       break;
     case GameFiles::kMissing:
-    case GameFiles::kUpdateMissing:
     case GameFiles::kUnsupported:
       break;
   }
   buttons.game_label = buttons.game_installed ? "Reinstall Game" : "Install Game";
+  buttons.update_available = buttons.update_installed || host.title_update;
   buttons.update_label = buttons.update_installed ? "Remove Title Update" : "Install Title Update";
   return buttons;
 }
@@ -641,11 +661,11 @@ InstallMessage DescribeInstall(InstallStatus status) {
       return {"Game files missing", "The package does not contain the game files this port needs."};
     case InstallStatus::kNotGamePackage:
       return {"Not the game package",
-              "This package is neither the game nor its Title Update. Install the Xbox Live Arcade package and its "
-              "Title Update."};
+              "This package is neither the game nor its Title Update. Install the Xbox Live Arcade game package, or "
+              "Title Update #1."};
     case InstallStatus::kWrongTitleUpdate:
       return {"Unsupported Title Update",
-              "This port requires Super Street Fighter II Turbo HD Remix Title Update #1, which updates the game to "
+              "This port supports Super Street Fighter II Turbo HD Remix Title Update #1, which updates the game to "
               "version 0.0.2.3."};
     case InstallStatus::kSelectedTitleUpdate:
       return {"This is a Title Update package", "Use Install Title Update to install it."};
@@ -672,8 +692,6 @@ InstallMessage DescribeInstalled(const InstallResult& result, GameFiles files) {
   switch (files) {
     case GameFiles::kReady:
       return {title, "Press Play to start the game."};
-    case GameFiles::kUpdateMissing:
-      return {title, "Now install the Title Update package the same way."};
     case GameFiles::kUpdateOnly:
     case GameFiles::kMissing:
       return {title, "Now install the Xbox Live Arcade game package the same way."};
@@ -700,10 +718,11 @@ InstallMessage DescribeRemoved(const RemoveResult& result) {
   if (!result.removed) {
     return {"Title Update #1 not installed", "There was nothing to remove."};
   }
-  if (result.files.state == GameFiles::kUpdateMissing) {
-    return {"Title Update #1 removed", "Click Install Title Update to reinstall it."};
+  if (result.files.state == GameFiles::kReady) {
+    return {"Title Update #1 removed",
+            std::string("The game is back to version ") + kXexVersion + ". Click Install Title Update to reinstall it."};
   }
-  return {"Title Update #1 removed", "Install the game package and its Title Update #1 to play."};
+  return {"Title Update #1 removed", "Install the game package to play."};
 }
 
 }  // namespace ssf2t

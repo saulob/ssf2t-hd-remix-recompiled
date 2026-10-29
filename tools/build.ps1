@@ -4,7 +4,8 @@
   Only -Run launches the game.
 
 .DESCRIPTION
-  First makes sure the patched ReXGlue runtime and GPU plugin in tools\rexglue match the baseline and
+  First runs codegen.ps1, which regenerates only a missing or out-of-date game image: the 0.0.1.3 image always, and the
+  0.0.2.3 image only when default.xexp is present. Without default.xexp the build holds the 0.0.1.3 game alone. Then makes sure the patched ReXGlue runtime and GPU plugin in tools\rexglue match the baseline and
   patches\rexglue-sdk, rebuilding them with build-patched-rexruntime.ps1 when they do not. After the build it
   makes sure the DLLs next to the executable are the ones in tools\rexglue, and it never launches without that.
 
@@ -19,6 +20,7 @@ param(
     [switch]$Clean,
     [switch]$Run,
     [switch]$NoRun,  # overrides -Run; building only is the default
+    [switch]$RequireTitleUpdate,  # a universal build: fail unless the 0.0.2.3 image is generated too
     [ValidateSet('Debug', 'RelWithDebInfo', 'Release')]
     [string]$Config = 'RelWithDebInfo',
     [string]$BuildDir,  # relative to the repository root; default: build
@@ -35,6 +37,7 @@ $UserData = Join-Path $BuildDir 'user_data'
 $Exe = Join-Path $BuildDir 'ssf2t_hd_remix.exe'
 $XexSha256 = '6E1C2F9ED7D1102A311A5F5626563527EDA5F85B2FBE8DB8405B866DED3F31EE'
 $XexpSha256 = 'A2E8E66B482C5D3A0D3A5D3F67A3CECB7A12CE1F6189196694FD3E765910606C'
+$GuestCodegen = Join-Path $PSScriptRoot 'codegen.ps1'
 
 $VsRoot = Get-VisualStudioRoot
 $VsDevCmd = Join-Path $VsRoot 'Common7\Tools\VsDevCmd.bat'
@@ -52,10 +55,23 @@ $Xex = Join-Path $Root 'game\extracted\default.xex'
 if (-not (Test-Path $Xex)) { throw "Missing $Xex (extract the XBLA package into game\extracted first)" }
 if ((Get-FileHash $Xex -Algorithm SHA256).Hash -ne $XexSha256) { throw "Unsupported $Xex (expected SHA-256 $XexSha256)" }
 $Xexp = Join-Path $Root 'game\extracted\default.xexp'
-if (-not (Test-Path $Xexp)) { throw "Missing $Xexp (extract the Title Update package into game\extracted with tools\extract_stfs.ps1)" }
-if ((Get-FileHash $Xexp -Algorithm SHA256).Hash -ne $XexpSha256) { throw "Unsupported $Xexp (expected SHA-256 $XexpSha256, Title Update 0.0.2.3)" }
+if (-not (Test-Path $Xexp)) {
+    Write-Host 'game\extracted: no Title Update, the game runs as version 0.0.1.3'
+} elseif ((Get-FileHash $Xexp -Algorithm SHA256).Hash -eq $XexpSha256) {
+    Write-Host 'game\extracted: Title Update #1 installed, the game runs as version 0.0.2.3'
+} else {
+    Write-Warning "$Xexp is not the supported Title Update (SHA-256 $XexpSha256); the launcher will not allow Play"
+}
+
+# Both recompiled guest images are compiled in; codegen runs here, before CMake and Ninja look at the files, and
+# regenerates only an image that is missing or out of date.
+& $GuestCodegen
+if ($LASTEXITCODE) { throw "codegen failed ($LASTEXITCODE)" }
 if (-not (Test-Path (Join-Path $SdkRoot 'lib\cmake\rexglue'))) { throw 'Missing tools\rexglue (run tools\codegen.ps1 first)' }
-if (-not (Test-Path (Join-Path $Root 'generated\default\sources.cmake'))) { throw 'Missing generated\default (run tools\codegen.ps1 first)' }
+$TitleUpdateImage = Test-Path (Join-Path $Root 'generated\tu\ssf2t-guest.stamp')
+if ($RequireTitleUpdate -and -not $TitleUpdateImage) { throw 'A universal build needs the 0.0.2.3 image: extract default.xexp into game\extracted and run tools\codegen.ps1' }
+$TitleUpdateSetting = if ($TitleUpdateImage) { 'ON' } else { 'OFF' }
+Write-Host "Game versions built in: 0.0.1.3$(if ($TitleUpdateImage) { ', 0.0.2.3' })"
 
 function Assert-RuntimeReady {
     $problems = @(Test-StagedRuntime $SdkRoot $BuildDir $Config)
@@ -107,10 +123,11 @@ try {
     $cache = Join-Path $BuildDir 'CMakeCache.txt'
     $configured = (Test-Path (Join-Path $BuildDir 'build.ninja')) -and (Test-Path $cache) -and
         (Select-String -Path $cache -SimpleMatch "CMAKE_BUILD_TYPE:STRING=$Config" -Quiet) -and
+        (Select-String -Path $cache -SimpleMatch "SSF2T_TITLE_UPDATE_IMAGE:STRING=$TitleUpdateSetting" -Quiet) -and
         (Select-String -Path $cache -SimpleMatch "CMAKE_CXX_COMPILER:FILEPATH=$($ClangXX -replace '\\', '/')" -Quiet)
     if (-not $configured) {
         Write-Host 'Configuring...'
-        & $CMake -S $Root -B $BuildDir -G Ninja "-DCMAKE_BUILD_TYPE=$Config" `
+        & $CMake -S $Root -B $BuildDir -G Ninja "-DCMAKE_BUILD_TYPE=$Config" "-DSSF2T_TITLE_UPDATE_IMAGE=$TitleUpdateSetting" `
             "-DCMAKE_CXX_COMPILER:FILEPATH=$ClangXX" "-DCMAKE_LINKER:FILEPATH=$LldLink" "-DCMAKE_MAKE_PROGRAM:FILEPATH=$Ninja"
         if ($LASTEXITCODE) { throw "CMake configure failed ($LASTEXITCODE)" }
     }

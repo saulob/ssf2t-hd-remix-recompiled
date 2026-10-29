@@ -41,7 +41,9 @@ std::string ReadSource(const char* name) {
   std::ifstream in(std::filesystem::path(SSF2T_SOURCE_DIR) / "src" / name, std::ios::binary);
   std::ostringstream text;
   text << in.rdbuf();
-  return text.str();
+  std::string source = text.str();
+  source.erase(std::remove(source.begin(), source.end(), '\r'), source.end());
+  return source;
 }
 
 void TestDefaultIsOriginal() {
@@ -106,21 +108,27 @@ void TestOrthoShiftKeepsWidth() {
   CHECK(OrthoShift(0.0f, 640.0f, 0.5f) == 0.0f);
 }
 
-void TestFillReadsGuestGlobals() {
+template <typename G>
+void CheckFillReadsGuestGlobals() {
   static uint8_t memory[0x440000] = {};
   uint8_t* base = memory - 0x83A00000u;
-  StoreBE32(base, kWidescreenMode, 1);
-  base[kWidescreenDisplayFlag] = 1;
-  base[kFightActiveFlag] = 1;
+  StoreBE32(base, G::kWidescreenMode, 1);
+  base[G::kWidescreenDisplayFlag] = 1;
+  base[G::kFightActiveFlag] = 1;
   StoreBE32(base, kWidescreenAspect, std::bit_cast<uint32_t>(kAspect));
-  StoreBE32(base, kFightCameraX, std::bit_cast<uint32_t>(0.5f));
-  CHECK(FightFillActive(true, base));
-  CHECK(!FightFillActive(false, base));
-  StoreBE32(base, kFightCameraX, 0x7FC00000);
-  CHECK(!FightFillActive(true, base));
-  StoreBE32(base, kFightCameraX, std::bit_cast<uint32_t>(0.5f));
-  base[kFightActiveFlag] = 0;
-  CHECK(!FightFillActive(true, base));
+  StoreBE32(base, G::kFightCameraX, std::bit_cast<uint32_t>(0.5f));
+  CHECK(FightFillActive<G>(true, base));
+  CHECK(!FightFillActive<G>(false, base));
+  StoreBE32(base, G::kFightCameraX, 0x7FC00000);
+  CHECK(!FightFillActive<G>(true, base));
+  StoreBE32(base, G::kFightCameraX, std::bit_cast<uint32_t>(0.5f));
+  base[G::kFightActiveFlag] = 0;
+  CHECK(!FightFillActive<G>(true, base));
+}
+
+void TestFillReadsGuestGlobals() {
+  CheckFillReadsGuestGlobals<TitleUpdate023Fight>();
+  CheckFillReadsGuestGlobals<Base013Fight>();
 }
 
 constexpr PreFightScene kSelectScene{true, false};
@@ -177,15 +185,16 @@ void TestFightAndPreFightNeverOverlap() {
   CHECK(!PreFightFillActive(true, 1, 1, 1, kAspect, kSelectScene));
 }
 
-void TestPreFightReadsGuestGlobals() {
+template <typename G>
+void CheckPreFightReadsGuestGlobals() {
   static uint8_t memory[0x440000] = {};
   uint8_t* base = memory - 0x83A00000u;
   constexpr uint32_t kRam = 0x83E20000;
-  StoreBE32(base, kWidescreenMode, 1);
-  base[kWidescreenDisplayFlag] = 1;
-  base[kFightActiveFlag] = 0;
+  StoreBE32(base, G::kWidescreenMode, 1);
+  base[G::kWidescreenDisplayFlag] = 1;
+  base[G::kFightActiveFlag] = 0;
   StoreBE32(base, kWidescreenAspect, std::bit_cast<uint32_t>(kAspect));
-  StoreBE32(base, kGameRam, kRam);
+  StoreBE32(base, G::kGameRam, kRam);
   base[kHdBackgroundEnabled] = 1;
 
   // The state recorded at runtime while Character Select was on screen.
@@ -193,51 +202,57 @@ void TestPreFightReadsGuestGlobals() {
   StoreBE16(base, kRam + kGameModeOffset, 0);
   StoreBE16(base, kRam + kMatchStepOffset, 0);
   StoreBE32(base, kHdBackground, kCharacterSelectBackground);
-  CHECK(PreFightFillActive(true, base));
-  CHECK(CharacterSelectFillActive(true, base));
-  CHECK(!PreFightFillActive(false, base));
-  CHECK(!CharacterSelectFillActive(false, base));
+  CHECK(PreFightFillActive<G>(true, base));
+  CHECK(CharacterSelectFillActive<G>(true, base));
+  CHECK(!PreFightFillActive<G>(false, base));
+  CHECK(!CharacterSelectFillActive<G>(false, base));
   StoreBE32(base, kHdBackground, kCharacterSelectBackgroundAlt);
-  CHECK(CharacterSelectFillActive(true, base));
+  CHECK(CharacterSelectFillActive<G>(true, base));
 
   StoreBE32(base, kHdBackground, 0);
-  CHECK(!PreFightFillActive(true, base));
+  CHECK(!PreFightFillActive<G>(true, base));
   StoreBE32(base, kHdBackground, 3);
-  CHECK(!PreFightFillActive(true, base));
+  CHECK(!PreFightFillActive<G>(true, base));
   StoreBE32(base, kHdBackground, kCharacterSelectBackground);
   base[kHdBackgroundEnabled] = 0;
-  CHECK(!PreFightFillActive(true, base));
+  CHECK(!PreFightFillActive<G>(true, base));
   base[kHdBackgroundEnabled] = 1;
 
   StoreBE32(base, kHdBackground, 3);
   StoreBE16(base, kRam + kGameModeOffset, 4);
   StoreBE16(base, kRam + kMatchStepOffset, 4);
-  CHECK(PreFightFillActive(true, base));
-  CHECK(!CharacterSelectFillActive(true, base));
+  CHECK(PreFightFillActive<G>(true, base));
+  CHECK(!CharacterSelectFillActive<G>(true, base));
   StoreBE32(base, kHdBackground, kCharacterSelectBackgroundAlt);
-  CHECK(PreFightFillActive(true, base));
-  CHECK(!CharacterSelectFillActive(true, base));
+  CHECK(PreFightFillActive<G>(true, base));
+  CHECK(!CharacterSelectFillActive<G>(true, base));
   StoreBE16(base, kRam + kMatchStepOffset, 10);
   StoreBE32(base, kHdBackground, 10);
-  CHECK(!PreFightFillActive(true, base));
+  CHECK(!PreFightFillActive<G>(true, base));
 
   StoreBE32(base, kHdBackground, kCharacterSelectBackground);
-  base[kFightActiveFlag] = 1;
-  CHECK(!PreFightFillActive(true, base));
-  CHECK(!CharacterSelectFillActive(true, base));
-  base[kFightActiveFlag] = 0;
-  StoreBE32(base, kGameRam, kRam + 0x10);
+  base[G::kFightActiveFlag] = 1;
+  CHECK(!PreFightFillActive<G>(true, base));
+  CHECK(!CharacterSelectFillActive<G>(true, base));
+  base[G::kFightActiveFlag] = 0;
+  StoreBE32(base, G::kGameRam, kRam + 0x10);
   StoreBE16(base, kRam + kMatchStepOffset, 4);
-  CHECK(CharacterSelectFillActive(true, base));
+  CHECK(CharacterSelectFillActive<G>(true, base));
   StoreBE32(base, kHdBackground, 3);
-  CHECK(!PreFightFillActive(true, base));
+  CHECK(!PreFightFillActive<G>(true, base));
 }
 
-void TestGameRamInPhysicalHeap() {
+void TestPreFightReadsGuestGlobals() {
+  CheckPreFightReadsGuestGlobals<TitleUpdate023Fight>();
+  CheckPreFightReadsGuestGlobals<Base013Fight>();
+}
+
+template <typename G>
+void CheckGameRamInPhysicalHeap() {
   constexpr uint32_t kPhysicalRam = 0xFC2A0000;
   CHECK(GuestHostOffset(kPhysicalRam) == kPhysicalHeapHostOffset);
   CHECK(GuestHostOffset(0xDFFFFFFF) == 0);
-  CHECK(GuestHostOffset(kGameRam) == 0);
+  CHECK(GuestHostOffset(G::kGameRam) == 0);
   CHECK(GuestHostOffset(kMatchStepTable) == 0);
 #ifdef _WIN32
   CHECK(kPhysicalHeapHostOffset == 0x1000);
@@ -252,6 +267,11 @@ void TestGameRamInPhysicalHeap() {
   if (kPhysicalHeapHostOffset != 0) {
     CHECK(!IsVersus(ReadMatchFlow(host)));
   }
+}
+
+void TestGameRamInPhysicalHeap() {
+  CheckGameRamInPhysicalHeap<TitleUpdate023Fight>();
+  CheckGameRamInPhysicalHeap<Base013Fight>();
 }
 
 constexpr float kInvalidAspects[] = {1.0f, 0.0f, -0.5f, 1.5f, std::numeric_limits<float>::quiet_NaN(),
@@ -911,24 +931,25 @@ void TestCharacterSelectWarpIsUnchanged() {
 }
 
 void TestCharacterSelectSidePanels() {
+  using G = TitleUpdate023Fight;
   constexpr uint32_t kLeft = 0x82174AAC, kRight = 0x82174C7C;
-  CHECK(kLeftSidePanelQuadReturn == kLeft && kRightSidePanelQuadReturn == kRight);
-  CHECK(SidePanelAt(kLeft) == SidePanel::kLeft && SidePanelAt(kRight) == SidePanel::kRight);
-  for (const uint32_t other : {kCharacterSelectQuadReturn, kScrollingQuadReturn, kLeft - 4, kRight + 4, 0u}) {
-    CHECK(SidePanelAt(other) == SidePanel::kNone);
-    CHECK(!SkipsSidePanel(true, true, other));
+  CHECK(G::kLeftSidePanelQuadReturn == kLeft && G::kRightSidePanelQuadReturn == kRight);
+  CHECK(SidePanelAt<G>(kLeft) == SidePanel::kLeft && SidePanelAt<G>(kRight) == SidePanel::kRight);
+  for (const uint32_t other : {G::kCharacterSelectQuadReturn, G::kScrollingQuadReturn, kLeft - 4, kRight + 4, 0u}) {
+    CHECK(SidePanelAt<G>(other) == SidePanel::kNone);
+    CHECK(!SkipsSidePanel<G>(true, true, other));
   }
   for (const uint32_t caller : {kLeft, kRight}) {
-    CHECK(SkipsSidePanel(SelectFill(true, 0, kSelectScene), true, caller));
-    CHECK(!SkipsSidePanel(SelectFill(false, 0, kSelectScene), true, caller));
-    CHECK(!SkipsSidePanel(SelectFill(true, 1, kSelectScene), true, caller));
-    CHECK(!SkipsSidePanel(SelectFill(true, 0, kVersusScene), true, caller));
-    CHECK(!SkipsSidePanel(SelectFill(true, 0, kNoScene), true, caller));
-    CHECK(!SkipsSidePanel(SelectFill(true, 0, PreFightScene{true, true}), true, caller));
-    CHECK(!SkipsSidePanel(SelectFill(true, 0, kSelectScene), false, caller));
-    CHECK(!SkipsSidePanel(CharacterSelectFillActive(true, 0, 1, 0, kAspect, kSelectScene), true, caller));
-    CHECK(!SkipsSidePanel(CharacterSelectFillActive(true, 1, 1, 0, 1.0f, kSelectScene), true, caller));
-    CHECK(!SkipsSidePanel(VersusFill(true, 0, kVersusScene), false, caller));
+    CHECK(SkipsSidePanel<G>(SelectFill(true, 0, kSelectScene), true, caller));
+    CHECK(!SkipsSidePanel<G>(SelectFill(false, 0, kSelectScene), true, caller));
+    CHECK(!SkipsSidePanel<G>(SelectFill(true, 1, kSelectScene), true, caller));
+    CHECK(!SkipsSidePanel<G>(SelectFill(true, 0, kVersusScene), true, caller));
+    CHECK(!SkipsSidePanel<G>(SelectFill(true, 0, kNoScene), true, caller));
+    CHECK(!SkipsSidePanel<G>(SelectFill(true, 0, PreFightScene{true, true}), true, caller));
+    CHECK(!SkipsSidePanel<G>(SelectFill(true, 0, kSelectScene), false, caller));
+    CHECK(!SkipsSidePanel<G>(CharacterSelectFillActive(true, 0, 1, 0, kAspect, kSelectScene), true, caller));
+    CHECK(!SkipsSidePanel<G>(CharacterSelectFillActive(true, 1, 1, 0, 1.0f, kSelectScene), true, caller));
+    CHECK(!SkipsSidePanel<G>(VersusFill(true, 0, kVersusScene), false, caller));
   }
   CHECK(VersusFill(true, 0, kVersusScene) && !SelectFill(true, 0, kVersusScene));
 }
@@ -940,7 +961,8 @@ void WriteFetch(uint8_t* base, uint32_t address, const TextureFetch& fetch) {
 }
 
 // The size comes from sampler 0 of the device only while that is the Character Select texture's fetch constant.
-void TestCharacterSelectTextureSize() {
+template <typename G>
+void CheckCharacterSelectTextureSize() {
   constexpr TextureFetch kFetch{0x00000002u | (48u << 22) | (1u << 31), 0x1A000054u, 1919u | (1023u << 13),
                                 0x00000D10u, 0u, 1u << 9};
   TextureSize size{};
@@ -956,24 +978,29 @@ void TestCharacterSelectTextureSize() {
   uint8_t* base = memory - 0x82000000u;
   constexpr uint32_t kHolder = 0x83F00000;
   constexpr uint32_t kDevice = 0x83F80000;
-  StoreBE32(base, kCharacterSelectTexture, kHolder);
-  StoreBE32(base, kDevicePointer, kDevice);
+  StoreBE32(base, G::kCharacterSelectTexture, kHolder);
+  StoreBE32(base, G::kDevicePointer, kDevice);
   StoreBE32(base, kDevice + kDeviceTextures, kHolder + kGameTextureD3D);
   WriteFetch(base, kDevice + kDeviceFetchConstants, kFetch);
   WriteFetch(base, kHolder + kGameTextureD3D + kD3DTextureFetch, kFetch);
   size = {};
-  CHECK(LoadCharacterSelectTextureSize(base, size) && size.width == 1920 && size.height == 1024);
+  CHECK(LoadCharacterSelectTextureSize<G>(base, size) && size.width == 1920 && size.height == 1024);
   StoreBE32(base, kDevice + kDeviceTextures, kHolder + 4);
-  CHECK(!LoadCharacterSelectTextureSize(base, size));
+  CHECK(!LoadCharacterSelectTextureSize<G>(base, size));
   StoreBE32(base, kDevice + kDeviceTextures, kHolder + kGameTextureD3D);
   StoreBE32(base, kHolder + kGameTextureD3D + kD3DTextureFetch + 8, 639u | (479u << 13));
-  CHECK(!LoadCharacterSelectTextureSize(base, size));
+  CHECK(!LoadCharacterSelectTextureSize<G>(base, size));
   StoreBE32(base, kHolder + kGameTextureD3D + kD3DTextureFetch + 8, kFetch[2]);
-  StoreBE32(base, kCharacterSelectTexture, 0);
-  CHECK(!LoadCharacterSelectTextureSize(base, size));
-  StoreBE32(base, kCharacterSelectTexture, kHolder);
-  StoreBE32(base, kDevicePointer, 0);
-  CHECK(!LoadCharacterSelectTextureSize(base, size));
+  StoreBE32(base, G::kCharacterSelectTexture, 0);
+  CHECK(!LoadCharacterSelectTextureSize<G>(base, size));
+  StoreBE32(base, G::kCharacterSelectTexture, kHolder);
+  StoreBE32(base, G::kDevicePointer, 0);
+  CHECK(!LoadCharacterSelectTextureSize<G>(base, size));
+}
+
+void TestCharacterSelectTextureSize() {
+  CheckCharacterSelectTextureSize<TitleUpdate023Fight>();
+  CheckCharacterSelectTextureSize<Base013Fight>();
 }
 
 void TestBackgroundExtensionsStayOffElsewhere() {
@@ -1038,8 +1065,9 @@ void TestBackgroundExtensionsStayOffElsewhere() {
 }
 
 // The hook's scene gates require the pre-fight fingerprints, so a changed image never gets extensions.
-void TestFingerprintFailureBlocksExtensions(uint8_t* base) {
-  for (const FightRenderFunction& function : kPreFightFunctions) {
+template <typename G>
+void CheckFingerprintFailureBlocksExtensions(uint8_t* base) {
+  for (const FightRenderFunction& function : G::kPreFightFunctions) {
     uint32_t offset = 0;
     for (const uint32_t word : function.words) {
       StoreBE32(base, function.address + offset, word);
@@ -1047,25 +1075,25 @@ void TestFingerprintFailureBlocksExtensions(uint8_t* base) {
     }
   }
   uint32_t offset = 0;
-  for (const uint32_t word : kFightMaskDrawerWords) {
-    StoreBE32(base, kFightMaskDrawer + offset, word);
+  for (const uint32_t word : G::kFightMaskDrawerWords) {
+    StoreBE32(base, G::kFightMaskDrawer + offset, word);
     offset += 4;
   }
   constexpr uint32_t kRam = 0x83E20000;
-  StoreBE32(base, kWidescreenMode, 1);
-  base[kWidescreenDisplayFlag] = 1;
-  base[kFightActiveFlag] = 0;
+  StoreBE32(base, G::kWidescreenMode, 1);
+  base[G::kWidescreenDisplayFlag] = 1;
+  base[G::kFightActiveFlag] = 0;
   StoreBE32(base, kWidescreenAspect, std::bit_cast<uint32_t>(kAspect));
-  StoreBE32(base, kGameRam, kRam);
+  StoreBE32(base, G::kGameRam, kRam);
   base[kHdBackgroundEnabled] = 1;
   StoreBE32(base, kHdBackground, kCharacterSelectBackground);
-  const auto select_gate = [&] { return PreFightPathMatches(base) && CharacterSelectFillActive(true, base); };
-  const auto versus_gate = [&] { return PreFightPathMatches(base) && VersusFillActive(true, base); };
+  const auto select_gate = [&] { return PreFightPathMatches<G>(base) && CharacterSelectFillActive<G>(true, base); };
+  const auto versus_gate = [&] { return PreFightPathMatches<G>(base) && VersusFillActive<G>(true, base); };
   BackgroundExtensions out{};
   CHECK(Extend(kSelectQuad, select_gate(), out));
-  StoreBE32(base, kQuadDraw + 4, 0);
+  StoreBE32(base, G::kQuadDraw + 4, 0);
   CHECK(!Extend(kSelectQuad, select_gate(), out));
-  StoreBE32(base, kQuadDraw + 4, kQuadDrawWords[1]);
+  StoreBE32(base, G::kQuadDraw + 4, G::kQuadDrawWords[1]);
 
   StoreBE16(base, kRam + kMainModeOffset, 2);
   StoreBE16(base, kRam + kGameModeOffset, 4);
@@ -1073,13 +1101,13 @@ void TestFingerprintFailureBlocksExtensions(uint8_t* base) {
   StoreBE32(base, kHdBackground, 3);
   CHECK(Extend(kVersusQuad, versus_gate(), out));
   CHECK(!Extend(kVersusQuad, select_gate(), out));
-  StoreBE32(base, kCharacterSelectQuadCall, 0);
+  StoreBE32(base, G::kCharacterSelectQuadCall, 0);
   CHECK(!Extend(kVersusQuad, versus_gate(), out));
-  StoreBE32(base, kCharacterSelectQuadCall, kCharacterSelectQuadCallWords[0]);
-  base[kFightActiveFlag] = 1;
+  StoreBE32(base, G::kCharacterSelectQuadCall, G::kCharacterSelectQuadCallWords[0]);
+  base[G::kFightActiveFlag] = 1;
   CHECK(!Extend(kVersusQuad, versus_gate(), out));
   CHECK(!Extend(kSelectQuad, select_gate(), out));
-  base[kFightActiveFlag] = 0;
+  base[G::kFightActiveFlag] = 0;
 }
 
 void TestSettingsAreIndependent() {
@@ -1102,27 +1130,6 @@ void TestWiring() {
   CHECK(launcher.find("{\"Original\", \"Fill 16:9\"}") != std::string::npos);
   CHECK(launcher.find("kLetterboxSetting, LetterboxFromSegment(i)") != std::string::npos);
   const std::string hook = ReadSource("fight_area_hook.cpp");
-  CHECK(hook.find("REX_HOOK_RAW(sub_821775B0)") != std::string::npos);
-  CHECK(hook.find("REX_HOOK_RAW(sub_823F5888)") != std::string::npos);
-  CHECK(hook.find("REX_HOOK_RAW(sub_823EC218)") != std::string::npos);
-  CHECK(hook.find("REX_HOOK_RAW(sub_82181AB8)") != std::string::npos);
-  CHECK(hook.find("REX_HOOK_RAW(sub_823EDC68)") != std::string::npos);
-  CHECK(hook.find("RenderPathMatches(base) && ssf2t::FightFillActive") != std::string::npos);
-  CHECK(hook.find("PreFightPathMatches(base) && ssf2t::PreFightFillActive") != std::string::npos);
-  CHECK(hook.find("const bool pre_fight = PreFightFillActive(base);") != std::string::npos);
-  CHECK(hook.find("if (FillActive(base) || pre_fight) {") != std::string::npos);
-  CHECK(hook.find("  if (g_scene_depth > 0 && g_in_projection_setup && FillActive(base)) {") != std::string::npos);
-  CHECK(hook.find("REX_HOOK_RAW(sub_823F7D48)") != std::string::npos);
-  CHECK(hook.find("REX_HOOK_RAW(sub_82174F40)") == std::string::npos);
-  CHECK(hook.find("REX_HOOK_RAW(sub_82174C90)") == std::string::npos);
-  CHECK(hook.find("if (caller == ssf2t::kCharacterSelectQuadReturn) {") != std::string::npos);
-  CHECK(hook.find("} else if (caller == ssf2t::kScrollingQuadReturn) {") != std::string::npos);
-  CHECK(hook.find("    DrawCharacterSelectBackground(ctx, base);") != std::string::npos);
-  CHECK(hook.find("    DrawVersusBackground(ctx, base);") != std::string::npos);
-  CHECK(hook.find("extend = VersusFillActive(base) && ssf2t::BackgroundExtensionPieces(center, aspect, extensions);") !=
-        std::string::npos);
-  const size_t select_start = hook.find("void DrawCharacterSelectBackground(");
-  const std::string select = hook.substr(select_start, hook.find("\n}\n", select_start) - select_start);
   const auto count = [](const std::string& text, std::string_view needle) {
     size_t n = 0;
     for (size_t at = text.find(needle); at != std::string::npos; at = text.find(needle, at + 1)) {
@@ -1130,39 +1137,96 @@ void TestWiring() {
     }
     return n;
   };
-  CHECK(count(select, "DrawStrip(") == 1 && count(select, "DrawStrip(ctx, base, strip);") == 1);
-  CHECK(select.find("  if (!fill) {\n    __imp__sub_823F7D48(ctx, base);\n    return;\n  }") != std::string::npos);
-  CHECK(count(select, "__imp__sub_823F7D48(ctx, base);") == 1);
-  CHECK(select.find("fill = CharacterSelectFillActive(base) && ssf2t::LoadCharacterSelectTextureSize(base, texture) "
+  const char* const symbols[] = {"base013_sub_82177590", "base013_sub_823F5118", "base013_sub_823EBB28",
+                                 "base013_sub_82181AA8", "base013_sub_823ED578", "base013_sub_823F75D8",
+                                 "tu023_sub_821775B0",    "tu023_sub_823F5888",    "tu023_sub_823EC218",
+                                 "tu023_sub_82181AB8",    "tu023_sub_823EDC68",    "tu023_sub_823F7D48"};
+  for (const char* symbol : symbols) {
+    CHECK(hook.find(std::string("REX_HOOK_RAW(") + symbol + ")") != std::string::npos);
+    CHECK(hook.find(std::string("REX_EXTERN(__imp__") + symbol + ")") != std::string::npos);
+    CHECK(hook.find(std::string("__imp__") + symbol) != std::string::npos);
+  }
+  CHECK(count(hook, "REX_HOOK_RAW(") == 12);
+  CHECK(hook.find("REX_HOOK_RAW(sub_") == std::string::npos);
+  CHECK(hook.find("__imp__sub_") == std::string::npos);
+  CHECK(hook.find("REX_HOOK_RAW(base013_sub_82174F20)") == std::string::npos);
+  CHECK(hook.find("REX_HOOK_RAW(tu023_sub_82174F40)") == std::string::npos);
+  CHECK(hook.find("REX_HOOK_RAW(tu023_sub_82174C90)") == std::string::npos);
+  CHECK(hook.find("REX_EXTERN(__imp__base013_sub_821738A0)") != std::string::npos);
+  CHECK(hook.find("REX_EXTERN(__imp__base013_sub_821738F0)") != std::string::npos);
+  CHECK(hook.find("REX_EXTERN(__imp__tu023_sub_821738C0)") != std::string::npos);
+  CHECK(hook.find("REX_EXTERN(__imp__tu023_sub_82173910)") != std::string::npos);
+
+  // Each tree's hooks call that tree's own originals and traits.
+  CHECK(hook.find("InScene(ctx, base, __imp__base013_sub_82181AA8)") != std::string::npos);
+  CHECK(hook.find("InScene(ctx, base, __imp__base013_sub_823ED578)") != std::string::npos);
+  CHECK(hook.find("InProjectionSetup(ctx, base, __imp__base013_sub_823EBB28)") != std::string::npos);
+  CHECK(hook.find("Ortho<ssf2t::Base013Fight>(ctx, base, __imp__base013_sub_823F5118)") != std::string::npos);
+  CHECK(hook.find("MaskDrawer<ssf2t::Base013Fight>(ctx, base, __imp__base013_sub_82177590)") != std::string::npos);
+  CHECK(hook.find("QuadDraw<ssf2t::Base013Fight>(") != std::string::npos);
+  CHECK(hook.find("{__imp__base013_sub_823F75D8, __imp__base013_sub_821738A0, __imp__base013_sub_821738F0}") !=
+        std::string::npos);
+  CHECK(hook.find("InScene(ctx, base, __imp__tu023_sub_82181AB8)") != std::string::npos);
+  CHECK(hook.find("InScene(ctx, base, __imp__tu023_sub_823EDC68)") != std::string::npos);
+  CHECK(hook.find("InProjectionSetup(ctx, base, __imp__tu023_sub_823EC218)") != std::string::npos);
+  CHECK(hook.find("Ortho<ssf2t::TitleUpdate023Fight>(ctx, base, __imp__tu023_sub_823F5888)") != std::string::npos);
+  CHECK(hook.find("MaskDrawer<ssf2t::TitleUpdate023Fight>(ctx, base, __imp__tu023_sub_821775B0)") != std::string::npos);
+  CHECK(hook.find("QuadDraw<ssf2t::TitleUpdate023Fight>(") != std::string::npos);
+  CHECK(hook.find("{__imp__tu023_sub_823F7D48, __imp__tu023_sub_821738C0, __imp__tu023_sub_82173910}") !=
+        std::string::npos);
+
+  // The feature state is one value shared by both trees.
+  CHECK(count(hook, "std::atomic<bool> g_fill") == 1);
+  CHECK(count(hook, "thread_local int g_scene_depth") == 1);
+  CHECK(count(hook, "thread_local bool g_in_projection_setup") == 1);
+  CHECK(hook.find("static const bool matches = ssf2t::FightRenderPathMatches<G>(base);") != std::string::npos);
+  CHECK(hook.find("static const bool matches = ssf2t::PreFightPathMatches<G>(base);") != std::string::npos);
+  CHECK(hook.find("static const bool matches = ssf2t::TextureBindPathMatches<G>(base);") != std::string::npos);
+  CHECK(hook.find("static const bool matches = ssf2t::SidePanelPathMatches<G>(base);") != std::string::npos);
+
+  CHECK(hook.find("RenderPathMatches<G>(base) && ssf2t::FightFillActive<G>") != std::string::npos);
+  CHECK(hook.find("PreFightPathMatches<G>(base) &&\n         ssf2t::PreFightFillActive<G>(true, base)") !=
+        std::string::npos);
+  CHECK(hook.find("const bool pre_fight = PreFightFillActive<G>(base);") != std::string::npos);
+  CHECK(hook.find("if (FillActive<G>(base) || pre_fight) {") != std::string::npos);
+  CHECK(hook.find("  if (g_scene_depth > 0 && g_in_projection_setup && FillActive<G>(base)) {") != std::string::npos);
+  CHECK(hook.find("if (caller == G::kCharacterSelectQuadReturn) {") != std::string::npos);
+  CHECK(hook.find("} else if (caller == G::kScrollingQuadReturn) {") != std::string::npos);
+  CHECK(hook.find("    DrawCharacterSelectBackground<G>(ctx, base, calls);") != std::string::npos);
+  CHECK(hook.find("    DrawVersusBackground<G>(ctx, base, calls);") != std::string::npos);
+  CHECK(hook.find("extend = VersusFillActive<G>(base) && ssf2t::BackgroundExtensionPieces(center, aspect, extensions);") !=
+        std::string::npos);
+  const size_t select_start = hook.find("void DrawCharacterSelectBackground(");
+  const std::string select = hook.substr(select_start, hook.find("\n}\n", select_start) - select_start);
+  CHECK(count(select, "DrawStrip(") == 1 && count(select, "DrawStrip(ctx, base, calls, strip);") == 1);
+  CHECK(select.find("  if (!fill) {\n    calls.quad_draw(ctx, base);\n    return;\n  }") != std::string::npos);
+  CHECK(count(select, "calls.quad_draw(ctx, base);") == 1);
+  CHECK(select.find("fill = CharacterSelectFillActive<G>(base) && ssf2t::LoadCharacterSelectTextureSize<G>(base, texture) "
                     "&&\n           ssf2t::CharacterSelectWarp(original, aspect, texture, mesh);") !=
         std::string::npos);
-  CHECK(select.find("if (IsQuadCall(ctx) && TextureBindPathMatches(base)) {") != std::string::npos);
+  CHECK(select.find("if (IsQuadCall(ctx) && TextureBindPathMatches<G>(base)) {") != std::string::npos);
   CHECK(hook.find("WriteVertices(base, address, vertices);") != std::string::npos);
   CHECK(hook.find("WriteVertices(base, ctx.r5") == std::string::npos);
   CHECK(hook.find("ssf2t::GuestHostOffset(address)") != std::string::npos);
-  size_t unhooked_draws = 0;
-  for (size_t at = hook.find("__imp__sub_823F7D48(ctx, base);"); at != std::string::npos;
-       at = hook.find("__imp__sub_823F7D48(ctx, base);", at + 1)) {
-    ++unhooked_draws;
-  }
-  CHECK(unhooked_draws == 5);
-  CHECK(hook.find("  } else if (ssf2t::SidePanelAt(caller) != ssf2t::SidePanel::kNone) {\n"
-                  "    DrawCharacterSelectSidePanel(ctx, base, caller);") != std::string::npos);
+  CHECK(count(hook, "calls.quad_draw(ctx, base);") == 5);
+  CHECK(hook.find("  } else if (ssf2t::SidePanelAt<G>(caller) != ssf2t::SidePanel::kNone) {\n"
+                  "    DrawCharacterSelectSidePanel<G>(ctx, base, calls, caller);") != std::string::npos);
   const size_t panel_start = hook.find("void DrawCharacterSelectSidePanel(");
   const std::string panel = hook.substr(panel_start, hook.find("\n}\n", panel_start) - panel_start);
   CHECK(panel_start != std::string::npos);
-  CHECK(panel.find("const bool skip = IsQuadCall(ctx) &&\n                    ssf2t::SkipsSidePanel("
-                   "CharacterSelectFillActive(base), SidePanelPathMatches(base), caller);") != std::string::npos);
-  CHECK(count(panel, "__imp__sub_823F7D48(ctx, base);") == 1 && count(panel, "if (!skip) {") == 1);
+  CHECK(panel.find("ssf2t::SkipsSidePanel<G>(CharacterSelectFillActive<G>(base),") != std::string::npos);
+  CHECK(panel.find("SidePanelPathMatches<G>(base), caller);") != std::string::npos);
+  CHECK(count(panel, "calls.quad_draw(ctx, base);") == 1 && count(panel, "if (!skip) {") == 1);
   CHECK(count(panel, "DrawStrip(") == 0 && count(panel, "Versus") == 0);
-  CHECK(hook.find("\n  sub_823F7D48(ctx, base);") == std::string::npos);
-  const size_t extension_draw = hook.find("  __imp__sub_823F7D48(ctx, base);\n  if (!extend) {");
+  CHECK(hook.find("\n  sub_") == std::string::npos);
+  const size_t extension_draw = hook.find("  calls.quad_draw(ctx, base);\n  if (!extend) {");
   CHECK(extension_draw != std::string::npos);
-  CHECK(extension_draw < hook.find("    DrawStrip(ctx, base, extensions.pieces[i].quad);"));
+  CHECK(extension_draw < hook.find("    DrawStrip(ctx, base, calls, extensions.pieces[i].quad);"));
   CHECK(hook.find("ssf2t::BackgroundExtensionPieces(center, aspect, extensions)") != std::string::npos);
-  CHECK(hook.find("PreFightPathMatches(base) &&\n         ssf2t::CharacterSelectFillActive(true, base)") !=
+  CHECK(hook.find("PreFightPathMatches<G>(base) &&\n         ssf2t::CharacterSelectFillActive<G>(true, base)") !=
         std::string::npos);
-  CHECK(hook.find("PreFightPathMatches(base) && ssf2t::VersusFillActive(true, base)") != std::string::npos);
+  CHECK(hook.find("PreFightPathMatches<G>(base) &&\n         ssf2t::VersusFillActive<G>(true, base)") !=
+        std::string::npos);
   CHECK(hook.find("kBackgroundRect") == std::string::npos);
   CHECK(hook.find("sub_823F5948") == std::string::npos);
   size_t f1_writes = 0;
@@ -1172,15 +1236,18 @@ void TestWiring() {
   CHECK(f1_writes == 1);
   const std::string header = ReadSource("fight_area.h");
   CHECK(header.find("flow = ReadMatchFlow(GuestHost(base, ram));") != std::string::npos);
-  const size_t fight_block = hook.find("  if (g_scene_depth > 0 && g_in_projection_setup && FillActive(base)) {");
+  const size_t fight_block = hook.find("  if (g_scene_depth > 0 && g_in_projection_setup && FillActive<G>(base)) {");
   const std::string fight_ortho = hook.substr(fight_block, hook.find("\n  }", fight_block) - fight_block);
   CHECK(fight_block != std::string::npos);
   CHECK(fight_ortho.find("ctx.f3") == std::string::npos && fight_ortho.find("ctx.f4") == std::string::npos);
   CHECK(fight_ortho.find("ssf2t::OrthoShift(left, right,") != std::string::npos);
-  CHECK(kFightMaskDrawer == 0x821775B0);
+  CHECK(fight_ortho.find("G::kFightCameraX") != std::string::npos);
+  CHECK(Base013Fight::kFightMaskDrawer == 0x82177590);
+  CHECK(TitleUpdate023Fight::kFightMaskDrawer == 0x821775B0);
 }
 
-void TestRenderPathFingerprints() {
+template <typename G>
+void CheckRenderPathFingerprints() {
   static uint8_t memory[0x2000000] = {};
   uint8_t* base = memory - 0x82000000u;
   auto write = [&](uint32_t address, std::span<const uint32_t> words) {
@@ -1190,78 +1257,325 @@ void TestRenderPathFingerprints() {
       offset += 4;
     }
   };
-  write(kFightMaskDrawer, kFightMaskDrawerWords);
-  for (const FightRenderFunction& function : kFightRenderFunctions) {
+  write(G::kFightMaskDrawer, G::kFightMaskDrawerWords);
+  for (const FightRenderFunction& function : G::kFightRenderFunctions) {
     write(function.address, function.words);
   }
-  CHECK(FightRenderPathMatches(base));
-  for (const FightRenderFunction& function : kFightRenderFunctions) {
+  CHECK(FightRenderPathMatches<G>(base));
+  for (const FightRenderFunction& function : G::kFightRenderFunctions) {
     StoreBE32(base, function.address + 4, 0);
-    CHECK(!FightRenderPathMatches(base));
+    CHECK(!FightRenderPathMatches<G>(base));
     StoreBE32(base, function.address + 4, function.words[1]);
   }
-  CHECK(FightRenderPathMatches(base));
-  CHECK(!PreFightPathMatches(base));
-  for (const FightRenderFunction& function : kPreFightFunctions) {
+  CHECK(FightRenderPathMatches<G>(base));
+  CHECK(!PreFightPathMatches<G>(base));
+  for (const FightRenderFunction& function : G::kPreFightFunctions) {
     write(function.address, function.words);
   }
-  CHECK(PreFightPathMatches(base));
-  for (const FightRenderFunction& function : kPreFightFunctions) {
+  CHECK(PreFightPathMatches<G>(base));
+  for (const FightRenderFunction& function : G::kPreFightFunctions) {
     const uint32_t last = function.address + 4 * uint32_t(function.words.size() - 1);
     StoreBE32(base, last, 0);
-    CHECK(!PreFightPathMatches(base));
-    CHECK(FightRenderPathMatches(base));
+    CHECK(!PreFightPathMatches<G>(base));
+    CHECK(FightRenderPathMatches<G>(base));
     StoreBE32(base, last, function.words.back());
   }
-  CHECK(PreFightPathMatches(base));
-  CHECK(!TextureBindPathMatches(base));
-  for (const FightRenderFunction& function : kTextureBindFunctions) {
+  CHECK(PreFightPathMatches<G>(base));
+  CHECK(!TextureBindPathMatches<G>(base));
+  for (const FightRenderFunction& function : G::kTextureBindFunctions) {
     write(function.address, function.words);
   }
-  CHECK(TextureBindPathMatches(base));
-  for (const FightRenderFunction& function : kTextureBindFunctions) {
+  CHECK(TextureBindPathMatches<G>(base));
+  for (const FightRenderFunction& function : G::kTextureBindFunctions) {
     const uint32_t last = function.address + 4 * uint32_t(function.words.size() - 1);
     StoreBE32(base, last, 0);
-    CHECK(!TextureBindPathMatches(base));
+    CHECK(!TextureBindPathMatches<G>(base));
     StoreBE32(base, last, function.words.back());
   }
-  CHECK(TextureBindPathMatches(base));
-  CHECK(!SidePanelPathMatches(base));
-  for (const FightRenderFunction& function : kSidePanelFunctions) {
+  CHECK(TextureBindPathMatches<G>(base));
+  CHECK(!SidePanelPathMatches<G>(base));
+  for (const FightRenderFunction& function : G::kSidePanelFunctions) {
     write(function.address, function.words);
   }
-  CHECK(SidePanelPathMatches(base));
-  for (const FightRenderFunction& function : kSidePanelFunctions) {
+  CHECK(SidePanelPathMatches<G>(base));
+  for (const FightRenderFunction& function : G::kSidePanelFunctions) {
     const uint32_t last = function.address + 4 * uint32_t(function.words.size() - 1);
     StoreBE32(base, last, 0);
-    CHECK(!SidePanelPathMatches(base));
-    CHECK(PreFightPathMatches(base) && TextureBindPathMatches(base));
+    CHECK(!SidePanelPathMatches<G>(base));
+    CHECK(PreFightPathMatches<G>(base) && TextureBindPathMatches<G>(base));
     StoreBE32(base, last, function.words.back());
   }
-  CHECK(SidePanelPathMatches(base));
-  StoreBE32(base, kFightMaskDrawer, 0);
-  CHECK(!FightRenderPathMatches(base));
-  CHECK(!PreFightPathMatches(base));
-  TestFingerprintFailureBlocksExtensions(base);
+  CHECK(SidePanelPathMatches<G>(base));
+  StoreBE32(base, G::kFightMaskDrawer, 0);
+  CHECK(!FightRenderPathMatches<G>(base));
+  CHECK(!PreFightPathMatches<G>(base));
+  CheckFingerprintFailureBlocksExtensions<G>(base);
 }
 
-// The decrypted image is not in the repository; the check runs only where it was extracted.
-void TestHookTargetsInRealImage() {
-  const std::filesystem::path image = std::filesystem::path(SSF2T_SOURCE_DIR) / "game" / "analysis" / "default.image.bin";
+void TestRenderPathFingerprints() {
+  CheckRenderPathFingerprints<TitleUpdate023Fight>();
+  CheckRenderPathFingerprints<Base013Fight>();
+}
+
+template <typename G>
+void WriteSignatures(uint8_t* base) {
+  const auto write = [&](uint32_t address, std::span<const uint32_t> words) {
+    uint32_t offset = 0;
+    for (const uint32_t word : words) {
+      StoreBE32(base, address + offset, word);
+      offset += 4;
+    }
+  };
+  write(G::kFightMaskDrawer, G::kFightMaskDrawerWords);
+  for (const FightRenderFunction& function : G::kFightRenderFunctions) {
+    write(function.address, function.words);
+  }
+  for (const FightRenderFunction& function : G::kPreFightFunctions) {
+    write(function.address, function.words);
+  }
+  for (const FightRenderFunction& function : G::kTextureBindFunctions) {
+    write(function.address, function.words);
+  }
+  for (const FightRenderFunction& function : G::kSidePanelFunctions) {
+    write(function.address, function.words);
+  }
+}
+
+template <typename G>
+bool AllPathsMatch(const uint8_t* base) {
+  return FightRenderPathMatches<G>(base) && PreFightPathMatches<G>(base) && TextureBindPathMatches<G>(base) &&
+         SidePanelPathMatches<G>(base);
+}
+
+template <typename G>
+bool AnyPathMatches(const uint8_t* base) {
+  return FightRenderPathMatches<G>(base) || PreFightPathMatches<G>(base) || TextureBindPathMatches<G>(base) ||
+         SidePanelPathMatches<G>(base);
+}
+
+void TestFunctionMapBetweenVersions() {
+  using B = Base013Fight;
+  using T = TitleUpdate023Fight;
+  struct Mapping {
+    uint32_t base_expected;
+    uint32_t tu_expected;
+    uint32_t base_actual;
+    uint32_t tu_actual;
+  };
+  const Mapping map[] = {
+      {0x821738A0, 0x821738C0, B::kVertexReserve, T::kVertexReserve},
+      {0x821738F0, 0x82173910, B::kVertexCommit, T::kVertexCommit},
+      {0x82177590, 0x821775B0, B::kFightMaskDrawer, T::kFightMaskDrawer},
+      {0x82181AA8, 0x82181AB8, B::kSceneDraw, T::kSceneDraw},
+      {0x823EBB28, 0x823EC218, B::kProjectionSetup, T::kProjectionSetup},
+      {0x823ED578, 0x823EDC68, B::kFightRender, T::kFightRender},
+      {0x823F5118, 0x823F5888, B::kOrtho, T::kOrtho},
+      {0x823F75D8, 0x823F7D48, B::kQuadDraw, T::kQuadDraw},
+  };
+  for (const Mapping& m : map) {
+    CHECK(m.base_actual == m.base_expected);
+    CHECK(m.tu_actual == m.tu_expected);
+    CHECK(m.base_actual != m.tu_actual);
+  }
+  CHECK(B::kFightRenderFunctions[0].address == B::kSceneDraw);
+  CHECK(B::kFightRenderFunctions[1].address == B::kProjectionSetup);
+  CHECK(B::kFightRenderFunctions[2].address == B::kOrtho);
+  CHECK(B::kFightRenderFunctions[3].address == B::kFightRender);
+  CHECK(T::kFightRenderFunctions[0].address == T::kSceneDraw);
+  CHECK(T::kFightRenderFunctions[3].address == T::kFightRender);
+}
+
+void TestVersionDataAddressesAreSeparate() {
+  using B = Base013Fight;
+  using T = TitleUpdate023Fight;
+  CHECK(B::kWidescreenDisplayFlag == 0x83C1A828 && T::kWidescreenDisplayFlag == 0x83C1A8A8);
+  CHECK(B::kWidescreenMode == 0x83E37F68 && T::kWidescreenMode == 0x83E38480);
+  CHECK(B::kFightActiveFlag == 0x83E09DB0 && T::kFightActiveFlag == 0x83E0A2C8);
+  CHECK(B::kFightCameraX == 0x83E384D8 && T::kFightCameraX == 0x83E389F8);
+  CHECK(B::kGameRam == 0x83E09CC0 && T::kGameRam == 0x83E0A1D8);
+  CHECK(B::kCharacterSelectTexture == 0x83BE5AB0 && T::kCharacterSelectTexture == 0x83BE5B30);
+  CHECK(B::kDevicePointer == 0x83E5DA18 && T::kDevicePointer == 0x83E5DF38);
+  CHECK(B::kHdBackgroundDraw == 0x8217A088 && T::kHdBackgroundDraw == 0x8217A0A8);
+  CHECK(B::kCharacterSelectBackgroundDraw == 0x82174F20 && T::kCharacterSelectBackgroundDraw == 0x82174F40);
+  CHECK(B::kScrollingBackgroundDraw == 0x82174C70 && T::kScrollingBackgroundDraw == 0x82174C90);
+  CHECK(B::kCharacterSelectQuadCall == 0x821750CC && T::kCharacterSelectQuadCall == 0x821750EC);
+  CHECK(B::kScrollingQuadCall == 0x82174EFC && T::kScrollingQuadCall == 0x82174F1C);
+  CHECK(B::kCharacterSelectQuadReturn == 0x821750DC && T::kCharacterSelectQuadReturn == 0x821750FC);
+  CHECK(B::kScrollingQuadReturn == 0x82174F0C && T::kScrollingQuadReturn == 0x82174F2C);
+  CHECK(B::kSidePanelDraw == 0x82174870 && T::kSidePanelDraw == 0x82174890);
+  CHECK(B::kLeftSidePanelQuadReturn == 0x82174A8C && T::kLeftSidePanelQuadReturn == 0x82174AAC);
+  CHECK(B::kRightSidePanelQuadReturn == 0x82174C5C && T::kRightSidePanelQuadReturn == 0x82174C7C);
+  CHECK(B::kMainModeDispatch == 0x8223DD58 && T::kMainModeDispatch == 0x8223DE80);
+  CHECK(B::kGameModeDispatch == 0x8223DCF0 && T::kGameModeDispatch == 0x8223DE18);
+  CHECK(B::kMatchStepDispatch == 0x8223DC30 && T::kMatchStepDispatch == 0x8223DD58);
+  CHECK(B::kTextureHeader == 0x82173998 && T::kTextureHeader == 0x821739B8);
+  CHECK(B::kBindSampler0 == 0x823F8550 && T::kBindSampler0 == 0x823F8CC0);
+  CHECK(B::kBindTexture == 0x823F5AB8 && T::kBindTexture == 0x823F6228);
+  CHECK(B::kXdkSetTexture == 0x839A6E68 && T::kXdkSetTexture == 0x839A75C8);
+
+  // The mode tables hold the dispatchers of their own version.
+  CHECK(B::kMainModeTableWords[1] == B::kGameModeDispatch && T::kMainModeTableWords[1] == T::kGameModeDispatch);
+  CHECK(B::kGameModeTableWords[2] == B::kMatchStepDispatch && T::kGameModeTableWords[2] == T::kMatchStepDispatch);
+  CHECK(B::kMainModeTableWords[0] == 0x82238EA0 && T::kMainModeTableWords[0] == 0x82238FC8);
+
+  // Shared by both versions.
+  CHECK(kWidescreenAspect == 0x83A21350);
+  CHECK(kHdBackground == 0x83A2130C && kHdBackgroundEnabled == 0x83A2127F);
+  CHECK(kMainModeTable == 0x83A2D040 && kGameModeTable == 0x83A2D01C && kMatchStepTable == 0x83A2CFC8);
+}
+
+template <typename A, typename B>
+bool SameWords(const A& a, const B& b) {
+  return std::size(a) == std::size(b) && std::equal(std::begin(a), std::end(a), std::begin(b));
+}
+
+void TestVersionSignaturesDiffer() {
+  using B = Base013Fight;
+  using T = TitleUpdate023Fight;
+  CHECK(!SameWords(B::kFightMaskDrawerWords, T::kFightMaskDrawerWords));
+  CHECK(!SameWords(B::kSceneDrawWords, T::kSceneDrawWords));
+  CHECK(!SameWords(B::kProjectionSetupWords, T::kProjectionSetupWords));
+  CHECK(!SameWords(B::kFightRenderWords, T::kFightRenderWords));
+  CHECK(!SameWords(B::kMainModeDispatchWords, T::kMainModeDispatchWords));
+  CHECK(!SameWords(B::kGameModeDispatchWords, T::kGameModeDispatchWords));
+  CHECK(!SameWords(B::kMatchStepDispatchWords, T::kMatchStepDispatchWords));
+  CHECK(!SameWords(B::kMainModeTableWords, T::kMainModeTableWords));
+  CHECK(!SameWords(B::kGameModeTableWords, T::kGameModeTableWords));
+  CHECK(!SameWords(B::kMatchStepTableWords, T::kMatchStepTableWords));
+  CHECK(!SameWords(B::kQuadDrawWords, T::kQuadDrawWords));
+  CHECK(!SameWords(B::kCharacterSelectBackgroundDrawWords, T::kCharacterSelectBackgroundDrawWords));
+  CHECK(!SameWords(B::kScrollingBackgroundDrawWords, T::kScrollingBackgroundDrawWords));
+  CHECK(!SameWords(B::kCharacterSelectQuadCallWords, T::kCharacterSelectQuadCallWords));
+  CHECK(!SameWords(B::kScrollingQuadCallWords, T::kScrollingQuadCallWords));
+  CHECK(!SameWords(B::kLeftSidePanelQuadCallWords, T::kLeftSidePanelQuadCallWords));
+  CHECK(!SameWords(B::kRightSidePanelQuadCallWords, T::kRightSidePanelQuadCallWords));
+  CHECK(!SameWords(B::kVertexCommitWords, T::kVertexCommitWords));
+  CHECK(!SameWords(B::kBindTextureWords, T::kBindTextureWords));
+  CHECK(B::kQuadDrawWords[1] == 0x496085D1 && T::kQuadDrawWords[1] == 0x496085C1);
+  CHECK(B::kVertexCommitWords[3] == 0x8169D8FC && T::kVertexCommitWords[3] == 0x8169DE1C);
+  CHECK(B::kFightMaskDrawerWords[8] == 0x896BA828 && T::kFightMaskDrawerWords[8] == 0x896BA8A8);
+
+  // Signatures that are identical in both versions are the same tables.
+  CHECK(SameWords(B::kVertexReserveWords, T::kVertexReserveWords));
+  CHECK(B::kFightRenderFunctions[2].words.data() == T::kFightRenderFunctions[2].words.data());
+  CHECK(B::kSidePanelFunctions[0].words.data() == T::kSidePanelFunctions[0].words.data());
+  CHECK(B::kTextureBindFunctions[3].words.data() == T::kTextureBindFunctions[3].words.data());
+}
+
+void TestSignaturesDoNotCrossVersions() {
+  static uint8_t memory[0x2000000] = {};
+  uint8_t* base = memory - 0x82000000u;
+  std::fill(std::begin(memory), std::end(memory), uint8_t(0));
+  CHECK(!AnyPathMatches<Base013Fight>(base) && !AnyPathMatches<TitleUpdate023Fight>(base));
+
+  WriteSignatures<Base013Fight>(base);
+  CHECK(AllPathsMatch<Base013Fight>(base));
+  CHECK(!AnyPathMatches<TitleUpdate023Fight>(base));
+  CHECK(IsFightMaskDrawer<Base013Fight>(base + Base013Fight::kFightMaskDrawer));
+  CHECK(!IsFightMaskDrawer<TitleUpdate023Fight>(base + Base013Fight::kFightMaskDrawer));
+  CHECK(!IsFightMaskDrawer<TitleUpdate023Fight>(base + TitleUpdate023Fight::kFightMaskDrawer));
+
+  std::fill(std::begin(memory), std::end(memory), uint8_t(0));
+  WriteSignatures<TitleUpdate023Fight>(base);
+  CHECK(AllPathsMatch<TitleUpdate023Fight>(base));
+  CHECK(!AnyPathMatches<Base013Fight>(base));
+  CHECK(!IsFightMaskDrawer<Base013Fight>(base + TitleUpdate023Fight::kFightMaskDrawer));
+
+  // One version's code at the other version's addresses is no match either.
+  std::fill(std::begin(memory), std::end(memory), uint8_t(0));
+  uint32_t offset = 0;
+  for (const uint32_t word : Base013Fight::kFightMaskDrawerWords) {
+    StoreBE32(base, TitleUpdate023Fight::kFightMaskDrawer + offset, word);
+    offset += 4;
+  }
+  CHECK(!IsFightMaskDrawer<TitleUpdate023Fight>(base + TitleUpdate023Fight::kFightMaskDrawer));
+  CHECK(!FightRenderPathMatches<TitleUpdate023Fight>(base));
+}
+
+void TestVersionsReadTheirOwnGuestGlobals() {
+  static uint8_t memory[0x440000] = {};
+  uint8_t* base = memory - 0x83A00000u;
+  const auto clear = [&] { std::fill(std::begin(memory), std::end(memory), uint8_t(0)); };
+  const auto arm = [&]<typename G>() {
+    StoreBE32(base, G::kWidescreenMode, 1);
+    base[G::kWidescreenDisplayFlag] = 1;
+    base[G::kFightActiveFlag] = 1;
+    StoreBE32(base, kWidescreenAspect, std::bit_cast<uint32_t>(kAspect));
+    StoreBE32(base, G::kFightCameraX, std::bit_cast<uint32_t>(0.5f));
+  };
+  clear();
+  arm.template operator()<Base013Fight>();
+  CHECK(FightFillActive<Base013Fight>(true, base));
+  CHECK(!FightFillActive<TitleUpdate023Fight>(true, base));
+  clear();
+  arm.template operator()<TitleUpdate023Fight>();
+  CHECK(FightFillActive<TitleUpdate023Fight>(true, base));
+  CHECK(!FightFillActive<Base013Fight>(true, base));
+
+  // Outside fights the match flow is read from each version's own game RAM pointer.
+  constexpr uint32_t kRam = 0x83E20000;
+  const auto arm_menu = [&]<typename G>() {
+    StoreBE32(base, G::kWidescreenMode, 1);
+    base[G::kWidescreenDisplayFlag] = 1;
+    StoreBE32(base, kWidescreenAspect, std::bit_cast<uint32_t>(kAspect));
+    StoreBE32(base, G::kGameRam, kRam);
+    StoreBE16(base, kRam + kMainModeOffset, 2);
+    StoreBE16(base, kRam + kGameModeOffset, 4);
+    StoreBE16(base, kRam + kMatchStepOffset, 4);
+  };
+  clear();
+  arm_menu.template operator()<Base013Fight>();
+  CHECK(VersusFillActive<Base013Fight>(true, base));
+  CHECK(!VersusFillActive<TitleUpdate023Fight>(true, base));
+  clear();
+  arm_menu.template operator()<TitleUpdate023Fight>();
+  CHECK(VersusFillActive<TitleUpdate023Fight>(true, base));
+  CHECK(!VersusFillActive<Base013Fight>(true, base));
+}
+
+void TestSidePanelCallersPerVersion() {
+  using B = Base013Fight;
+  using T = TitleUpdate023Fight;
+  CHECK(SidePanelAt<B>(B::kLeftSidePanelQuadReturn) == SidePanel::kLeft);
+  CHECK(SidePanelAt<B>(B::kRightSidePanelQuadReturn) == SidePanel::kRight);
+  CHECK(SidePanelAt<T>(T::kLeftSidePanelQuadReturn) == SidePanel::kLeft);
+  CHECK(SidePanelAt<T>(T::kRightSidePanelQuadReturn) == SidePanel::kRight);
+  CHECK(SidePanelAt<B>(T::kLeftSidePanelQuadReturn) == SidePanel::kNone);
+  CHECK(SidePanelAt<T>(B::kRightSidePanelQuadReturn) == SidePanel::kNone);
+  CHECK(SkipsSidePanel<B>(true, true, B::kLeftSidePanelQuadReturn));
+  CHECK(!SkipsSidePanel<B>(true, true, T::kLeftSidePanelQuadReturn));
+  CHECK(!SkipsSidePanel<T>(true, true, B::kRightSidePanelQuadReturn));
+  CHECK(!SkipsSidePanel<B>(true, true, B::kCharacterSelectQuadReturn));
+}
+
+template <typename G, typename Other>
+void CheckImage(const char* name) {
+  const std::filesystem::path image = std::filesystem::path(SSF2T_SOURCE_DIR) / "game" / "analysis" / name;
   std::ifstream in(image, std::ios::binary);
   if (!in) {
-    std::printf("  skipped: no decrypted image\n");
+    std::printf("  skipped: no decrypted image %s\n", name);
     return;
   }
   constexpr uint32_t kImageBase = 0x82000000;
   const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
   CHECK(bytes.size() > 0x1400000);
-  CHECK(FightRenderPathMatches(bytes.data() - kImageBase));
-  CHECK(bytes.size() > kMainModeTable + sizeof(kMainModeTableWords) - kImageBase);
-  CHECK(PreFightPathMatches(bytes.data() - kImageBase));
-  CHECK(bytes.size() > kXdkSetTexture + sizeof(kXdkSetTextureWords) - kImageBase);
-  CHECK(TextureBindPathMatches(bytes.data() - kImageBase));
-  CHECK(SidePanelPathMatches(bytes.data() - kImageBase));
+  CHECK(bytes.size() > kMainModeTable + sizeof(G::kMainModeTableWords) - kImageBase);
+  CHECK(bytes.size() > G::kXdkSetTexture + sizeof(kXdkSetTextureWords) - kImageBase);
+  const uint8_t* base = bytes.data() - kImageBase;
+  CHECK(FightRenderPathMatches<G>(base));
+  CHECK(PreFightPathMatches<G>(base));
+  CHECK(TextureBindPathMatches<G>(base));
+  CHECK(SidePanelPathMatches<G>(base));
+  CHECK(!FightRenderPathMatches<Other>(base));
+  CHECK(!PreFightPathMatches<Other>(base));
+  CHECK(!TextureBindPathMatches<Other>(base));
+  CHECK(!SidePanelPathMatches<Other>(base));
+}
+
+// The decrypted images are not in the repository; the checks run only where they were extracted.
+void TestHookTargetsInRealImage() {
+  CheckImage<TitleUpdate023Fight, Base013Fight>("default.image.bin");
+  CheckImage<Base013Fight, TitleUpdate023Fight>("default-0.0.1.3.image.bin");
 }
 
 }  // namespace
@@ -1298,6 +1612,12 @@ int main() {
   TestSettingsAreIndependent();
   TestWiring();
   TestRenderPathFingerprints();
+  TestFunctionMapBetweenVersions();
+  TestVersionDataAddressesAreSeparate();
+  TestVersionSignaturesDiffer();
+  TestSignaturesDoNotCrossVersions();
+  TestVersionsReadTheirOwnGuestGlobals();
+  TestSidePanelCallersPerVersion();
   TestHookTargetsInRealImage();
   std::printf("%d checks, %d failures\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;

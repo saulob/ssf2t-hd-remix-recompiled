@@ -5,50 +5,72 @@
 
 #include <rex/hook.h>
 
-REX_EXTERN(__imp__sub_823F7D48);
-REX_EXTERN(__imp__sub_821738C0);
-REX_EXTERN(__imp__sub_82173910);
+#include "title_update_image.h"
+
+REX_EXTERN(__imp__base013_sub_823F75D8);
+REX_EXTERN(__imp__base013_sub_821738A0);
+REX_EXTERN(__imp__base013_sub_821738F0);
+REX_EXTERN(__imp__tu023_sub_823F7D48);
+REX_EXTERN(__imp__tu023_sub_821738C0);
+REX_EXTERN(__imp__tu023_sub_82173910);
 
 namespace {
+
+// The unhooked draw and the vertex scratch of one game version.
+struct DrawCalls {
+  PPCFunc* quad_draw;
+  PPCFunc* vertex_reserve;
+  PPCFunc* vertex_commit;
+};
 
 std::atomic<bool> g_fill{false};
 thread_local int g_scene_depth = 0;
 thread_local bool g_in_projection_setup = false;
 
+template <typename G>
 bool RenderPathMatches(const uint8_t* base) {
-  static const bool matches = ssf2t::FightRenderPathMatches(base);
+  static const bool matches = ssf2t::FightRenderPathMatches<G>(base);
   return matches;
 }
 
+template <typename G>
 bool FillActive(const uint8_t* base) {
-  return g_fill.load(std::memory_order_relaxed) && RenderPathMatches(base) && ssf2t::FightFillActive(true, base);
+  return g_fill.load(std::memory_order_relaxed) && RenderPathMatches<G>(base) && ssf2t::FightFillActive<G>(true, base);
 }
 
+template <typename G>
 bool PreFightPathMatches(const uint8_t* base) {
-  static const bool matches = ssf2t::PreFightPathMatches(base);
+  static const bool matches = ssf2t::PreFightPathMatches<G>(base);
   return matches;
 }
 
+template <typename G>
 bool PreFightFillActive(const uint8_t* base) {
-  return g_fill.load(std::memory_order_relaxed) && PreFightPathMatches(base) && ssf2t::PreFightFillActive(true, base);
+  return g_fill.load(std::memory_order_relaxed) && PreFightPathMatches<G>(base) &&
+         ssf2t::PreFightFillActive<G>(true, base);
 }
 
+template <typename G>
 bool CharacterSelectFillActive(const uint8_t* base) {
-  return g_fill.load(std::memory_order_relaxed) && PreFightPathMatches(base) &&
-         ssf2t::CharacterSelectFillActive(true, base);
+  return g_fill.load(std::memory_order_relaxed) && PreFightPathMatches<G>(base) &&
+         ssf2t::CharacterSelectFillActive<G>(true, base);
 }
 
+template <typename G>
 bool VersusFillActive(const uint8_t* base) {
-  return g_fill.load(std::memory_order_relaxed) && PreFightPathMatches(base) && ssf2t::VersusFillActive(true, base);
+  return g_fill.load(std::memory_order_relaxed) && PreFightPathMatches<G>(base) &&
+         ssf2t::VersusFillActive<G>(true, base);
 }
 
+template <typename G>
 bool TextureBindPathMatches(const uint8_t* base) {
-  static const bool matches = ssf2t::TextureBindPathMatches(base);
+  static const bool matches = ssf2t::TextureBindPathMatches<G>(base);
   return matches;
 }
 
+template <typename G>
 bool SidePanelPathMatches(const uint8_t* base) {
-  static const bool matches = ssf2t::SidePanelPathMatches(base);
+  static const bool matches = ssf2t::SidePanelPathMatches<G>(base);
   return matches;
 }
 
@@ -83,18 +105,18 @@ void WriteVertices(uint8_t* base, uint32_t address, std::span<const ssf2t::QuadV
 
 // Draws one triangle strip from fresh vertex scratch with whatever texture and states are bound. Calls the unhooked
 // draw, so it never re-enters the hook.
-void DrawStrip(PPCContext& ctx, uint8_t* base, std::span<const ssf2t::QuadVertex> vertices) {
+void DrawStrip(PPCContext& ctx, uint8_t* base, const DrawCalls& calls, std::span<const ssf2t::QuadVertex> vertices) {
   const uint32_t bytes = uint32_t(vertices.size()) * ssf2t::kQuadVertexStride;
   ctx.r3.u64 = bytes;
-  __imp__sub_821738C0(ctx, base);
+  calls.vertex_reserve(ctx, base);
   const uint32_t address = ctx.r3.u32;
   WriteVertices(base, address, vertices);
   ctx.r3.u64 = bytes;
-  __imp__sub_82173910(ctx, base);
+  calls.vertex_commit(ctx, base);
   ctx.r3.u64 = ssf2t::kQuadPrimitive;
   ctx.r4.u64 = vertices.size();
   ctx.r5.u64 = address;
-  __imp__sub_823F7D48(ctx, base);
+  calls.quad_draw(ctx, base);
 }
 
 bool IsQuadCall(const PPCContext& ctx) {
@@ -103,38 +125,41 @@ bool IsQuadCall(const PPCContext& ctx) {
 
 // Fill draws the Character Select background as a warped mesh of the same texture: the protected part exactly
 // where the game's quad puts it, the rest eased out to the visible edges. Otherwise the game's quad is drawn as built.
-void DrawCharacterSelectBackground(PPCContext& ctx, uint8_t* base) {
+template <typename G>
+void DrawCharacterSelectBackground(PPCContext& ctx, uint8_t* base, const DrawCalls& calls) {
   ssf2t::QuadVertices original{};
   ssf2t::WarpMesh mesh{};
   bool fill = false;
-  if (IsQuadCall(ctx) && TextureBindPathMatches(base)) {
+  if (IsQuadCall(ctx) && TextureBindPathMatches<G>(base)) {
     original = ReadQuad(base, ctx.r5.u32);
     const float aspect = std::bit_cast<float>(ssf2t::LoadBE32(base, ssf2t::kWidescreenAspect));
     ssf2t::TextureSize texture{};
-    fill = CharacterSelectFillActive(base) && ssf2t::LoadCharacterSelectTextureSize(base, texture) &&
+    fill = CharacterSelectFillActive<G>(base) && ssf2t::LoadCharacterSelectTextureSize<G>(base, texture) &&
            ssf2t::CharacterSelectWarp(original, aspect, texture, mesh);
   }
   if (!fill) {
-    __imp__sub_823F7D48(ctx, base);
+    calls.quad_draw(ctx, base);
     return;
   }
   const uint32_t caller = uint32_t(ctx.lr);
   for (const auto& strip : mesh.strips) {
-    DrawStrip(ctx, base, strip);
+    DrawStrip(ctx, base, calls, strip);
   }
   ctx.lr = caller;
 }
 
-void DrawCharacterSelectSidePanel(PPCContext& ctx, uint8_t* base, uint32_t caller) {
-  const bool skip = IsQuadCall(ctx) &&
-                    ssf2t::SkipsSidePanel(CharacterSelectFillActive(base), SidePanelPathMatches(base), caller);
+template <typename G>
+void DrawCharacterSelectSidePanel(PPCContext& ctx, uint8_t* base, const DrawCalls& calls, uint32_t caller) {
+  const bool skip = IsQuadCall(ctx) && ssf2t::SkipsSidePanel<G>(CharacterSelectFillActive<G>(base),
+                                                                 SidePanelPathMatches<G>(base), caller);
   if (!skip) {
-    __imp__sub_823F7D48(ctx, base);
+    calls.quad_draw(ctx, base);
   }
 }
 
 // The VS background quad itself is drawn exactly as the game built it; Fill surrounds it with edge extensions.
-void DrawVersusBackground(PPCContext& ctx, uint8_t* base) {
+template <typename G>
+void DrawVersusBackground(PPCContext& ctx, uint8_t* base, const DrawCalls& calls) {
   const bool quad_call = IsQuadCall(ctx);
   ssf2t::QuadVertices center{};
   ssf2t::BackgroundExtensions extensions{};
@@ -142,17 +167,68 @@ void DrawVersusBackground(PPCContext& ctx, uint8_t* base) {
   if (quad_call) {
     center = ReadQuad(base, ctx.r5.u32);
     const float aspect = std::bit_cast<float>(ssf2t::LoadBE32(base, ssf2t::kWidescreenAspect));
-    extend = VersusFillActive(base) && ssf2t::BackgroundExtensionPieces(center, aspect, extensions);
+    extend = VersusFillActive<G>(base) && ssf2t::BackgroundExtensionPieces(center, aspect, extensions);
   }
   const uint32_t caller = uint32_t(ctx.lr);
-  __imp__sub_823F7D48(ctx, base);
+  calls.quad_draw(ctx, base);
   if (!extend) {
     return;
   }
   for (size_t i = 0; i < extensions.count; ++i) {
-    DrawStrip(ctx, base, extensions.pieces[i].quad);
+    DrawStrip(ctx, base, calls, extensions.pieces[i].quad);
   }
   ctx.lr = caller;
+}
+
+void InScene(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  ++g_scene_depth;
+  original(ctx, base);
+  --g_scene_depth;
+}
+
+void InProjectionSetup(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  g_in_projection_setup = true;
+  original(ctx, base);
+  g_in_projection_setup = false;
+}
+
+// Ortho(left f1, right f2, ...): Fill slides the window with the camera and keeps its width.
+template <typename G>
+void Ortho(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  if (g_scene_depth > 0 && g_in_projection_setup && FillActive<G>(base)) {
+    const float left = float(ctx.f1.f64);
+    const float right = float(ctx.f2.f64);
+    const float shift = ssf2t::OrthoShift(left, right, std::bit_cast<float>(ssf2t::LoadBE32(base, G::kFightCameraX)));
+    ctx.f1.f64 = double(left + shift);
+    ctx.f2.f64 = double(right + shift);
+  }
+  original(ctx, base);
+}
+
+// Draws the black side quads of the fight, Character Select and VS; Fill 16:9 leaves them out.
+template <typename G>
+void MaskDrawer(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  const bool pre_fight = PreFightFillActive<G>(base);
+  if (FillActive<G>(base) || pre_fight) {
+    return;
+  }
+  original(ctx, base);
+}
+
+// Draws one quad from user vertices; Fill warps the Character Select background, drops its side panels and extends
+// the VS background here.
+template <typename G>
+void QuadDraw(PPCContext& ctx, uint8_t* base, const DrawCalls& calls) {
+  const uint32_t caller = uint32_t(ctx.lr);
+  if (caller == G::kCharacterSelectQuadReturn) {
+    DrawCharacterSelectBackground<G>(ctx, base, calls);
+  } else if (caller == G::kScrollingQuadReturn) {
+    DrawVersusBackground<G>(ctx, base, calls);
+  } else if (ssf2t::SidePanelAt<G>(caller) != ssf2t::SidePanel::kNone) {
+    DrawCharacterSelectSidePanel<G>(ctx, base, calls, caller);
+  } else {
+    calls.quad_draw(ctx, base);
+  }
 }
 
 }  // namespace
@@ -165,62 +241,35 @@ void SetFightAreaFill(bool fill) {
 
 }  // namespace ssf2t
 
-// The fight world is drawn inside these two calls; the HUD is drawn after them.
-REX_EXTERN(__imp__sub_82181AB8);
-REX_HOOK_RAW(sub_82181AB8) {
-  ++g_scene_depth;
-  __imp__sub_82181AB8(ctx, base);
-  --g_scene_depth;
+// The fight world is drawn inside the scene draw and the fight render; the HUD is drawn after them.
+REX_EXTERN(__imp__base013_sub_82181AA8);
+REX_HOOK_RAW(base013_sub_82181AA8) { InScene(ctx, base, __imp__base013_sub_82181AA8); }
+REX_EXTERN(__imp__base013_sub_823ED578);
+REX_HOOK_RAW(base013_sub_823ED578) { InScene(ctx, base, __imp__base013_sub_823ED578); }
+REX_EXTERN(__imp__base013_sub_823EBB28);
+REX_HOOK_RAW(base013_sub_823EBB28) { InProjectionSetup(ctx, base, __imp__base013_sub_823EBB28); }
+REX_EXTERN(__imp__base013_sub_823F5118);
+REX_HOOK_RAW(base013_sub_823F5118) { Ortho<ssf2t::Base013Fight>(ctx, base, __imp__base013_sub_823F5118); }
+REX_EXTERN(__imp__base013_sub_82177590);
+REX_HOOK_RAW(base013_sub_82177590) { MaskDrawer<ssf2t::Base013Fight>(ctx, base, __imp__base013_sub_82177590); }
+REX_HOOK_RAW(base013_sub_823F75D8) {
+  QuadDraw<ssf2t::Base013Fight>(
+      ctx, base, {__imp__base013_sub_823F75D8, __imp__base013_sub_821738A0, __imp__base013_sub_821738F0});
 }
 
-REX_EXTERN(__imp__sub_823EDC68);
-REX_HOOK_RAW(sub_823EDC68) {
-  ++g_scene_depth;
-  __imp__sub_823EDC68(ctx, base);
-  --g_scene_depth;
+#if SSF2T_TITLE_UPDATE_IMAGE
+REX_EXTERN(__imp__tu023_sub_82181AB8);
+REX_HOOK_RAW(tu023_sub_82181AB8) { InScene(ctx, base, __imp__tu023_sub_82181AB8); }
+REX_EXTERN(__imp__tu023_sub_823EDC68);
+REX_HOOK_RAW(tu023_sub_823EDC68) { InScene(ctx, base, __imp__tu023_sub_823EDC68); }
+REX_EXTERN(__imp__tu023_sub_823EC218);
+REX_HOOK_RAW(tu023_sub_823EC218) { InProjectionSetup(ctx, base, __imp__tu023_sub_823EC218); }
+REX_EXTERN(__imp__tu023_sub_823F5888);
+REX_HOOK_RAW(tu023_sub_823F5888) { Ortho<ssf2t::TitleUpdate023Fight>(ctx, base, __imp__tu023_sub_823F5888); }
+REX_EXTERN(__imp__tu023_sub_821775B0);
+REX_HOOK_RAW(tu023_sub_821775B0) { MaskDrawer<ssf2t::TitleUpdate023Fight>(ctx, base, __imp__tu023_sub_821775B0); }
+REX_HOOK_RAW(tu023_sub_823F7D48) {
+  QuadDraw<ssf2t::TitleUpdate023Fight>(
+      ctx, base, {__imp__tu023_sub_823F7D48, __imp__tu023_sub_821738C0, __imp__tu023_sub_82173910});
 }
-
-REX_EXTERN(__imp__sub_823EC218);
-REX_HOOK_RAW(sub_823EC218) {
-  g_in_projection_setup = true;
-  __imp__sub_823EC218(ctx, base);
-  g_in_projection_setup = false;
-}
-
-// Ortho(left f1, right f2, ...): Fill slides the window with the camera and keeps its width.
-REX_EXTERN(__imp__sub_823F5888);
-REX_HOOK_RAW(sub_823F5888) {
-  if (g_scene_depth > 0 && g_in_projection_setup && FillActive(base)) {
-    const float left = float(ctx.f1.f64);
-    const float right = float(ctx.f2.f64);
-    const float shift = ssf2t::OrthoShift(left, right, std::bit_cast<float>(ssf2t::LoadBE32(base, ssf2t::kFightCameraX)));
-    ctx.f1.f64 = double(left + shift);
-    ctx.f2.f64 = double(right + shift);
-  }
-  __imp__sub_823F5888(ctx, base);
-}
-
-// Draws the black side quads of the fight, Character Select and VS; Fill 16:9 leaves them out.
-REX_EXTERN(__imp__sub_821775B0);
-REX_HOOK_RAW(sub_821775B0) {
-  const bool pre_fight = PreFightFillActive(base);
-  if (FillActive(base) || pre_fight) {
-    return;
-  }
-  __imp__sub_821775B0(ctx, base);
-}
-
-// Draws one quad from user vertices; Fill warps the Character Select background, drops its side panels and extends
-// the VS background here.
-REX_HOOK_RAW(sub_823F7D48) {
-  const uint32_t caller = uint32_t(ctx.lr);
-  if (caller == ssf2t::kCharacterSelectQuadReturn) {
-    DrawCharacterSelectBackground(ctx, base);
-  } else if (caller == ssf2t::kScrollingQuadReturn) {
-    DrawVersusBackground(ctx, base);
-  } else if (ssf2t::SidePanelAt(caller) != ssf2t::SidePanel::kNone) {
-    DrawCharacterSelectSidePanel(ctx, base, caller);
-  } else {
-    __imp__sub_823F7D48(ctx, base);
-  }
-}
+#endif

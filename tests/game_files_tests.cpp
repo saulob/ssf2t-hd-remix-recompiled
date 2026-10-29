@@ -1,7 +1,7 @@
 // Game file check tests: default.xex and default.xexp casing is normalized without weakening the version checks, the
-// Title Update is required (and may be installed before or after the base game), Install Game and Install Title
-// Update each accept only their own package, Remove Title Update deletes only the installed default.xexp, and the
-// Play page text and buttons are derived from the same check for every install state.
+// base game alone is ready and the Title Update is optional (and may be installed before or after the base game),
+// Install Game and Install Title Update each accept only their own package, Remove Title Update deletes only the
+// installed default.xexp, and the Play page text, buttons and image selection are derived from the same check.
 // Run: ssf2t_game_files_tests [default.xex]
 
 #include <cstdint>
@@ -73,35 +73,60 @@ void TestMixedCaseSupportedXexIsNormalized(const fs::path& real_xex) {
 }
 
 // Only the archive's size is checked, so an empty file of that size stands in for it.
-void TestTitleUpdateIsRequired(const fs::path& real_xex, const fs::path& real_xexp) {
+void TestTitleUpdateIsOptional(const fs::path& real_xex, const fs::path& real_xexp) {
   const fs::path dir = MakeDir("title_update");
   fs::copy_file(real_xex, dir / "default.xex");
   std::ofstream(dir / kAssetArchive, std::ios::binary).close();
   fs::resize_file(dir / kAssetArchive, kAssetArchiveSize);
 
   GameCheck check = CheckGameFiles(dir);
-  CHECK(check.state == GameFiles::kUpdateMissing);
+  CHECK(check.state == GameFiles::kReady);
+  CHECK(check.guest == GuestVersion::kBase013);
+  CHECK(SelectGuest(check) == GuestVersion::kBase013);
   CHECK(check.xex_version == kXexVersion);
-  CHECK(Contains(DescribeGameFilesProblem(check), "000B0000"));
+  CHECK(DescribeGameFilesProblem(check).empty());
+  CHECK(GameFilesLogText(check) == "Game files: valid (default.xex 0.0.1.3, CRC32 B734F075)");
 
   std::ofstream(dir / kTitleUpdateFile, std::ios::binary) << "not the title update";
   check = CheckGameFiles(dir);
   CHECK(check.state == GameFiles::kUpdateUnsupported);
   CHECK(Contains(GameFilesLogText(check), "unsupported Title Update"));
-  CHECK(Contains(GameFilesLogText(check), "expected default.xex 0.0.1.3 CRC32 B734F075 with default.xexp to 0.0.2.3"));
+  CHECK(Contains(GameFilesLogText(check), "expected default.xex 0.0.1.3 CRC32 B734F075, optional default.xexp to 0.0.2.3"));
   CHECK(Contains(DescribeGameFilesProblem(check), kTitleUpdateVersion));
+  CHECK(!SelectGuest(check));
 
   if (!real_xexp.empty()) {
     fs::remove(dir / kTitleUpdateFile);
     fs::copy_file(real_xexp, dir / "DEFAULT.XEXP");
     check = CheckGameFiles(dir);
     CHECK(check.state == GameFiles::kReady);
+    CHECK(check.guest == GuestVersion::kTitleUpdate023);
+    CHECK(SelectGuest(check) == GuestVersion::kTitleUpdate023);
     CHECK(check.xexp_crc32 == kXexpCrc32);
+    CHECK(check.xexp_crc32 == 0x38DE2310 && check.xexp_version == "0.0.2.3");
+    CHECK(SelectGuest(check, HostGuests{true}) == GuestVersion::kTitleUpdate023);
+    CHECK(DescribePlayCard(check, HostGuests{true}).title == "Ready to play \xC2\xB7 Title Update #1");
+    CHECK(DescribeGameButtons(check, HostGuests{true}).update_label == "Remove Title Update");
+    // A program without the update image still sees a supported file, and says so in other words.
+    CHECK(check.state == GameFiles::kReady);
+    CHECK(!SelectGuest(check, HostGuests{false}));
+    CHECK(!Contains(DescribePlayCard(check, HostGuests{false}).title, "Different Title Update"));
+    CHECK(!Contains(DescribeGameFilesProblem(check, HostGuests{false}), "not a supported"));
     CHECK(check.xexp_version == kTitleUpdateVersion);
     CHECK(HasEntry(dir, kTitleUpdateFile));
     CHECK(GameFilesLogText(check) ==
           "Game files: valid (default.xex 0.0.1.3, CRC32 B734F075; default.xexp to 0.0.2.3, CRC32 38DE2310)");
     CHECK(DescribeGameFilesProblem(check).empty());
+
+    // Remove Title Update returns to the base game; putting the file back returns to the update.
+    const RemoveResult removed = RemoveTitleUpdate(dir);
+    CHECK(removed.removed);
+    CHECK(removed.files.state == GameFiles::kReady && removed.files.guest == GuestVersion::kBase013);
+    CHECK(!HasEntry(dir, kTitleUpdateFile));
+    CHECK(HasEntry(dir, "default.xex") && HasEntry(dir, kAssetArchive));
+    fs::copy_file(real_xexp, dir / kTitleUpdateFile);
+    check = CheckGameFiles(dir);
+    CHECK(check.state == GameFiles::kReady && check.guest == GuestVersion::kTitleUpdate023);
   }
   fs::remove_all(dir);
 }
@@ -130,7 +155,7 @@ void TestInstallMessages() {
   update.title_update = true;
   CHECK(DescribeInstalled(game, GameFiles::kReady).title == "Game package installed");
   CHECK(DescribeInstalled(game, GameFiles::kReady).text == "Press Play to start the game.");
-  CHECK(Contains(DescribeInstalled(game, GameFiles::kUpdateMissing).text, "Title Update"));
+  CHECK(DescribeInstalled(update, GameFiles::kReady).text == "Press Play to start the game.");
   CHECK(DescribeInstalled(update, GameFiles::kMissing).title == "Title Update #1 installed");
   CHECK(Contains(DescribeInstalled(update, GameFiles::kMissing).text, "game package"));
   CHECK(Contains(DescribeInstalled(update, GameFiles::kUpdateOnly).text, "game package"));
@@ -160,14 +185,15 @@ void TestInstallMessages() {
 void TestPlayCardText() {
   GameCheck ready;
   ready.state = GameFiles::kReady;
+  ready.guest = GuestVersion::kTitleUpdate023;
   CHECK(DescribePlayCard(ready).title == "Ready to play \xC2\xB7 Title Update #1");
   CHECK(Contains(DescribePlayCard(ready).detail, kTitleUpdateVersion));
   CHECK(Contains(DescribePlayCard(ready).detail, "584108A4"));
 
   GameCheck base_only;
-  base_only.state = GameFiles::kUpdateMissing;
-  base_only.xex_version = kXexVersion;
-  CHECK(DescribePlayCard(base_only).title == "Title Update #1 needed");
+  base_only.state = GameFiles::kReady;
+  base_only.guest = GuestVersion::kBase013;
+  CHECK(DescribePlayCard(base_only).title == "Ready to play");
   CHECK(Contains(DescribePlayCard(base_only).detail, kXexVersion));
   CHECK(Contains(DescribePlayCard(base_only).detail, "584108A4"));
 
@@ -194,27 +220,104 @@ void TestPlayCardText() {
   CHECK(Contains(DescribePlayCard(wrong_update).detail, "0.0.2.5"));
 }
 
-// The button labels for all four installation states, exactly as the task specifies them.
+GameCheck Check(GameFiles state, GuestVersion guest = GuestVersion::kBase013) {
+  GameCheck check;
+  check.state = state;
+  check.guest = guest;
+  return check;
+}
+
+// The button labels for every installation state.
 void TestGameButtons() {
-  const GameButtons nothing = DescribeGameButtons(GameFiles::kMissing);
+  const GameButtons nothing = DescribeGameButtons(Check(GameFiles::kMissing));
   CHECK(nothing.game_label == "Install Game");
   CHECK(nothing.update_label == "Install Title Update");
   CHECK(!nothing.game_installed && !nothing.update_installed);
 
-  const GameButtons base_only = DescribeGameButtons(GameFiles::kUpdateMissing);
+  const GameButtons base_only = DescribeGameButtons(Check(GameFiles::kReady));
   CHECK(base_only.game_label == "Reinstall Game");
   CHECK(base_only.update_label == "Install Title Update");
   CHECK(base_only.game_installed && !base_only.update_installed);
 
-  const GameButtons update_only = DescribeGameButtons(GameFiles::kUpdateOnly);
+  const GameButtons update_only = DescribeGameButtons(Check(GameFiles::kUpdateOnly));
   CHECK(update_only.game_label == "Install Game");
   CHECK(update_only.update_label == "Remove Title Update");
   CHECK(!update_only.game_installed && update_only.update_installed);
 
-  const GameButtons ready = DescribeGameButtons(GameFiles::kReady);
+  const GameButtons ready = DescribeGameButtons(Check(GameFiles::kReady, GuestVersion::kTitleUpdate023));
   CHECK(ready.game_label == "Reinstall Game");
   CHECK(ready.update_label == "Remove Title Update");
   CHECK(ready.game_installed && ready.update_installed);
+
+  const GameButtons invalid = DescribeGameButtons(Check(GameFiles::kUpdateUnsupported));
+  CHECK(invalid.game_label == "Reinstall Game" && invalid.update_label == "Remove Title Update");
+}
+
+// The image follows the installed files: base alone, base with the update, nothing for blocked states.
+void TestGuestSelection() {
+  CHECK(SelectGuest(Check(GameFiles::kReady)) == GuestVersion::kBase013);
+  CHECK(SelectGuest(Check(GameFiles::kReady, GuestVersion::kTitleUpdate023)) == GuestVersion::kTitleUpdate023);
+  for (GameFiles blocked :
+       {GameFiles::kMissing, GameFiles::kUnsupported, GameFiles::kUpdateUnsupported, GameFiles::kUpdateOnly}) {
+    CHECK(!SelectGuest(Check(blocked)));
+  }
+  CHECK(std::string(GuestExecutableVersion(GuestVersion::kBase013)) == kXexVersion);
+  CHECK(std::string(GuestExecutableVersion(GuestVersion::kTitleUpdate023)) == kTitleUpdateVersion);
+
+  // Installing or removing the update after the program started asks for a restart, nothing else does.
+  const GameCheck base = Check(GameFiles::kReady);
+  const GameCheck update = Check(GameFiles::kReady, GuestVersion::kTitleUpdate023);
+  CHECK(NeedsOtherGuest(update, GuestVersion::kBase013));
+  CHECK(NeedsOtherGuest(base, GuestVersion::kTitleUpdate023));
+  CHECK(!NeedsOtherGuest(base, GuestVersion::kBase013));
+  CHECK(!NeedsOtherGuest(update, GuestVersion::kTitleUpdate023));
+  CHECK(!NeedsOtherGuest(Check(GameFiles::kUpdateUnsupported), GuestVersion::kBase013));
+
+  // The loaded executable must be exactly the selected image's version.
+  CHECK(LoadedVersionMatches(GuestVersion::kBase013, "0.0.1.3"));
+  CHECK(LoadedVersionMatches(GuestVersion::kTitleUpdate023, "0.0.2.3"));
+  CHECK(!LoadedVersionMatches(GuestVersion::kBase013, "0.0.2.3"));
+  CHECK(!LoadedVersionMatches(GuestVersion::kTitleUpdate023, "0.0.1.3"));
+  CHECK(!LoadedVersionMatches(GuestVersion::kBase013, ""));
+  const std::string message = DescribeLoadedVersionMismatch(GuestVersion::kBase013, "0.0.2.3");
+  CHECK(Contains(message, "0.0.2.3") && Contains(message, "0.0.1.3"));
+}
+
+// The text never speaks of building or generating code.
+void TestNoDeveloperWording() {
+  const GameFiles states[] = {GameFiles::kReady, GameFiles::kMissing, GameFiles::kUnsupported,
+                              GameFiles::kUpdateUnsupported, GameFiles::kUpdateOnly};
+  for (GameFiles state : states) {
+    for (GuestVersion guest : {GuestVersion::kBase013, GuestVersion::kTitleUpdate023}) {
+      const GameCheck check = Check(state, guest);
+      RemoveResult removed;
+      removed.removed = true;
+      removed.files = check;
+      const std::string texts[] = {DescribeGameFilesProblem(check), DescribePlayCard(check).title,
+                                   DescribePlayCard(check).detail, DescribeRemoved(removed).text,
+                                   DescribeLoadedVersionMismatch(guest, "0.0.1.5")};
+      for (const std::string& text : texts) {
+        for (const char* word : {"codegen", "recompile", "build", "SSF2T_GAME_BASE", "mismatch", "generated"}) {
+          CHECK(!Contains(text, word));
+        }
+      }
+    }
+  }
+}
+
+// The supported update as a check result: ready, runnable with the update image, never "different" without it.
+void TestHostCapabilityIsNotFileValidity() {
+  const GameCheck update = Check(GameFiles::kReady, GuestVersion::kTitleUpdate023);
+  CHECK(SelectGuest(update, HostGuests{true}) == GuestVersion::kTitleUpdate023);
+  CHECK(!SelectGuest(update, HostGuests{false}));
+  CHECK(SelectGuest(Check(GameFiles::kReady), HostGuests{false}) == GuestVersion::kBase013);
+  CHECK(DescribePlayCard(update, HostGuests{false}).title != DescribePlayCard(Check(GameFiles::kUpdateUnsupported)).title);
+  CHECK(!DescribeGameFilesProblem(update, HostGuests{false}).empty());
+  CHECK(DescribeGameFilesProblem(update, HostGuests{true}).empty());
+  CHECK(DescribeGameButtons(update, HostGuests{false}).update_available);
+  CHECK(!DescribeGameButtons(Check(GameFiles::kReady), HostGuests{false}).update_available);
+  CHECK(DescribeGameButtons(Check(GameFiles::kReady), HostGuests{true}).update_available);
+  CHECK(!NeedsOtherGuest(update, GuestVersion::kBase013, HostGuests{false}));
 }
 
 void TestWrongKindMessages() {
@@ -230,9 +333,10 @@ void TestRemovedMessages() {
 
   RemoveResult back_to_base;
   back_to_base.removed = true;
-  back_to_base.files.state = GameFiles::kUpdateMissing;
+  back_to_base.files.state = GameFiles::kReady;
   CHECK(DescribeRemoved(back_to_base).title == "Title Update #1 removed");
   CHECK(Contains(DescribeRemoved(back_to_base).text, "Install Title Update"));
+  CHECK(Contains(DescribeRemoved(back_to_base).text, kXexVersion));
 
   RemoveResult nothing_left;
   nothing_left.removed = true;
@@ -295,11 +399,13 @@ void TestBaseThenTitleUpdate(const fs::path& game_package, const fs::path& updat
   const fs::path game = root / "game";
   InstallResult base = InstallFromPackage(game_package, game, InstallKind::kGame);
   CHECK(base.ok() && !base.title_update);
-  CHECK(CheckGameFiles(game).state == GameFiles::kUpdateMissing);
+  CHECK(CheckGameFiles(game).state == GameFiles::kReady);
+  CHECK(CheckGameFiles(game).guest == GuestVersion::kBase013);
 
   InstallResult update = InstallFromPackage(update_package, game, InstallKind::kTitleUpdate);
   CHECK(update.ok() && update.title_update);
   CHECK(CheckGameFiles(game).state == GameFiles::kReady);
+  CHECK(CheckGameFiles(game).guest == GuestVersion::kTitleUpdate023);
   fs::remove_all(root);
 }
 
@@ -328,15 +434,15 @@ void TestWrongKindRejected(const fs::path& game_package, const fs::path& update_
   const fs::path game = root / "game";
   InstallResult base = InstallFromPackage(game_package, game, InstallKind::kGame);
   CHECK(base.ok());
-  CHECK(CheckGameFiles(game).state == GameFiles::kUpdateMissing);
+  CHECK(CheckGameFiles(game).state == GameFiles::kReady && CheckGameFiles(game).guest == GuestVersion::kBase013);
 
   InstallResult update_as_game = InstallFromPackage(update_package, game, InstallKind::kGame);
   CHECK(update_as_game.status == InstallStatus::kSelectedTitleUpdate);
-  CHECK(CheckGameFiles(game).state == GameFiles::kUpdateMissing);
+  CHECK(CheckGameFiles(game).state == GameFiles::kReady && CheckGameFiles(game).guest == GuestVersion::kBase013);
 
   InstallResult game_as_update = InstallFromPackage(game_package, game, InstallKind::kTitleUpdate);
   CHECK(game_as_update.status == InstallStatus::kSelectedGamePackage);
-  CHECK(CheckGameFiles(game).state == GameFiles::kUpdateMissing);
+  CHECK(CheckGameFiles(game).state == GameFiles::kReady && CheckGameFiles(game).guest == GuestVersion::kBase013);
   fs::remove_all(root);
 }
 
@@ -354,7 +460,7 @@ void TestRemoveTitleUpdateFromReady(const fs::path& game_package, const fs::path
   CHECK(!HasEntry(game, kTitleUpdateFile));
   CHECK(HasEntry(game, "default.xex"));
   CHECK(HasEntry(game, kAssetArchive));
-  CHECK(result.files.state == GameFiles::kUpdateMissing);
+  CHECK(result.files.state == GameFiles::kReady && result.files.guest == GuestVersion::kBase013);
   CHECK(result.files.xex_version == kXexVersion);
   fs::remove_all(root);
 }
@@ -397,13 +503,16 @@ int main(int argc, char** argv) {
   TestInstallMessages();
   TestPlayCardText();
   TestGameButtons();
+  TestGuestSelection();
+  TestHostCapabilityIsNotFileValidity();
+  TestNoDeveloperWording();
   TestWrongKindMessages();
   TestRemovedMessages();
   TestRemoveTitleUpdateNoOp();
   TestExecutableVersion(have_xex ? xex : fs::path(), have_xexp ? xexp : fs::path());
   if (have_xex) {
     TestMixedCaseSupportedXexIsNormalized(xex);
-    TestTitleUpdateIsRequired(xex, have_xexp ? xexp : fs::path());
+    TestTitleUpdateIsOptional(xex, have_xexp ? xexp : fs::path());
   } else {
     std::printf("skipped normalization: no default.xex at %s\n", xex.string().c_str());
   }

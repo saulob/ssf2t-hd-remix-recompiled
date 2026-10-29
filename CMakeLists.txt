@@ -1,4 +1,4 @@
-# SDK boilerplate lives in generated/rexglue.cmake.
+# The recompiled game images and the SDK lookup live in cmake/ssf2t_guest_images.cmake.
 
 cmake_minimum_required(VERSION 3.25)
 project(ssf2t_hd_remix VERSION 0.2.2 LANGUAGES C CXX)
@@ -16,7 +16,7 @@ list(APPEND CMAKE_PREFIX_PATH "${SSF2T_SDK_DIR}")
 
 add_compile_options("$<$<CONFIG:Release>:-fmacro-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.>")
 
-include(generated/rexglue.cmake)
+include(cmake/ssf2t_guest_images.cmake)
 
 # TRG Launcher: third_party/trg-launcher, or a local checkout named by SSF2T_TRG_LAUNCHER_DIR.
 set(SSF2T_TRG_LAUNCHER_DIR "$ENV{SSF2T_TRG_LAUNCHER_DIR}" CACHE PATH
@@ -135,6 +135,7 @@ set(SSF2T_SOURCES
     src/graphics_adapters.cpp
     src/imgui_gamepad.cpp
     src/guest_functions.cpp
+    src/guest_image.cpp
     src/infinite_time.cpp
     src/infinite_time_ui.cpp
     src/input_summary.cpp
@@ -183,8 +184,10 @@ else()
     add_executable(ssf2t_hd_remix ${SSF2T_SOURCES})
 endif()
 
-rexglue_setup_target(ssf2t_hd_remix GPU_PLUGINS xenos)
-target_include_directories(ssf2t_hd_remix PRIVATE src)
+target_include_directories(ssf2t_hd_remix PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(ssf2t_hd_remix PRIVATE rex::runtime ${SSF2T_GUEST_IMAGES})
+ssf2t_check_guest_images(ssf2t_hd_remix)
+rexglue_configure_target(ssf2t_hd_remix GPU_PLUGINS xenos)
 target_link_libraries(ssf2t_hd_remix PRIVATE trg::launcher)
 if(WIN32)
     target_link_libraries(ssf2t_hd_remix PRIVATE shcore synchronization dxgi)
@@ -497,3 +500,15 @@ if(NOT WIN32)
     set_target_properties(ssf2t_log_filter_tests PROPERTIES BUILD_RPATH "$ORIGIN")
 endif()
 add_dependencies(ssf2t_runtime_tests ssf2t_log_filter_tests)
+
+# Both recompiled game images are in the one executable and the build keeps them current. Static, headless.
+add_executable(ssf2t_guest_build_tests EXCLUDE_FROM_ALL tests/guest_build_tests.cpp)
+target_compile_definitions(ssf2t_guest_build_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_guest_build_tests)
+
+# A development build without the Title Update image: the base game alone is ready, a Title Update never is.
+add_executable(ssf2t_game_files_base_only_tests EXCLUDE_FROM_ALL tests/game_files_base_only_tests.cpp src/game_files.cpp src/stfs.cpp)
+target_include_directories(ssf2t_game_files_base_only_tests PRIVATE src)
+target_compile_definitions(ssf2t_game_files_base_only_tests PRIVATE SSF2T_TITLE_UPDATE_IMAGE=0
+    SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_game_files_base_only_tests)

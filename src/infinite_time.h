@@ -14,18 +14,30 @@ inline constexpr char kInfiniteTimeHelp[] = "Prevents the fight timer from decre
 inline constexpr double kInfiniteTimeToggleNoticeSeconds = 2.0;
 inline constexpr double kInfiniteTimeStartupNoticeSeconds = 5.0;
 
-// The round clock tick. The displayed digits advance inside it, so skipping the whole call freezes them.
-inline constexpr uint32_t kTimerTick = 0x8224EDA0;
-inline constexpr uint32_t kTimerTickWords[] = {
-    0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x39400000, 0x914B57B8, 0x3D6083CD, 0x816B57F4,
-    0xA16B0580, 0x7D6B0734, 0x3D4083CD, 0x916A57C0, 0x3D6083CD, 0x816B57C0, 0x2F0B0000, 0x409A000C,
+// The round clock tick of one game version. The displayed digits advance inside it, so skipping the whole call
+// freezes them.
+struct Base013Timer {
+  static constexpr uint32_t kTimerTick = 0x8224ED58;
+  static constexpr uint32_t kTimerTickWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x39400000, 0x914B52A0, 0x3D6083CD, 0x816B52DC,
+      0xA16B0580, 0x7D6B0734, 0x3D4083CD, 0x916A52A8, 0x3D6083CD, 0x816B52A8, 0x2F0B0000, 0x409A000C,
+  };
+};
+
+struct TitleUpdate023Timer {
+  static constexpr uint32_t kTimerTick = 0x8224EDA0;
+  static constexpr uint32_t kTimerTickWords[] = {
+      0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x39400000, 0x914B57B8, 0x3D6083CD, 0x816B57F4,
+      0xA16B0580, 0x7D6B0734, 0x3D4083CD, 0x916A57C0, 0x3D6083CD, 0x816B57C0, 0x2F0B0000, 0x409A000C,
+  };
 };
 
 // `base` is the guest memory. The words cover the prologue and the read of the round clock.
+template <typename G>
 inline bool TimerTickMatches(const uint8_t* base) {
   uint32_t offset = 0;
-  for (const uint32_t word : kTimerTickWords) {
-    if (LoadBE32(base, kTimerTick + offset) != word) {
+  for (const uint32_t word : G::kTimerTickWords) {
+    if (LoadBE32(base, G::kTimerTick + offset) != word) {
       return false;
     }
     offset += 4;
@@ -108,7 +120,7 @@ class InfiniteTimeNotice {
 
 void SetInfiniteTimeEnabled(bool enabled);
 void SetInfiniteTimeXexSupported(bool supported);
-// default.xex and its Title Update in game_dir are the supported build: sizes, CRC32s and SHA-256s all match.
+// default.xex, and its Title Update when one is installed, are the supported build: sizes, CRC32s and SHA-256s all match.
 bool InfiniteTimeXexSupported(const std::filesystem::path& game_dir);
 
 }  // namespace ssf2t

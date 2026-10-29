@@ -8,7 +8,7 @@
 [![Downloads](https://img.shields.io/github/downloads/saulob/ssf2t-hd-remix-recompiled/total?style=for-the-badge&color=FF8514&labelColor=07101f)](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20experimental%20%7C%20Steam%20Deck%20experimental-00acc1?style=for-the-badge&labelColor=07101f)
 
-<sub>The original Xbox 360 game code, statically recompiled to native PC code with the <a href="https://github.com/rexglue/rexglue-sdk">ReXGlue SDK</a>. <b>No game files included</b>: bring your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade package and its Title Update. The port incorporates the official Xbox 360 Title Update #1 (game version 0.0.2.3).</sub>
+<sub>The original Xbox 360 game code, statically recompiled to native PC code with the <a href="https://github.com/rexglue/rexglue-sdk">ReXGlue SDK</a>. <b>No game files included</b>: bring your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade package. The official Xbox 360 Title Update #1 is optional and plays the updated game version 0.0.2.3.</sub>
 
 </div>
 
@@ -17,7 +17,7 @@
 ## Features
 
 - **Native static recompilation**: the game's own code, not an emulator. Windows, plus an experimental Linux AppImage.
-- **TRG launcher** with separate game package and Title Update installers, display and graphics options, and an Achievements page.
+- **TRG launcher** with a game package installer, an optional Title Update installer, display and graphics options, and an Achievements page.
 - **Launcher updates**: the launcher checks GitHub releases once per start and installs a newer release only when you choose UPDATE NOW. Game files, saves, settings and logs are kept.
 - **Display**: Windowed or Borderless Fullscreen (**F11**), window size, monitor and VSync. Per-monitor high-DPI support, and the game window opens where and how large you chose.
 - **Presentation**: Letterbox keeps the picture's proportions, Stretch fills the window. Aspect ratios 16:9, 16:10, 21:9, 32:9, 4:3 and 5:4.
@@ -38,9 +38,9 @@ The game runs at its original speed of 60 updates per second. Online play is not
 
 - **Windows:** Windows 10 or 11, 64-bit, and a DirectX 12 graphics card, with the latest Microsoft Visual C++ 2015-2022 Redistributable (x64). Most PCs have it.
 - **Linux / Steam Deck (experimental):** 64-bit x86 with glibc 2.31 or newer and a Vulkan driver. Steam Deck support is experimental and has not yet been validated on hardware. See [docs/linux.md](docs/linux.md).
-- **Your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade package and its official Title Update #1 package.** The port incorporates the Title Update: its code is recompiled from the updated game, version `0.0.2.3`. Both packages are needed, because the game's data comes from your files when it runs and only the updated data matches the code.
+- **Your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade package** (required), and optionally **the official Title Update #1 package**. The game package alone plays game version `0.0.1.3`. Installing the Title Update enables the updated version `0.0.2.3`; removing it returns to `0.0.1.3`. The same program runs both, because the code of both versions is built into it, and installing or removing the Title Update never needs a new download or build.
 
-| | Game package | Title Update package |
+| | Game package (required) | Title Update package (optional) |
 | --- | --- | --- |
 | Game | Super Street Fighter II Turbo HD Remix, Xbox Live Arcade | SuperStreetFighter2THD Title Update #1 |
 | Title ID | `584108A4` | `584108A4` |
@@ -50,18 +50,18 @@ The game runs at its original speed of 60 updates per second. Online play is not
 | Version | `0.0.1.3` | updates `0.0.1.3` to `0.0.2.3` |
 | File the port uses | `default.xex`: 3,932,160 bytes, CRC32 `B734F075`, SHA-256 `6E1C2F9ED7D1102A311A5F5626563527EDA5F85B2FBE8DB8405B866DED3F31EE` | `default.xexp`: 2,166,784 bytes, CRC32 `38DE2310`, SHA-256 `A2E8E66B482C5D3A0D3A5D3F67A3CECB7A12CE1F6189196694FD3E765910606C` |
 
-The launcher tells the two packages apart by their content type, checks the Title ID, and checks `default.xex` and `default.xexp` after extracting them. Any other version is refused with the version that was found, because the port is built for this exact game code.
+The launcher tells the two packages apart by their content type, checks the Title ID, and checks `default.xex` and `default.xexp` after extracting them. Any other version is refused with the version that was found, because the port supports exactly these two versions of the game code.
 
 ## Installing
 
 1. Download **SSF2THDRemix-v0.2.2-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
 2. Run **ssf2t_hd_remix.exe**. The launcher opens.
 3. On the **Play** page click **Install Game** and pick your game package. It is one file with a long hexadecimal name and no extension. On an Xbox 360 drive it is in `Content\0000000000000000\584108A4\000D0000\`.
-4. Click **Install Title Update** and pick the Title Update #1 package (`Content\0000000000000000\584108A4\000B0000\` on an Xbox 360 drive). The two packages are installed separately and either can go first. Installing one does not install the other, and each button refuses the other kind of package.
+4. Optional: click **Install Title Update** and pick the Title Update #1 package (`Content\0000000000000000\584108A4\000B0000\` on an Xbox 360 drive). The two packages are installed separately and either can go first. Installing one does not install the other, and each button refuses the other kind of package.
 5. Wait until **Ready to play** appears. The game files (about 370 MB) are copied into the `game` folder next to the program; from the Title Update the launcher takes only `default.xexp`.
-6. Press **PLAY**. It stays disabled until the game package and Title Update #1 are both installed (game version `0.0.2.3`).
+6. Press **PLAY**. It is enabled as soon as the game package is installed (game version `0.0.1.3`), or `0.0.2.3` when the Title Update is installed too.
 
-**No game files and no Title Update files are included** in the release. **Reinstall Game** repairs the game files and keeps your settings, saves and an installed Title Update. **Remove Title Update** deletes only `default.xexp` from the `game` folder; the game files, saves, settings and achievements are not touched. The game cannot be played without the Title Update.
+**No game files and no Title Update files are included** in the release. **Reinstall Game** repairs the game files and keeps your settings, saves and an installed Title Update. **Remove Title Update** deletes only `default.xexp` from the `game` folder and returns to game version `0.0.1.3`; the game files, saves, settings and achievements are not touched, and the game is still ready to play. An unsupported `default.xexp` blocks Play until it is removed or replaced.
 
 ### Linux AppImage (experimental)
 
@@ -98,9 +98,9 @@ If the game does not start or crashes, please open an [issue](https://github.com
 The recompiled C++ is generated from your own game files, so the repository does not contain it. The TRG launcher is included in `third_party\trg-launcher`.
 
 1. Install Visual Studio with the C++ and LLVM/Clang components.
-2. Extract your game package and then your Title Update package into `game\extracted` with `tools\extract_stfs.ps1`, so that `game\extracted\default.xex` and `game\extracted\default.xexp` exist.
-3. `.\tools\codegen.ps1` downloads the pinned ReXGlue SDK 0.10.0, checks `default.xex` and `default.xexp` and generates the C++ into `generated\`. ReXGlue applies the Title Update while it loads `default.xex`, so the code is generated from version 0.0.2.3. `python -I tools\xex_image.py` writes the same updated image to `game\analysis\default.image.bin` for the function scanner and the image tests.
-4. `.\tools\build.ps1` builds `build\ssf2t_hd_remix.exe`. It first checks that ReXGlue's runtime and Xenos GPU plugin in `tools\rexglue` were built from this project's patches (`patches\rexglue-sdk`) and rebuilds them from the v0.10.0 source when they were not.
+2. Extract your game package into `game\extracted` with `tools\extract_stfs.ps1`, so that `game\extracted\default.xex` exists. Optionally extract the Title Update package the same way (`default.xexp`) to build the updated version too.
+3. `.\tools\codegen.ps1` downloads the pinned ReXGlue SDK 0.10.0 and generates the C++ of `generated\base` from `default.xex` (0.0.1.3) and, when `default.xexp` is present, of `generated\tu` from `default.xex` with `default.xexp` (0.0.2.3). Their symbols are prefixed `base013_` and `tu023_` so both link into one program. Without `default.xexp` the build holds the base game alone, which is a complete build. An image that is already current is skipped. `python -I tools\xex_image.py` writes the updated image to `game\analysis\default.image.bin` for the function scanner and the image tests.
+4. `.\tools\build.ps1` builds `build\ssf2t_hd_remix.exe`; it runs `codegen.ps1` first, so a build never needs `default.xexp`. It also checks that ReXGlue's runtime and Xenos GPU plugin in `tools\rexglue` were built from this project's patches (`patches\rexglue-sdk`) and rebuilds them from the v0.10.0 source when they were not.
 5. `.\tools\test.ps1` runs the headless tests.
 6. `.\tools\package-release.ps1` (PowerShell 7, and MSYS2 CLANG64 for the update helper) makes the release ZIP in `dist\`. It refuses to package a runtime that does not match the patches and publishes nothing. See [docs/release.md](docs/release.md).
 

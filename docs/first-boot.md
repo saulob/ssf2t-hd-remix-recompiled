@@ -5,22 +5,24 @@
     powershell -NoProfile -ExecutionPolicy Bypass -File tools\build.ps1
     powershell -NoProfile -ExecutionPolicy Bypass -File tools\codegen.ps1
 
-`build.ps1` only builds. `build.ps1 -Run` builds, checks the runtime, then launches `build\ssf2t_hd_remix.exe` with `game\extracted` and `build\user_data`. `-NoRun` overrides `-Run`.
+`codegen.ps1` writes the base game image, `generated\base` (`default.xex`, 0.0.1.3), and, when a supported `default.xexp` is present, the Title Update image, `generated\tu` (0.0.2.3). Without `default.xexp` it prints "Title Update not present" and the build holds the base game alone, which is complete. Each image is generated from a staged copy of its inputs in `out\codegen\<image>` through a manifest that names every path absolutely, then its symbols are prefixed `base013_` / `tu023_` (`tools\guest-code.ps1`) so both can link into one executable. `codegen.ps1 -Check` only reports.
+
+`build.ps1` runs `codegen.ps1`, then builds. `-RequireTitleUpdate` (used by the release package) fails unless both images exist. `build.ps1 -Run` builds, checks the runtime, then launches `build\ssf2t_hd_remix.exe` with `game\extracted` and `build\user_data`. `-NoRun` overrides `-Run`.
 
 ## Function discovery
 
 ReXGlue's codegen only registers functions it finds through `.pdata` and direct branches. Functions reached only through `.rdata`/`.data` pointers (vtables, callbacks) are missed. `tools\find-missing-functions.py` finds them:
 
     python -I tools\find-missing-functions.py            # report only: build\missing-functions-report.txt
-    python -I tools\find-missing-functions.py --apply-high   # rewrite config\discovered-functions.toml
+    python -I tools\find-missing-functions.py --apply-high   # rewrite config\guest\tu\discovered-functions.toml
     python -I tools\find-missing-functions.py --verify       # generated output matches the discovered entries and a re-scan
     python -I tools\find-missing-functions.py --self-test    # decoder, lis/addi tracking and call-closed rule
     python -I tools\find-missing-functions.py --runtime-address 0xADDR   # explain one address; edits nothing
 
 It scans the decrypted image (`game\analysis\default.image.bin`) for code addresses referenced by `.rdata`/`.data` pointers, `lis`/`addi` pairs, vtables and jump tables. Each candidate is walked as a control-flow graph and rejected when it falls into another function, enters a label, lies inside a `.pdata` extent or is only referenced from exception metadata. Only candidates with a clean walk and no conflicts are HIGH.
 
-- Config layering: `config\overrides.toml` holds manual starts that the scanner cannot derive. `config\discovered-functions.toml` holds scanner output, including manual starts the scanner confirms with the same end.
-- The generated config is applied to codegen as `includes` in `ssf2t_hd_remix_manifest.toml`.
+- Config layering, per game version in `config\guest\<base|tu>`: `overrides.toml` holds manual starts that the scanner cannot derive. `discovered-functions.toml` holds scanner output, including manual starts the scanner confirms with the same end. The scanner works on the Title Update image (`out\codegen\tu\raw`, unprefixed); the base files are the analysis from before the Title Update was supported.
+- Both are applied to codegen as `includes` of `config\guest\<image>\manifest.template.toml`.
 
 ## Current discovery state
 

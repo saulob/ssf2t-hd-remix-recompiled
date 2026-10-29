@@ -249,7 +249,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
 
   // Every PLAY (mouse, Enter, Xbox Start) ends here. The one save happens here; StartGame never saves.
   void RequestPlay() {
-    if (starting_ || install_.running() || game_files_ != GameFiles::kReady) {
+    if (starting_ || install_.running() || !playable_) {
       return;
     }
     if (!launcher_->Save()) {
@@ -263,13 +263,15 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   void StartGame() {
     // The game builds its own runtime next; the one that read the achievements must be gone.
     achievements_.reset();
-    if (cb_.window_changed && cb_.window_changed()) {
+    const bool new_window = cb_.window_changed && cb_.window_changed();
+    const bool other_image = cb_.guest_changed && cb_.guest_changed();
+    if (new_window || other_image) {
       if (cb_.restart && cb_.restart()) {
         Finish(nullptr);
         return;
       }
       starting_ = false;
-      launcher_->SetStatus("Could not start the game in a new window. Press Play to try again.", 8);
+      launcher_->SetStatus("Could not restart the game. Press Play to try again.", 8);
       return;
     }
     RestoreStartupWindow();
@@ -488,7 +490,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         header_art_ ? reinterpret_cast<ImTextureID>(header_art_.get()) : ImTextureID{}, art_aspect);
     c.pages = {
         {"Play", "Check the game files and start playing.", [this](trg::Ui& ui) { PagePlay(ui); },
-         [this] { return game_files_ != GameFiles::kReady; }},
+         [this] { return !playable_; }},
         {"Display", "Window, monitor and how the picture fits your screen.",
          [this](trg::Ui& ui) { PageDisplay(ui); }},
         {"Graphics", "Graphics card, render resolution, anti-aliasing and texture filtering.",
@@ -503,7 +505,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
       if (install_.running()) {
         return trg::PlayCheck{false, "Wait for the install to finish.", 0};
       }
-      if (game_files_ == GameFiles::kReady) {
+      if (playable_) {
         return trg::PlayCheck{};
       }
       return trg::PlayCheck{false, "The game files are not ready: see the Play page.", 0};
@@ -515,33 +517,37 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     if (install_.running()) {
       ui.StatusCard(trg::Status::kBusy, "Installing game files", nullptr, std::max(0.0f, install_.fraction()));
     } else {
-      const trg::Status status = game_files_ == GameFiles::kReady ? trg::Status::kReady : trg::Status::kAttention;
+      const trg::Status status = playable_ ? trg::Status::kReady : trg::Status::kAttention;
       ui.StatusCard(status, play_card_.title.c_str(), play_card_.detail.empty() ? nullptr : play_card_.detail.c_str());
     }
     if (!install_failure_.empty()) {
       DrawFailure(ui, install_failure_, install_failure_text_);
-    } else if (!install_.running() && game_files_ != GameFiles::kReady) {
+    } else if (!install_.running() && !playable_) {
       ui.Help(game_files_problem_.c_str());
     }
     if (paths_.game_dir.empty()) {
       ui.Help("No game folder was given: start the game with --game_data_root.");
     } else {
       ui.Row("Game package",
-             "Title ID: 584108A4. This port requires your own Xbox Live Arcade game package and its Title Update "
-             "#1. Install Game and Install Title Update each take their own package, in either order; installing "
-             "one does not install the other, and the launcher extracts what each one needs. No game files or "
-             "Title Update files are included with this port.");
+             "Title ID: 584108A4. This port requires your own Xbox Live Arcade game package (Install Game). "
+             "Title Update #1 is optional (Install Title Update) and plays the updated game version 0.0.2.3; "
+             "removing it returns to version 0.0.1.3. Settings, saves and achievements are kept either way. No game "
+             "files or Title Update files are included with this port.");
       if (!ui.TaskProgress(install_)) {
-        const GameButtons buttons = DescribeGameButtons(game_files_);
+        const GameButtons buttons = DescribeGameButtons(game_check_);
         const float gap = 8 * ui.scale();
-        const float button_width = (ImGui::GetContentRegionAvail().x - gap) / 2.0f;
+        const float button_width =
+            buttons.update_available ? (ImGui::GetContentRegionAvail().x - gap) / 2.0f : ImGui::GetContentRegionAvail().x;
         const bool game_clicked = buttons.game_installed
                                        ? ImGui::Button(buttons.game_label.c_str(), ImVec2(button_width, 0))
                                        : ui.AccentButton(buttons.game_label.c_str(), ImVec2(button_width, 0));
-        ImGui::SameLine(0, gap);
-        const bool update_clicked = buttons.update_installed
-                                         ? ImGui::Button(buttons.update_label.c_str(), ImVec2(button_width, 0))
-                                         : ui.AccentButton(buttons.update_label.c_str(), ImVec2(button_width, 0));
+        bool update_clicked = false;
+        if (buttons.update_available) {
+          ImGui::SameLine(0, gap);
+          update_clicked = buttons.update_installed
+                               ? ImGui::Button(buttons.update_label.c_str(), ImVec2(button_width, 0))
+                               : ui.AccentButton(buttons.update_label.c_str(), ImVec2(button_width, 0));
+        }
         if (game_clicked) {
           BrowseAndInstall(InstallKind::kGame);
         } else if (update_clicked) {
@@ -620,7 +626,9 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   }
 
   void SetGameFiles(const GameCheck& check) {
+    game_check_ = check;
     game_files_ = check.state;
+    playable_ = SelectGuest(check).has_value();
     game_files_problem_ = DescribeGameFilesProblem(check);
     play_card_ = DescribePlayCard(check);
   }
@@ -1011,7 +1019,10 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     }
     ui.Info("Port version", SSF2T_PORT_VERSION);
     ui.Info("Libraries", "ReXGlue SDK " REXGLUE_VERSION_STRING "   \xC2\xB7   TRG Launcher " SSF2T_TRG_VERSION);
-    ui.Info("Game", "Xbox Live Arcade, title 584108A4, game version 0.0.2.3 (Title Update #1)");
+    const std::string game_info = std::string("Xbox Live Arcade, title 584108A4, game version ") +
+                                  GuestExecutableVersion(game_check_.guest) +
+                                  (game_check_.guest == GuestVersion::kTitleUpdate023 ? " (Title Update #1)" : "");
+    ui.Info("Game", game_info.c_str());
     ui.Link(DisplayUrl(kRepositoryUrl).c_str(), kRepositoryUrl);
   }
 
@@ -1030,6 +1041,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   LauncherCallbacks cb_;
   GameSettings& settings_;
   GameFiles game_files_ = GameFiles::kMissing;
+  bool playable_ = false;
+  GameCheck game_check_;
   std::string game_files_problem_;
   PlayCardText play_card_;
   std::vector<MonitorInfo> monitors_;
@@ -1132,7 +1145,7 @@ bool g_skipped_once = false;
 bool ShouldShowLauncher(const std::filesystem::path& game_dir) {
   g_skipped_once = REXCVAR_GET(ssf2t_skip_launcher);
   rex::cvar::ResetToDefault("ssf2t_skip_launcher");
-  return LauncherWanted(CheckAndLogGameFiles(game_dir).state == GameFiles::kReady, g_skipped_once, ShiftHeld(),
+  return LauncherWanted(SelectGuest(CheckAndLogGameFiles(game_dir)).has_value(), g_skipped_once, ShiftHeld(),
                         REXCVAR_GET(ssf2t_launcher));
 }
 

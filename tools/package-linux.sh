@@ -18,8 +18,8 @@
 # The AppImage runtime (the part that mounts the AppImage before AppRun runs) is built from the pinned AppImage/type2-runtime
 # source with the project's patch (tools/build-appimage-runtime.sh): that needs root or sudo, network access the first time,
 # and is skipped while the pins and patches are unchanged.
-# Needs generated/default from tools/codegen.ps1 (Windows) and the game's default.xex and its Title Update default.xexp at
-# game/extracted, which only the guest-code freshness check reads (tools/check-guest-code.sh); none is packaged.
+# Needs generated/base and generated/tu from tools/codegen.ps1 (Windows); the freshness check (tools/check-guest-code.sh)
+# reads only config/guest, and no game file is needed or packaged.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -187,14 +187,14 @@ echo "glibc $HOST_GLIBC"
 
 echo "== Inputs"
 [ -f "$ROOT/third_party/trg-launcher/CMakeLists.txt" ] || fail "third_party/trg-launcher is empty"
-bash "$ROOT/tools/check-guest-code.sh" "$ROOT" || fail "generated/default is not current (run tools/codegen.ps1 on Windows first)"
+bash "$ROOT/tools/check-guest-code.sh" "$ROOT" --all || fail "generated/base and generated/tu are not current (run tools/codegen.ps1 on Windows first)"
 
 echo "== Source -> $WORK"
 mkdir -p "$WORK/third_party" "$WORK/tools"
-for f in CMakeLists.txt CMakePresets.json ssf2t_hd_remix_manifest.toml LICENSE tools/build-patched-rexruntime.sh; do
+for f in CMakeLists.txt CMakePresets.json LICENSE tools/build-patched-rexruntime.sh tools/check-guest-code.sh; do
   rsync -a "$ROOT/$f" "$WORK/$f"
 done
-for d in assets config src tests generated packaging patches/rexglue-sdk patches/trg-launcher third_party/trg-launcher; do
+for d in assets cmake config src tests generated packaging patches/rexglue-sdk patches/trg-launcher third_party/trg-launcher; do
   mkdir -p "$WORK/$d"
   rsync -a --delete --exclude .git "$ROOT/$d/" "$WORK/$d/"
 done
@@ -203,12 +203,6 @@ find "$WORK/third_party/trg-launcher" "$WORK/patches/trg-launcher" -type f \
   \( -name '*.patch' -o -name '*.h' -o -name '*.cpp' -o -name '*.c' -o -name '*.txt' -o -name '*.cmake' \) \
   -exec sed -i 's/\r$//' {} +
 
-# The build re-runs codegen (Windows only here) when an input listed in codegen.d is missing or newer.
-mkdir -p "$WORK/game/extracted"
-cp -p "$(find "$ROOT/game/extracted" -maxdepth 1 -iname default.xex | head -n 1)" "$WORK/game/extracted/default.xex"
-cp -p "$ROOT/game/extracted/default.xexp" "$WORK/game/extracted/default.xexp"
-sed -i -E "s#[A-Za-z]:/[^ ]*/ssf2t-hd-remix-recompiled#$WORK#g" "$WORK/generated/default/codegen.d"
-if grep -qE '[A-Za-z]:/' "$WORK/generated/default/codegen.d"; then fail "generated/default/codegen.d still names Windows paths"; fi
 
 echo "== ReXGlue SDK $SDK_VERSION (linux-amd64)"
 SDK="$WORK/tools/rexglue/linux-amd64"
@@ -227,14 +221,6 @@ fi
 grep -qF "set(PACKAGE_VERSION \"$SDK_VERSION\")" "$SDK/lib/cmake/rexglue/rexglueConfigVersion.cmake" ||
   fail "tools/rexglue/linux-amd64 is not ReXGlue $SDK_VERSION"
 
-# The SDK's codegen tool needs a newer glibc than Ubuntu 20.04 and codegen is a Windows step anyway: the build's codegen
-# step only records the already checked generated/default.
-cat > "$SDK/bin/rexglue" <<'STUB'
-#!/bin/sh
-[ "$1" = codegen ] || exit 2
-exec touch "$(dirname "$2")/generated/default/codegen.build.stamp"
-STUB
-chmod 755 "$SDK/bin/rexglue"
 
 echo "== Patched ReXGlue runtime and GPU plugin"
 PATCHED="$ROOT/tools/build-patched-rexruntime.sh"
@@ -246,7 +232,7 @@ bash "$PATCHED" --check "$SDK"
 echo "== Build ($PRESET)"
 BIN="$WORK/out/build/$PRESET"
 [ "$CLEAN" = 1 ] && rm -rf "$BIN"
-(cd "$WORK" && cmake --preset "$PRESET" >/dev/null && cmake --build --preset "$PRESET")
+(cd "$WORK" && cmake --preset "$PRESET" -DSSF2T_TITLE_UPDATE_IMAGE=ON >/dev/null && cmake --build --preset "$PRESET")
 for f in $BIN_NAME librexruntime.so librexgpu-xenos.so $BIN_NAME.toml assets/launcher/header-art.png; do
   [ -f "$BIN/$f" ] || fail "build output is missing $f"
 done

@@ -30,6 +30,7 @@ struct LauncherPaths {
 struct LauncherCallbacks {
   std::function<void()> play;               // starts the game in this window
   std::function<bool()> window_changed;     // the saved window size, monitor or VSync needs a new window
+  std::function<bool()> guest_changed;      // the installed game files now call for the other recompiled image
   std::function<bool()> restart;            // starts a new process with the saved settings; false if it could not
   std::function<void()> quit;
   std::function<void*()> window_handle;     // the native window the launcher is shown in

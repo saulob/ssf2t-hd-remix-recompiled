@@ -12,14 +12,18 @@ https://github.com/saulob/ssf2t-hd-remix-recompiled
 NO GAME FILES ARE INCLUDED
 --------------------------
 You need your own copy of the game: the Super Street Fighter II Turbo HD Remix
-Xbox Live Arcade package and its official Title Update #1. The port is built
-from the updated game, so it needs both:
+Xbox Live Arcade package. The official Title Update #1 is optional:
+
 
   Title ID:      584108A4
   Media ID:      37B7D7D3
-  Game package:  game version 0.0.1.3 (Xbox Live Arcade, default.xex)
-  Title Update:  Title Update #1, updates the game to 0.0.2.3 (default.xexp)
+  Game package:  required, game version 0.0.1.3 (Xbox Live Arcade, default.xex)
+  Title Update:  optional, Title Update #1, updates the game to 0.0.2.3
+                 (default.xexp)
 
+With only the game package the port plays version 0.0.1.3. Installing the
+Title Update enables the updated version 0.0.2.3, and removing it returns to
+0.0.1.3. The same program runs both.
 Any other version is refused by the launcher, which names the version it found.
 
 
@@ -30,7 +34,7 @@ REQUIREMENTS
 - The latest Microsoft Visual C++ Redistributable 2015-2022 (x64). Most PCs
   have it. If Windows reports a missing VCRUNTIME140.dll or MSVCP140.dll,
   install it from https://aka.ms/vs/17/release/vc_redist.x64.exe
-- Your own game package and its Title Update package, plus about 400 MB of
+- Your own game package (and optionally its Title Update), plus about 400 MB of
   free disk space next to the program for the game files
 
 
@@ -44,19 +48,20 @@ INSTALL
    Xbox 360 hard drive it is in Content\0000000000000000\584108A4\000D0000\
 5. Wait while the launcher checks the package and copies the game files into
    the "game" folder next to the program.
-6. Click "Install Title Update" and select the Title Update #1 package. On an
+6. Optional: click "Install Title Update" and select the Title Update #1 package. On an
    Xbox 360 hard drive it is in
    Content\0000000000000000\584108A4\000B0000\
    The two packages are installed separately, in either order. Installing one
    does not install the other, and each button refuses the other package. The
    launcher takes only the update's default.xexp from it.
-7. When the Play page says "Ready to play", press PLAY. PLAY stays disabled
-   until the game package and Title Update #1 are both installed.
+7. When the Play page says "Ready to play", press PLAY. PLAY is enabled once
+   the game package is installed.
 
 To repair the game files, use "Reinstall Game" on the Play page. Your settings
 and saves are kept, and so is an installed Title Update. "Remove Title Update"
-deletes only default.xexp from the "game" folder; the game cannot be played
-without it.
+deletes only default.xexp from the "game" folder and returns to game version
+0.0.1.3; settings, saves and achievements are kept and the game stays ready to
+play.
 
 
 UPDATES

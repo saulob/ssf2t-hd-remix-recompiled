@@ -9,7 +9,7 @@
   they never start the game or the launcher.
   The runtime tests (tests\physical_heap_stress.cpp, tests\title_thread_shutdown_tests.cpp) are built into the
   configured build folder and run against the patched runtime in tools\rexglue, so run tools\build.ps1 once first.
-  The scanner --verify step runs only when generated\default and game\analysis\default.image.bin exist.
+  The scanner --verify step runs only when out\codegen\tu\raw and game\analysis\default.image.bin exist.
 
 .EXAMPLE
   .\tools\test.ps1
@@ -38,14 +38,18 @@ if ($python) {
     $scanner = Join-Path $PSScriptRoot 'find-missing-functions.py'
     Invoke-Step 'scanner self-test' { & $python.Source -I $scanner --self-test }
     $image = Join-Path $Root 'game\analysis\default.image.bin'
-    if ((Test-Path $image) -and (Test-Path (Join-Path $Root 'generated\default\sources.cmake'))) {
+    if ((Test-Path $image) -and (Test-Path (Join-Path $Root 'out\codegen\tu\raw\sources.cmake'))) {
         Invoke-Step 'scanner verify' { & $python.Source -I $scanner --verify }
     } else {
-        Write-Host '== scanner verify skipped (needs generated\default and game\analysis\default.image.bin)'
+        Write-Host '== scanner verify skipped (needs out\codegen\tu\raw and game\analysis\default.image.bin)'
     }
 } else {
     Write-Host '== scanner checks skipped (python not found)'
 }
+
+Write-Host '== guest symbol prefix'
+& (Join-Path $PSScriptRoot 'test-guest-code.ps1')
+if ($LASTEXITCODE) { throw "Guest code tests failed ($LASTEXITCODE)" }
 
 Write-Host '== release folder check'
 & (Join-Path $PSScriptRoot 'test-release-check.ps1')

@@ -253,8 +253,6 @@ std::string GameStateName(GameFiles state) {
       return "unsupported version";
     case GameFiles::kMissing:
       return "missing";
-    case GameFiles::kUpdateMissing:
-      return "title update missing";
     case GameFiles::kUpdateUnsupported:
       return "unsupported title update";
     case GameFiles::kUpdateOnly:
@@ -580,7 +578,9 @@ void LogStartupDiagnostics(const GameSettings& settings, const MonitorInfo& disp
   std::string hash_error;
   if (game.state == GameFiles::kReady) {
     diagnostics.game.sha256 = trg::update::Sha256FileHex(game_dir / "default.xex", hash_error);
-    diagnostics.game.update_sha256 = trg::update::Sha256FileHex(game_dir / kTitleUpdateFile, hash_error);
+    if (game.guest == GuestVersion::kTitleUpdate023) {
+      diagnostics.game.update_sha256 = trg::update::Sha256FileHex(game_dir / kTitleUpdateFile, hash_error);
+    }
   }
 
   diagnostics.gameplay.simulation = "60Hz";

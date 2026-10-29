@@ -1,0 +1,9 @@
+[project]
+name = "ssf2t_hd_remix"
+sdk_version = "0.10.0"
+game_root = "@ROOT@/out/codegen/tu/input"
+
+[entrypoint]
+file_path = "@ROOT@/out/codegen/tu/input/default.xex"
+out_directory_path = "@ROOT@/out/codegen/tu/raw"
+includes = ["@ROOT@/config/guest/tu/overrides.toml", "@ROOT@/config/guest/tu/discovered-functions.toml"]

@@ -2,9 +2,12 @@
 
 #include <rex/hook.h>
 
+#include "title_update_image.h"
+
+namespace {
+
 // The string table splitter: r3 is the cursor, r4 the end of the buffer. The span up to the next LF holds whole entries.
-REX_EXTERN(__imp__sub_82439FA0);
-REX_HOOK_RAW(sub_82439FA0) {
+void SplitMenuText(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (ctx.r4.u32 > ctx.r3.u32) {
     char* data = reinterpret_cast<char*>(base + ctx.r3.u32);
     const size_t length = ctx.r4.u32 - ctx.r3.u32;
@@ -13,5 +16,15 @@ REX_HOOK_RAW(sub_82439FA0) {
     if (span < length) ++span;
     ssf2t::PatchMainMenuExitBuffer(data, span);
   }
-  __imp__sub_82439FA0(ctx, base);
+  original(ctx, base);
 }
+
+}  // namespace
+
+REX_EXTERN(__imp__base013_sub_82439830);
+REX_HOOK_RAW(base013_sub_82439830) { SplitMenuText(ctx, base, __imp__base013_sub_82439830); }
+
+#if SSF2T_TITLE_UPDATE_IMAGE
+REX_EXTERN(__imp__tu023_sub_82439FA0);
+REX_HOOK_RAW(tu023_sub_82439FA0) { SplitMenuText(ctx, base, __imp__tu023_sub_82439FA0); }
+#endif

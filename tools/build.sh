@@ -6,7 +6,7 @@
 #   tools/build.sh                  linux-amd64-release
 #   tools/build.sh relwithdebinfo   linux-amd64-relwithdebinfo (or debug)
 #
-# Needs the extracted linux-amd64 SDK in tools/rexglue and generated/default (tools/codegen.ps1 on Windows).
+# Needs the extracted linux-amd64 SDK in tools/rexglue and generated/base and generated/tu (tools/codegen.ps1 on Windows).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,7 +24,7 @@ esac
 PRESET="linux-amd64-${1:-release}"
 [ "$(uname -s)" = Linux ] || fail "builds on Linux only"
 [ -d "$SDK/lib/cmake/rexglue" ] || fail "missing $SDK (extract rexglue-sdk-0.10.0-linux-amd64.zip into tools/rexglue)"
-bash "$ROOT/tools/check-guest-code.sh" "$ROOT" || fail "generated/default is not current (run tools/codegen.ps1 on Windows first)"
+bash "$ROOT/tools/check-guest-code.sh" "$ROOT" || fail "generated/base and generated/tu are not current (run tools/codegen.ps1 on Windows first)"
 
 if [ "$CONFIG" != Debug ] && ! bash "$PATCHED" --check "$SDK" >/dev/null 2>&1; then
   echo "== Building the patched ReXGlue runtime and GPU plugin"

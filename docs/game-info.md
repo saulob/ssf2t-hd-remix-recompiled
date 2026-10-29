@@ -15,7 +15,7 @@ No game data is stored in this repository. The original package and extracted fi
 | Media ID | `0x37B7D7D3` (XEX execution info) |
 | Version | `0.0.1.3` (XEX execution info) |
 | Extraction | `tools/extract_stfs.ps1` (title ID checked; the STFS hash tree was not separately verified) |
-| Required with | the Title Update below |
+| Optional add-on | the Title Update below |
 
 Extracted to `game/extracted/` (27 files, 383,111,392 bytes).
 
@@ -30,8 +30,9 @@ Extracted to `game/extracted/` (27 files, 383,111,392 bytes).
 
 ## Title Update
 
-The port is recompiled from the game with its official Title Update applied. The update was identified from its own
-metadata, not from its file or folder name.
+The Title Update is optional. The port is recompiled twice, from the game alone (0.0.1.3) and from the game with its
+official Title Update applied (0.0.2.3), and both images are built into the one executable; the installed files decide
+which runs. The update was identified from its own metadata, not from its file or folder name.
 
 | Field | Value |
 |---|---|
@@ -135,10 +136,15 @@ port runs offline, so the online changes are present but unused.
 
 ## Codegen notes
 
-- `rexglue codegen` 0.10.0 loads `default.xex` with `default.xexp` applied. The manifest keeps the update's SHA-256,
-  because codegen does not track `default.xexp` as an input.
-- Manual function starts in `config/overrides.toml`: `0x82452D00`, a tail-branch target with no `.pdata` start, and
+- `rexglue codegen` 0.10.0 loads `default.xex` with a `default.xexp` beside it applied. Each image is generated from a
+  staged copy of its inputs (`out/codegen/<image>/input`): `base` holds only `default.xex`, `tu` holds both. Codegen
+  does not track `default.xexp` as an input, so the image stamp (`generated/<image>/ssf2t-guest.stamp`) records the
+  update's SHA-256.
+- Both images define the same `sub_XXXXXXXX` names, so `tools/guest-code.ps1` prefixes every guest function, helper
+  and table of the generated code (`base013_` / `tu023_`); kernel imports keep their names.
+- Manual function starts in `config/guest/tu/overrides.toml`: `0x82452D00`, a tail-branch target with no `.pdata` start, and
   five this-adjust thunks at `0x839DE2E0`..`0x839DE300` that only vtables reach. The scanner rates the thunks below
-  HIGH because they follow a padding word; 0.0.1.3 registered all of them.
+  HIGH because they follow a padding word; 0.0.1.3 registered all of them. `config/guest/base` holds the 0.0.1.3 analysis:
+  `0x824521C0` as the manual start and `0x839D3020` and `0x839DAFE8` among the discovered functions.
 - 55 functions exceed the default `max_file_size_bytes` split target (1 MiB). The largest is about 8.5 MB. These are long straight-line table setup sequences (`lis`/`addi`/`stw`) with few `blr`. This is a warning only; the code is still generated.
-- Result: `generated/default/`, 725 files, exit code 0.
+- Result: `generated/tu/` (previously `generated/default/`), 725 files, exit code 0.

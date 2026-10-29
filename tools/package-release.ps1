@@ -102,7 +102,7 @@ Write-Host ''
 Write-Host "Super Street Fighter II Turbo HD Remix PC port $Version - Windows release package (local only)"
 
 if (-not $SkipBuild) {
-    $build = @{ Config = 'Release'; BuildDir = $ReleaseBuild }
+    $build = @{ Config = 'Release'; BuildDir = $ReleaseBuild; RequireTitleUpdate = $true }
     if ($Clean) { $build.Clean = $true }
     & (Join-Path $PSScriptRoot 'build.ps1') @build
     & (Join-Path $PSScriptRoot 'build-updater.ps1') -OutDir $UpdaterBuild
@@ -113,6 +113,7 @@ $runtimeProblems = @(Test-PatchedRuntime $SdkRoot) + @(Test-StagedRuntime $SdkRo
 if ($runtimeProblems.Count) { Write-Problems $runtimeProblems; throw 'tools\rexglue or the release build does not hold the runtime and GPU plugin this branch needs (build without -SkipBuild)' }
 $cache = Join-Path $ReleaseBuild 'CMakeCache.txt'
 if (-not (Select-String -Path $cache -SimpleMatch 'CMAKE_BUILD_TYPE:STRING=Release' -Quiet)) { throw "$ReleaseBuild is not a Release build" }
+if (-not (Select-String -Path $cache -SimpleMatch 'SSF2T_TITLE_UPDATE_IMAGE:STRING=ON' -Quiet)) { throw "$ReleaseBuild does not contain both game versions (build without -SkipBuild, with default.xexp present)" }
 $stamp = Read-RuntimeStamp $SdkRoot
 
 foreach ($leaf in $ProgramFiles) {

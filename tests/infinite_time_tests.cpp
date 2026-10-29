@@ -308,10 +308,15 @@ void TestNoCheatsAdded() {
 
 void TestTimerHookIsOnlyTheTick() {
   const std::string hook = ReadSource("infinite_time.cpp");
-  CHECK(CountOccurrences(hook, "REX_HOOK_RAW(") == 1);
-  CHECK(hook.find("REX_HOOK_RAW(sub_8224EDA0)") != std::string::npos);
-  CHECK(hook.find("ssf2t::SkipTimerTick(enabled, supported, TimerCodeMatches(base))") != std::string::npos);
-  CHECK(hook.find("__imp__sub_8224EDA0(ctx, base);") != std::string::npos);
+  CHECK(CountOccurrences(hook, "REX_HOOK_RAW(") == 2);
+  CHECK(hook.find("REX_HOOK_RAW(base013_sub_8224ED58)") != std::string::npos);
+  CHECK(hook.find("REX_HOOK_RAW(tu023_sub_8224EDA0)") != std::string::npos);
+  CHECK(hook.find("REX_EXTERN(__imp__base013_sub_8224ED58)") != std::string::npos);
+  CHECK(hook.find("REX_EXTERN(__imp__tu023_sub_8224EDA0)") != std::string::npos);
+  CHECK(hook.find("TimerTick<ssf2t::Base013Timer>(ctx, base, __imp__base013_sub_8224ED58)") != std::string::npos);
+  CHECK(hook.find("TimerTick<ssf2t::TitleUpdate023Timer>(ctx, base, __imp__tu023_sub_8224EDA0)") != std::string::npos);
+  CHECK(hook.find("ssf2t::SkipTimerTick(enabled, supported, TimerCodeMatches<G>(base))") != std::string::npos);
+  CHECK(hook.find("original(ctx, base);") != std::string::npos);
   CHECK(hook.find("REX_STORE") == std::string::npos);
   CHECK(hook.find("StoreBE") == std::string::npos);
 }
@@ -328,30 +333,76 @@ void TestOnSuppressesOnlyWithAllGates() {
   CHECK(!SkipTimerTick(true, true, false));
 }
 
-void TestTimerFingerprintMatchesAndFallsBack() {
-  static uint8_t memory[0x2000000] = {};
-  uint8_t* base = memory - kImageBase;
+template <typename G>
+void WriteTimerTick(uint8_t* base) {
   uint32_t offset = 0;
-  for (const uint32_t word : kTimerTickWords) {
-    StoreBE32(base, kTimerTick + offset, word);
+  for (const uint32_t word : G::kTimerTickWords) {
+    StoreBE32(base, G::kTimerTick + offset, word);
     offset += 4;
   }
-  CHECK(TimerTickMatches(base));
-  CHECK(SkipTimerTick(true, true, TimerTickMatches(base)));
+}
 
-  for (size_t i = 0; i < std::size(kTimerTickWords); ++i) {
-    const uint32_t address = kTimerTick + uint32_t(i * 4);
-    StoreBE32(base, address, kTimerTickWords[i] ^ 0x00010000);
-    CHECK(!TimerTickMatches(base));
-    CHECK(!SkipTimerTick(true, true, TimerTickMatches(base)));
-    StoreBE32(base, address, kTimerTickWords[i]);
+template <typename G>
+void CheckTimerFingerprintMatchesAndFallsBack() {
+  static uint8_t memory[0x2000000] = {};
+  std::fill(std::begin(memory), std::end(memory), uint8_t(0));
+  uint8_t* base = memory - kImageBase;
+  WriteTimerTick<G>(base);
+  CHECK(TimerTickMatches<G>(base));
+  CHECK(SkipTimerTick(true, true, TimerTickMatches<G>(base)));
+
+  for (size_t i = 0; i < std::size(G::kTimerTickWords); ++i) {
+    const uint32_t address = G::kTimerTick + uint32_t(i * 4);
+    StoreBE32(base, address, G::kTimerTickWords[i] ^ 0x00010000);
+    CHECK(!TimerTickMatches<G>(base));
+    CHECK(!SkipTimerTick(true, true, TimerTickMatches<G>(base)));
+    StoreBE32(base, address, G::kTimerTickWords[i]);
   }
-  CHECK(TimerTickMatches(base));
+  CHECK(TimerTickMatches<G>(base));
+}
+
+void TestTimerFingerprintMatchesAndFallsBack() {
+  CheckTimerFingerprintMatchesAndFallsBack<TitleUpdate023Timer>();
+  CheckTimerFingerprintMatchesAndFallsBack<Base013Timer>();
+}
+
+void TestTimerVersionsHoldTheirOwnTick() {
+  CHECK(Base013Timer::kTimerTick == 0x8224ED58);
+  CHECK(TitleUpdate023Timer::kTimerTick == 0x8224EDA0);
+  CHECK(Base013Timer::kTimerTickWords[5] == 0x914B52A0);
+  CHECK(Base013Timer::kTimerTickWords[7] == 0x816B52DC);
+  CHECK(Base013Timer::kTimerTickWords[11] == 0x916A52A8);
+  CHECK(Base013Timer::kTimerTickWords[13] == 0x816B52A8);
+  CHECK(TitleUpdate023Timer::kTimerTickWords[5] == 0x914B57B8);
+  CHECK(TitleUpdate023Timer::kTimerTickWords[7] == 0x816B57F4);
+  CHECK(std::size(Base013Timer::kTimerTickWords) == std::size(TitleUpdate023Timer::kTimerTickWords));
+  CHECK(!std::equal(std::begin(Base013Timer::kTimerTickWords), std::end(Base013Timer::kTimerTickWords),
+                    std::begin(TitleUpdate023Timer::kTimerTickWords)));
+
+  // One version's tick never satisfies the other version's check.
+  static uint8_t memory[0x2000000] = {};
+  std::fill(std::begin(memory), std::end(memory), uint8_t(0));
+  uint8_t* base = memory - kImageBase;
+  WriteTimerTick<Base013Timer>(base);
+  CHECK(TimerTickMatches<Base013Timer>(base));
+  CHECK(!TimerTickMatches<TitleUpdate023Timer>(base));
+  std::fill(std::begin(memory), std::end(memory), uint8_t(0));
+  WriteTimerTick<TitleUpdate023Timer>(base);
+  CHECK(TimerTickMatches<TitleUpdate023Timer>(base));
+  CHECK(!TimerTickMatches<Base013Timer>(base));
+  // The base words at the TU address (and the reverse) are also a mismatch.
+  std::fill(std::begin(memory), std::end(memory), uint8_t(0));
+  uint32_t offset = 0;
+  for (const uint32_t word : Base013Timer::kTimerTickWords) {
+    StoreBE32(base, TitleUpdate023Timer::kTimerTick + offset, word);
+    offset += 4;
+  }
+  CHECK(!TimerTickMatches<TitleUpdate023Timer>(base));
 }
 
 void TestTimerHookFallsBackOnUnknownBuild() {
   const std::string hook = ReadSource("infinite_time.cpp");
-  CHECK(hook.find("static const bool matches = ssf2t::TimerTickMatches(base);") != std::string::npos);
+  CHECK(hook.find("static const bool matches = ssf2t::TimerTickMatches<G>(base);") != std::string::npos);
   CHECK(hook.find("g_xex_supported.load") != std::string::npos);
 }
 
@@ -362,23 +413,32 @@ void TestSupportedXexConstants() {
   CHECK(kXexpSize == 2166784);
   CHECK(kXexpCrc32 == 0x38DE2310);
   CHECK(std::string_view(kXexpSha256) == "a2e8e66b482c5d3a0d3a5d3f67a3cecb7a12ce1f6189196694fd3e765910606c");
-  CHECK(ReadSource("infinite_time.cpp").find("CheckGameFiles(game_dir).state != GameFiles::kReady") !=
-        std::string::npos);
-  CHECK(ReadSource("infinite_time.cpp").find("== kXexSha256") != std::string::npos);
+  CHECK(ReadSource("infinite_time.cpp").find("check.state != GameFiles::kReady") != std::string::npos);
+  CHECK(ReadSource("infinite_time.cpp").find("!= kXexSha256") != std::string::npos);
   CHECK(ReadSource("infinite_time.cpp").find("== kXexpSha256") != std::string::npos);
 }
 
-// The decrypted image is not in the repository; the check runs only where it was extracted.
+// The decrypted images are not in the repository; the checks run only where they were extracted.
 void TestTimerTickInRealImage() {
-  const std::filesystem::path image = std::filesystem::path(SSF2T_SOURCE_DIR) / "game" / "analysis" / "default.image.bin";
-  std::ifstream in(image, std::ios::binary);
-  if (!in) {
+  const std::filesystem::path analysis = std::filesystem::path(SSF2T_SOURCE_DIR) / "game" / "analysis";
+  std::ifstream tu(analysis / "default.image.bin", std::ios::binary);
+  if (!tu) {
     std::printf("  skipped: no decrypted image\n");
-    return;
+  } else {
+    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(tu)), std::istreambuf_iterator<char>());
+    CHECK(bytes.size() > 0x1400000);
+    CHECK(TimerTickMatches<TitleUpdate023Timer>(bytes.data() - kImageBase));
+    CHECK(!TimerTickMatches<Base013Timer>(bytes.data() - kImageBase));
   }
-  const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-  CHECK(bytes.size() > 0x1400000);
-  CHECK(TimerTickMatches(bytes.data() - kImageBase));
+  std::ifstream base(analysis / "default-0.0.1.3.image.bin", std::ios::binary);
+  if (!base) {
+    std::printf("  skipped: no decrypted 0.0.1.3 image\n");
+  } else {
+    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(base)), std::istreambuf_iterator<char>());
+    CHECK(bytes.size() > 0x1400000);
+    CHECK(TimerTickMatches<Base013Timer>(bytes.data() - kImageBase));
+    CHECK(!TimerTickMatches<TitleUpdate023Timer>(bytes.data() - kImageBase));
+  }
 }
 
 // The extracted default.xex is not in the repository; the check runs only where it is present.
@@ -428,6 +488,7 @@ int main() {
   TestOffRunsStockTimer();
   TestOnSuppressesOnlyWithAllGates();
   TestTimerFingerprintMatchesAndFallsBack();
+  TestTimerVersionsHoldTheirOwnTick();
   TestTimerHookFallsBackOnUnknownBuild();
   TestSupportedXexConstants();
   TestTimerTickInRealImage();

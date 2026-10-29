@@ -9,7 +9,7 @@ the HIGH-confidence ones to config/discovered-functions.toml.
   python tools/find-missing-functions.py --runtime-address 0xADDR   explain one address; edits nothing
 
 Adapted from tools/find-missing-functions.py of hard-corps-uprising-recompiled and
-geometry-wars-retro-evolved-2-recompiled. Needs a codegen run (generated/default) and the
+geometry-wars-retro-evolved-2-recompiled. Needs a codegen run (out/codegen/tu/raw, the unprefixed Title Update output) and the
 decrypted image game/analysis/default.image.bin (python -I tools/xex_image.py: default.xex with its
 Title Update applied).
 """
@@ -27,9 +27,9 @@ ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 IMAGE_PATH = os.path.join(ROOT, 'game', 'analysis', 'default.image.bin')
 IMAGE_SHA256 = '5304d4d651e5337b293a55e32a60d9504d5e9b9cfa20a7e80115d67260c1053e'
 IMAGE_SIZE = 0x2C10000
-GEN = os.path.join(ROOT, 'generated', 'default')
-OVERRIDES = os.path.join(ROOT, 'config', 'overrides.toml')
-DISCOVERED = os.path.join(ROOT, 'config', 'discovered-functions.toml')
+GEN = os.path.join(ROOT, 'out', 'codegen', 'tu', 'raw')
+OVERRIDES = os.path.join(ROOT, 'config', 'guest', 'tu', 'overrides.toml')
+DISCOVERED = os.path.join(ROOT, 'config', 'guest', 'tu', 'discovered-functions.toml')
 REPORT = os.path.join(ROOT, 'build', 'missing-functions-report.txt')
 
 BASE = 0x82000000

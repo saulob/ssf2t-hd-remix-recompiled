@@ -28,6 +28,7 @@
 #include "frame_counter.h"
 #include "game_files.h"
 #include "guest_functions.h"
+#include "guest_image.h"
 #include "infinite_time.h"
 #include "infinite_time_ui.h"
 #include "input_summary.h"
@@ -49,13 +50,16 @@ namespace ssf2t {
 
 class SuperStreetFighterApp : public rex::ReXApp {
  public:
-  using rex::ReXApp::ReXApp;
+  SuperStreetFighterApp(rex::ui::WindowedAppContext& ctx, GuestVersion guest)
+      : rex::ReXApp(ctx, "ssf2t_hd_remix", GuestImageConfig(guest)), guest_(guest) {}
 
+  // The recompiled image is fixed when the app is built, so it follows the game files found now. Files that are not
+  // ready show the launcher, and Play restarts the program if the files it installs call for the other image.
   static std::unique_ptr<rex::ui::WindowedApp> Create(rex::ui::WindowedAppContext& ctx) {
     SetApplicationId();
-    InstallGuestFunctionTable(PPCImageConfig.func_mappings);
-    return std::unique_ptr<SuperStreetFighterApp>(
-        new SuperStreetFighterApp(ctx, "ssf2t_hd_remix", PPCImageConfig));
+    const GuestVersion guest = SelectGuest(CheckGameFiles(DefaultGameDataRoot())).value_or(GuestVersion::kBase013);
+    InstallGuestFunctionTable(GuestImageConfig(guest).func_mappings);
+    return std::make_unique<SuperStreetFighterApp>(ctx, guest);
   }
 
  protected:
@@ -63,7 +67,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
     shipped_config_ = paths.config_path;
     const std::filesystem::path port_folder = PortFolder();
     if (paths.game_data_root.empty()) {
-      paths.game_data_root = port_folder / "game";
+      paths.game_data_root = DefaultGameDataRoot();
     }
     ChooseUserData(paths, port_folder);
     if (const auto inherited = TakeInheritedSessionLog({port_folder / "logs", paths.user_data_root / "logs"})) {
@@ -171,6 +175,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
       });
     };
     callbacks.window_changed = [this] { return game_settings_.WindowChanged(); };
+    callbacks.guest_changed = [this] { return NeedsOtherGuest(CheckGameFiles(game_data_root()), guest_); };
     callbacks.restart = [this] {
       if (!RelaunchSelf(L"--ssf2t_skip_launcher=true")) {
         return false;
@@ -200,17 +205,14 @@ class SuperStreetFighterApp : public rex::ReXApp {
     return std::nullopt;
   }
 
-  // The recompiled code belongs to the updated executable; any other image in guest memory must not run.
+  // The recompiled code belongs to one executable version; any other image in guest memory must not run.
   void OnPostLoadXexImage() override {
     const std::string loaded = LoadedExecutableVersion();
-    if (loaded == kTitleUpdateVersion) {
-      REXLOG_INFO("Game executable: version {} (Title Update applied)", loaded);
+    if (LoadedVersionMatches(guest_, loaded)) {
+      REXLOG_INFO("Game executable: version {}", loaded);
       return;
     }
-    const std::string message = "The game executable loaded as version " + (loaded.empty() ? "unknown" : loaded) +
-                                ", but this port needs version " + kTitleUpdateVersion + ": default.xex " +
-                                kXexVersion + " with its Title Update default.xexp. Install both packages from the "
-                                "launcher's Play page.";
+    const std::string message = DescribeLoadedVersionMismatch(guest_, loaded);
     REXLOG_ERROR("{}", message);
     rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, message);
     PrepareHardExit();
@@ -308,14 +310,18 @@ class SuperStreetFighterApp : public rex::ReXApp {
   }
 
  private:
+  static std::filesystem::path DefaultGameDataRoot() {
+    const std::string configured = REXCVAR_GET(game_data_root);
+    return configured.empty() ? PortFolder() / "game" : std::filesystem::path(configured);
+  }
+
   GraphicsFallbackInfo DescribeGameFiles() const {
     switch (CheckGameFiles(game_data_root()).state) {
       case GameFiles::kReady:
         return {Utf8(game_data_root()), "Ready", true};
       case GameFiles::kUnsupported:
         return {Utf8(game_data_root()), "Unsupported version", false};
-      case GameFiles::kUpdateMissing:
-        return {Utf8(game_data_root()), "Title Update required", false};
+
       case GameFiles::kUpdateUnsupported:
         return {Utf8(game_data_root()), "Unsupported Title Update", false};
       default:
@@ -363,6 +369,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
     }
   }
 
+  const GuestVersion guest_;
   std::filesystem::path shipped_config_;
   GameSettings game_settings_;
   UserDataSelection user_data_;
