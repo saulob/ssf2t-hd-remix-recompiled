@@ -121,6 +121,14 @@ set_target_properties(trg_launcher PROPERTIES CXX_STANDARD 17)
 target_compile_definitions(trg_launcher PRIVATE _CRT_SECURE_NO_WARNINGS)
 get_directory_property(SSF2T_TRG_VERSION DIRECTORY "${_trg_patched_dir}" DEFINITION PROJECT_VERSION)
 
+set(SSF2T_NETPLAY_SOURCES
+    src/netplay/determinism.cpp
+    src/netplay/packet.cpp
+    src/netplay/rollback_core.cpp
+    src/netplay/session.cpp
+    src/netplay/udp_transport.cpp
+)
+
 set(SSF2T_SOURCES
     src/main.cpp
     src/achievement_ui_hook.cpp
@@ -145,6 +153,7 @@ set(SSF2T_SOURCES
     src/log_filter.cpp
     src/log_path.cpp
     src/modal_dialog.cpp
+    src/netplay_hook.cpp
     src/platform.cpp
     src/session_log.cpp
     src/settings.cpp
@@ -164,6 +173,7 @@ set(SSF2T_SOURCES
     src/updater/third_party/miniz/miniz.c
     src/user_data.cpp
     src/window_host.cpp
+    ${SSF2T_NETPLAY_SOURCES}
 )
 set_source_files_properties(src/updater/third_party/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "-w")
 set_property(SOURCE src/update_config.cpp src/updater/github_release.cpp src/updater/json.cpp src/updater/sha256.cpp
@@ -190,7 +200,7 @@ ssf2t_check_guest_images(ssf2t_hd_remix)
 rexglue_configure_target(ssf2t_hd_remix GPU_PLUGINS xenos)
 target_link_libraries(ssf2t_hd_remix PRIVATE trg::launcher)
 if(WIN32)
-    target_link_libraries(ssf2t_hd_remix PRIVATE shcore synchronization dxgi)
+    target_link_libraries(ssf2t_hd_remix PRIVATE shcore synchronization dxgi ws2_32)
     foreach(_sdk_dll rexruntime rexruntimed rexruntimerd rexgpu-xenos rexgpu-xenosd rexgpu-xenosrd)
         if(EXISTS "${SSF2T_SDK_DIR}/bin/${_sdk_dll}.dll")
             set_property(TARGET ssf2t_hd_remix APPEND PROPERTY LINK_DEPENDS "${SSF2T_SDK_DIR}/bin/${_sdk_dll}.dll")
@@ -337,6 +347,27 @@ target_include_directories(ssf2t_infinite_time_tests PRIVATE src)
 target_link_libraries(ssf2t_infinite_time_tests PRIVATE trg::launcher)
 target_compile_definitions(ssf2t_infinite_time_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_dependencies(ssf2t_runtime_tests ssf2t_infinite_time_tests)
+
+# The Netplay Determinism Test setting: default, launcher wiring and persisted value. Headless.
+add_executable(ssf2t_netplay_setting_tests EXCLUDE_FROM_ALL tests/netplay_setting_tests.cpp)
+target_include_directories(ssf2t_netplay_setting_tests PRIVATE src)
+target_link_libraries(ssf2t_netplay_setting_tests PRIVATE trg::launcher)
+target_compile_definitions(ssf2t_netplay_setting_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_netplay_setting_tests)
+
+# Netplay foundation: packets, rollback core, session, UDP loopback and the guest bindings. Headless; the UDP test
+# binds 127.0.0.1 only.
+foreach(_test packet rollback session guest input state)
+    set(_name ssf2t_netplay_${_test}_tests)
+    add_executable(${_name} EXCLUDE_FROM_ALL tests/netplay_${_test}_tests.cpp ${SSF2T_NETPLAY_SOURCES})
+    target_include_directories(${_name} PRIVATE src tests)
+    target_compile_definitions(${_name} PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_options(${_name} PRIVATE -Wall -Wextra)
+    if(WIN32)
+        target_link_libraries(${_name} PRIVATE ws2_32)
+    endif()
+    add_dependencies(ssf2t_runtime_tests ${_name})
+endforeach()
 
 add_executable(ssf2t_achievement_tests EXCLUDE_FROM_ALL tests/achievement_tests.cpp)
 target_include_directories(ssf2t_achievement_tests PRIVATE src "${SSF2T_SDK_DIR}/include")

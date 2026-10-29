@@ -41,6 +41,7 @@
 #include "keybinds.h"
 #include "language_setting.h"
 #include "local_player_name.h"
+#include "netplay_setting.h"
 #include "player_name_setting.h"
 #include "launcher_achievements.h"
 #include "log_filter.h"
@@ -860,6 +861,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     ui.Toggle("Frame counter", "Shows the game's frame rate in the corner. F2 toggles it while playing.",
               "ssf2t_show_frame_counter", false, "Hidden", "Shown");
     ui.Toggle(kInfiniteTimeLabel, kInfiniteTimeHelp, kInfiniteTimeSetting, kDefaultInfiniteTime, "Off", "On");
+    ui.Toggle(kNetplayDeterminismLabel, kNetplayDeterminismHelp, kNetplayDeterminismSetting, kDefaultNetplayDeterminism,
+              "Off", "On");
     if (ui.Section("Player names", true)) {
       ui.Help(kPlayerNamesHelp);
       for (const PlayerNameSetting& player : kPlayerNames) {

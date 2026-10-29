@@ -1,3 +1,4 @@
+#include "netplay_setting.h"
 #include "settings.h"
 
 #include <algorithm>
@@ -91,6 +92,7 @@ std::vector<std::string> GameSettingKeys() {
       kLetterboxSetting,
       kFightAreaSetting,
       kInfiniteTimeSetting,
+      kNetplayDeterminismSetting,
       "resolution_scale",
       "ssf2t_internal_render_scale",
       "swap_post_effect",

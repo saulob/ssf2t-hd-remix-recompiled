@@ -101,6 +101,13 @@ Invoke-Step 'menu text' { & (Join-Path $BuildDir 'ssf2t_menu_text_tests.exe') }
 Invoke-Step 'launcher settings' { & (Join-Path $BuildDir 'ssf2t_launcher_settings_tests.exe') }
 Invoke-Step 'fight area' { & (Join-Path $BuildDir 'ssf2t_fight_area_tests.exe') }
 Invoke-Step 'infinite time' { & (Join-Path $BuildDir 'ssf2t_infinite_time_tests.exe') }
+Invoke-Step 'netplay packets' { & (Join-Path $BuildDir 'ssf2t_netplay_packet_tests.exe') }
+Invoke-Step 'netplay rollback' { & (Join-Path $BuildDir 'ssf2t_netplay_rollback_tests.exe') }
+Invoke-Step 'netplay session' { & (Join-Path $BuildDir 'ssf2t_netplay_session_tests.exe') }
+Invoke-Step 'netplay guest' { & (Join-Path $BuildDir 'ssf2t_netplay_guest_tests.exe') }
+Invoke-Step 'netplay input' { & (Join-Path $BuildDir 'ssf2t_netplay_input_tests.exe') }
+Invoke-Step 'netplay state' { & (Join-Path $BuildDir 'ssf2t_netplay_state_tests.exe') }
+Invoke-Step 'netplay setting' { & (Join-Path $BuildDir 'ssf2t_netplay_setting_tests.exe') }
 Invoke-Step 'keyboard remapping' { & (Join-Path $BuildDir 'ssf2t_keyboard_tests.exe') }
 Invoke-Step 'player names' { & (Join-Path $BuildDir 'ssf2t_player_name_tests.exe') }
 Invoke-Step 'launcher quit' { & (Join-Path $BuildDir 'ssf2t_launcher_quit_tests.exe') }
