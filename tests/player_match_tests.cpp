@@ -360,6 +360,10 @@ void TestEachImageHasItsOwnAddresses() {
   CHECK(TitleUpdate023PlayerMatch::kGameMode - Base013PlayerMatch::kGameMode == 0x518);
   CHECK(TitleUpdate023PlayerMatch::kErrorTitle - TitleUpdate023PlayerMatch::kErrorMessage == kErrorMessageBytes);
   CHECK(Base013PlayerMatch::kErrorTitle - Base013PlayerMatch::kErrorMessage == kErrorMessageBytes);
+  // SetError writes the popup buffers and the level as one block; the Title Update moved the block by 0x518.
+  CHECK(TitleUpdate023PlayerMatch::kErrorLevel - TitleUpdate023PlayerMatch::kErrorTitle ==
+        Base013PlayerMatch::kErrorLevel - Base013PlayerMatch::kErrorTitle);
+  CHECK(TitleUpdate023PlayerMatch::kErrorTitle - Base013PlayerMatch::kErrorTitle == 0x518);
 }
 
 }  // namespace

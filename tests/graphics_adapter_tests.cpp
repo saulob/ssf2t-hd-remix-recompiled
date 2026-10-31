@@ -3,10 +3,13 @@
 // Run: ssf2t_graphics_adapter_tests
 
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -158,6 +161,75 @@ void TestEnumerationMatchesRuntime() {
 }
 #endif
 
+#if !defined(_WIN32)
+using ssf2t::GraphicsAdapter;
+
+std::string Values(const std::vector<GraphicsAdapter>& adapters) {
+  std::string out;
+  for (const GraphicsAdapter& adapter : adapters) {
+    out += std::to_string(adapter.index) + "=" + adapter.name + ";";
+  }
+  return out;
+}
+
+// The production enumeration (dlopen, vkGetInstanceProcAddr, instance, devices) against a stand-in driver. ReXGlue opens
+// vulkan_device = N as the Nth vkEnumeratePhysicalDevices entry, so the index is the driver's, not the sorted position.
+void TestVulkanEnumeration() {
+  std::printf("Vulkan device list through a stand-in driver\n");
+  const char* driver = SSF2T_FAKE_VULKAN_LIBRARY;
+  setenv("SSF2T_FAKE_VULKAN", "integrated:Intel UHD;cpu:llvmpipe;discrete:NVIDIA RTX;virtual:Hyper-V GPU", 1);
+  unsetenv("SSF2T_FAKE_VULKAN_FAIL");
+  const std::vector<GraphicsAdapter> adapters = ssf2t::ListVulkanAdapters(driver);
+  CHECK(Values(adapters) == "2=NVIDIA RTX;0=Intel UHD;3=Hyper-V GPU;");
+  CHECK(ssf2t::EffectiveVulkanAdapter(driver, -1).index == 2);
+  CHECK(ssf2t::EffectiveVulkanAdapter(driver, -1).name == "NVIDIA RTX");
+  CHECK(ssf2t::EffectiveVulkanAdapter(driver, 0).name == "Intel UHD");
+  CHECK(ssf2t::EffectiveVulkanAdapter(driver, 3).known);
+  CHECK(!ssf2t::EffectiveVulkanAdapter(driver, 1).known);
+  CHECK(!ssf2t::EffectiveVulkanAdapter(driver, 9).known);
+
+  std::printf("launcher choice to vulkan_device\n");
+  const auto options = ssf2t::GraphicsAdapterOptions(adapters);
+  CHECK(options.size() == 3 && options[0].first == "2" && options[0].second == "NVIDIA RTX" && options[1].first == "0");
+  CHECK(ssf2t::ResolveGraphicsAdapter("auto", adapters) == 2);
+  CHECK(ssf2t::ResolveGraphicsAdapter("", adapters) == 2);
+  CHECK(ssf2t::ResolveGraphicsAdapter("0", adapters) == 0);
+  CHECK(ssf2t::ResolveGraphicsAdapter("3", adapters) == 3);
+  CHECK(ssf2t::ResolveGraphicsAdapter("1", adapters) == 2);
+  CHECK(ssf2t::ResolveGraphicsAdapter("7", adapters) == 2);
+
+  std::printf("same names stay distinguishable\n");
+  setenv("SSF2T_FAKE_VULKAN", "discrete:GeForce;discrete:GeForce", 1);
+  const auto twins = ssf2t::GraphicsAdapterOptions(ssf2t::ListVulkanAdapters(driver));
+  CHECK(twins.size() == 2 && twins[0].second == "GeForce (0)" && twins[1].second == "GeForce (1)");
+
+  std::printf("no Vulkan device\n");
+  setenv("SSF2T_FAKE_VULKAN", "cpu:llvmpipe", 1);
+  CHECK(ssf2t::ListVulkanAdapters(driver).empty());
+  CHECK(!ssf2t::EffectiveVulkanAdapter(driver, -1).known);
+  CHECK(!ssf2t::ResolveGraphicsAdapter("0", ssf2t::ListVulkanAdapters(driver)).has_value());
+  unsetenv("SSF2T_FAKE_VULKAN");
+  CHECK(ssf2t::ListVulkanAdapters(driver).empty());
+  setenv("SSF2T_FAKE_VULKAN", "discrete:NVIDIA RTX", 1);
+  setenv("SSF2T_FAKE_VULKAN_FAIL", "create", 1);
+  CHECK(ssf2t::ListVulkanAdapters(driver).empty());
+  unsetenv("SSF2T_FAKE_VULKAN_FAIL");
+  CHECK(ssf2t::ListVulkanAdapters("libssf2t-no-such-vulkan.so.1").empty());
+  CHECK(ssf2t::ListVulkanAdapters("libc.so.6").empty());
+  CHECK(!ssf2t::EffectiveVulkanAdapter("libssf2t-no-such-vulkan.so.1", -1).known);
+
+  std::printf("the machine's own loader\n");
+  unsetenv("SSF2T_FAKE_VULKAN");
+  const std::vector<GraphicsAdapter> real = ssf2t::ListGraphicsAdapters();
+  std::set<int> seen;
+  for (const GraphicsAdapter& adapter : real) {
+    std::printf("  %d  %s\n", adapter.index, adapter.name.c_str());
+    CHECK(adapter.index >= 0 && !adapter.name.empty() && seen.insert(adapter.index).second);
+  }
+  CHECK(ssf2t::EffectiveGraphicsAdapter(-1).known == !real.empty());
+}
+#endif
+
 void TestRegistration() {
   std::printf("setting, launcher row and startup\n");
   const std::string src = SSF2T_SRC_DIR;
@@ -167,7 +239,9 @@ void TestRegistration() {
         Has(settings, "      \"ssf2t_graphics_adapter\",\r\n      \"ssf2t_aspect_ratio\","));
   CHECK(Has(settings, "      kTearingSetting,\n      \"ssf2t_graphics_adapter\",\n") ||
         Has(settings, "      kTearingSetting,\r\n      \"ssf2t_graphics_adapter\",\r\n"));
-  CHECK(Has(settings, "rex::cvar::SetFlagByName(\"d3d12_adapter\", std::to_string(*index));"));
+  CHECK(Has(settings, "rex::cvar::SetFlagByName(kBackendAdapterCvar, std::to_string(*index));"));
+  CHECK(Has(ReadFile(src + "/graphics_adapters.h"), "inline constexpr char kBackendAdapterCvar[] = \"d3d12_adapter\";"));
+  CHECK(Has(ReadFile(src + "/graphics_adapters.h"), "inline constexpr char kBackendAdapterCvar[] = \"vulkan_device\";"));
 
   const std::string launcher = ReadFile(src + "/launcher.cpp");
   const size_t card = launcher.find("ui.Combo(\"Graphics card\"");
@@ -189,6 +263,8 @@ int main() {
   TestPersistence();
 #if defined(_WIN32)
   TestEnumerationMatchesRuntime();
+#else
+  TestVulkanEnumeration();
 #endif
   TestRegistration();
   std::printf("%d checks, %d failures\n", g_checks, g_failures);

@@ -10,13 +10,22 @@
 
 namespace ssf2t {
 
-// A DXGI adapter that can create a Direct3D 12 device. `index` is the one ReXGlue's d3d12_adapter takes.
+// The ReXGlue cvar that picks the graphics device: d3d12_adapter on Windows, vulkan_device on Linux.
+#if defined(_WIN32)
+inline constexpr char kBackendAdapterCvar[] = "d3d12_adapter";
+#else
+inline constexpr char kBackendAdapterCvar[] = "vulkan_device";
+#endif
+
+// A graphics device the renderer can use (a DXGI adapter that can create a Direct3D 12 device, or a Vulkan hardware
+// device). `index` is the one kBackendAdapterCvar takes.
 struct GraphicsAdapter {
   int index;
   std::string name;
 };
 
-// Windows: the hardware adapters in the order ReXGlue counts them for d3d12_adapter. Empty elsewhere.
+// The hardware devices, each with the index ReXGlue counts it by; on Linux the best device (discrete before
+// integrated) comes first.
 std::vector<GraphicsAdapter> ListGraphicsAdapters();
 
 struct GraphicsAdapterDetails {
@@ -27,7 +36,13 @@ struct GraphicsAdapterDetails {
   bool known = false;
 };
 
-// Windows: the adapter ReXGlue's d3d12_adapter selection will use for `configured_index` (-1 automatic, -2 WARP).
+#if !defined(_WIN32)
+// The same two lookups through another Vulkan loader library, so tests can stand in a driver.
+std::vector<GraphicsAdapter> ListVulkanAdapters(const char* library);
+GraphicsAdapterDetails EffectiveVulkanAdapter(const char* library, int configured_index);
+#endif
+
+// The device the renderer's selection will use for `configured_index` (-1 automatic; on Windows -2 is WARP).
 // Mirrors the runtime's enumeration, so Automatic reports the GPU that is actually picked.
 GraphicsAdapterDetails EffectiveGraphicsAdapter(int configured_index);
 

@@ -1693,6 +1693,46 @@ struct Joiner {
   double Elapsed() const { return rig.now - t0; }
 };
 
+// One program hosts a match, leaves it and joins the next as Player 2, on either game image: nothing of the host
+// role, its relay route or its generation carries over.
+void TestHostThenJoinWithoutRestartReversesRoles() {
+  for (const char* guest : {kGuestBase013, kGuestTu023}) {
+    UdpRig udp;
+    Rig rig(guest, false, kToken, &udp);
+    SignInRelay(rig);
+    rig.service->HostPlayerMatch({{"rounds", 2}});
+    rig.Tick();
+    rig.Reply("pm.host", std::string("\"session\":\"") + kSession + "\"");
+    rig.Feed(std::string("{\"ev\":\"match.created\",\"session\":\"") + kSession + "\"," +
+             MatchBody("m1", "host", guest, kFriendA, "SauloB") + RelayField(kRelayToken) + "}");
+    Discover(rig, udp);
+    FallBackToRelay(rig);
+    const auto hosted = rig.service->Assignment();
+    CHECK(hosted && hosted->host && hosted->relay && hosted->guest == guest);
+    rig.service->LeaveMatch();
+    CHECK(!rig.service->Assignment() && !rig.service->snapshot().match);
+
+    rig.service->SetPlayerMatchSearch(true);
+    rig.Tick();
+    rig.Reply("pm.search", rig.SearchAnswer());
+    CHECK(rig.service->JoinPlayerMatch(kSession));
+    rig.Reply("pm.join", std::string("\"session\":\"") + kSession + "\"," +
+                             MatchBody("m2", "join", guest, kFriendA, "SauloB") + RelayField(kRelayToken + 1));
+    Discover(rig, udp);
+    rig.Feed(PeerJson("m2", "host", kNoPublic));
+    rig.Feed("{\"ev\":\"match.transport\",\"match\":\"m2\",\"transport\":\"relay\"}");
+    const auto joined = rig.service->Assignment();
+    CHECK(joined && !joined->host && joined->relay && joined->guest == guest);
+    CHECK(hosted && joined && joined->generation == hosted->generation + 1);
+
+    ssf2t::netplay::Endpoint from;
+    FeedBinary(rig, RelayFrameOf(kRelayToken, kLobbyNine));
+    CHECK(GameReceive(udp.socket, from).empty());
+    FeedBinary(rig, RelayFrameOf(kRelayToken + 1, kLobbyNine));
+    CHECK(GameReceive(udp.socket, from) == kLobbyNine && from == ssf2t::netplay::kRelayPeer);
+  }
+}
+
 void TestEstablishmentBudgetModel() {
   Establishment e;
   CHECK(e.phase() == Establishment::Phase::kIdle && !e.GuestWaitExpired(100) && !e.ConnectingExpired(100));
@@ -2557,6 +2597,7 @@ int main() {
   TestInvitedJoinerFollowsTheRelayChoice();
   TestEveryMatchAfterARelayMatchStartsClean();
   TestRefusedRelayChoiceFailsTheMatch();
+  TestHostThenJoinWithoutRestartReversesRoles();
   std::printf("%d checks, %d failures\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;
 }

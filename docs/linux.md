@@ -7,9 +7,10 @@ with the project's patches. It ships as one AppImage.
 **Experimental.** The AppImage is built and checked by the project's scripts, but this release has not yet been validated
 on real Linux PCs or Steam Deck hardware. Reports are welcome.
 
-Every launcher setting works on Linux, apart from **Graphics card**: that list selects a Direct3D 12 adapter, so it exists
-on Windows only. On Linux the runtime prefers the dedicated GPU, and the usual selection variables (`DRI_PRIME`,
-`MESA_VK_DEVICE_SELECT`, `VK_LOADER_DEVICE_SELECT`, `__NV_PRIME_RENDER_OFFLOAD`) take precedence when they are set.
+Every launcher setting works on Linux. **Graphics card** lists the Vulkan hardware devices (the dedicated GPU first). Until
+a card is chosen there, the runtime prefers the dedicated GPU, and the usual selection variables (`DRI_PRIME`,
+`MESA_VK_DEVICE_SELECT`, `VK_LOADER_DEVICE_SELECT`, `__NV_PRIME_RENDER_OFFLOAD`) take precedence when they are set. After a
+crash the log ends with a CRASH REPORT section, as on Windows.
 
 ## Requirements
 
@@ -17,6 +18,8 @@ on Windows only. On Linux the runtime prefers the dedicated GPU, and the usual s
 - A Vulkan driver (Mesa RADV on most AMD and Intel PCs)
 - An X11 or Wayland desktop
 - `zenity` or `kdialog` for the launcher's file picker, and `xdg-open` for its folder buttons
+- For online play, the system's OpenSSL (`libssl.so.3` or `libssl.so.1.1`, installed on every common distribution); it
+  is loaded when the game connects, so its certificate store is the system's own
 - Your own Super Street Fighter II Turbo HD Remix Xbox Live Arcade package (game version 0.0.1.3) and, optionally, its Title Update #1
   package (version 0.0.2.3); see the README
 
@@ -86,7 +89,7 @@ checks that the generated code matches `config/guest`:
 tools/package-linux.sh            # incremental Release build, then package
 tools/package-linux.sh --clean    # clean Release build first
 tools/package-linux.sh --verify-only dist/SSF2THDRemix-v0.2.2-x86_64.AppImage
-tools/test.sh                     # headless tests, after tools/build.sh
+tools/test.sh                     # the headless Linux parity gate (tools/test.ps1 runs it in WSL)
 ```
 
 Releases are built on Ubuntu 20.04 (glibc 2.31); the script stops on a newer machine and if any packaged library needs

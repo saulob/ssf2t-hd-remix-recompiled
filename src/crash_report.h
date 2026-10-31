@@ -5,8 +5,9 @@
 
 namespace ssf2t {
 
-// On Windows an unhandled exception appends one CRASH REPORT block to the current run's log; no
-// other file or minidump is written. A no-op elsewhere.
+// An unhandled exception on Windows, or a fatal signal on Linux, appends one CRASH REPORT block to the
+// current run's log; no other file or minidump is written. Linux signals are reported under the
+// matching Windows exception code, with the signal number beside it.
 
 struct CrashLogTime {
   int year = 0;
@@ -40,6 +41,7 @@ struct CrashGuestRef {
 
 struct CrashReport {
   CrashLogTime time;
+  int signal_number = 0;
   uint32_t code = 0;
   uint32_t flags = 0;
   uint64_t address = 0;
@@ -81,11 +83,11 @@ const char* ExceptionCodeName(uint32_t code);
 // number of characters written.
 size_t FormatCrashReport(const CrashReport& report, char* buffer, size_t size);
 
-// Windows: caches `utf8_log_file` as the target of crash reports and installs the unhandled
-// exception filter once. An empty path disables crash reporting. A no-op outside Windows.
+// Caches `utf8_log_file` as the target of crash reports and installs the unhandled exception filter
+// (Windows) or the fatal signal handlers (Linux) once. An empty path disables crash reporting.
 void InstallCrashReporting(const char* utf8_log_file);
 
-// Windows: true once the unhandled exception filter is installed.
+// True once the crash handlers are installed.
 bool CrashReportingInstalled();
 
 namespace crash_detail {

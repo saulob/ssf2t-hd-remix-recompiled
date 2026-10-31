@@ -1,4 +1,4 @@
-// A WebSocket client for the online service: ws:// and wss:// (WinHTTP on Windows, sockets and OpenSSL elsewhere). Text
+// A WebSocket client for the online service: ws:// and wss:// (WinHTTP on Windows, sockets and the system OpenSSL elsewhere). Text
 // and binary messages. One thread may receive while others send; close() from any thread ends a blocked receive().
 #pragma once
 

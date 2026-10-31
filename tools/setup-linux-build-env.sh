@@ -49,7 +49,7 @@ apt-get update
 echo "== Build packages"
 apt-get install -y --no-install-recommends \
   clang-20 lld-20 llvm-20 gcc-13 g++-13 libstdc++-13-dev libstdc++6 \
-  ninja-build rsync unzip python3 python3-pip binutils make pkg-config xz-utils patch file gettext-base \
+  ninja-build rsync unzip python3 python3-pip binutils make pkg-config xz-utils patch file gettext-base openssl patchelf \
   libgtk-3-dev libx11-dev libx11-xcb-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev \
   libxrender-dev libxss-dev libvulkan-dev libwayland-dev libwayland-bin wayland-protocols libxkbcommon-dev \
   libasound2-dev libpulse-dev libgl1-mesa-dev libudev-dev libdbus-1-dev \

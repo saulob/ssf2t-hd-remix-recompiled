@@ -101,8 +101,8 @@ struct TitleUpdate023PlayerMatch {
   static constexpr uint32_t kUiInputPointer = 0x8480C250;
   static constexpr uint32_t kCreateMatchSettings = 0x83A386A4;
   static constexpr uint32_t kGameMode = 0x83CA2E67;
-  static constexpr uint32_t kErrorTitle = 0x83E38468;
-  static constexpr uint32_t kErrorMessage = 0x83E38268;
+  static constexpr uint32_t kErrorTitle = 0x83E383E8;
+  static constexpr uint32_t kErrorMessage = 0x83E381E8;
   static constexpr uint32_t kErrorLevel = 0x83E3848C;
   static constexpr uint32_t kHelpTextTable = 0x83C284B8;
 

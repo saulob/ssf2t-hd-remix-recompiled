@@ -5,6 +5,8 @@
 // Run: ssf2t_keyboard_tests
 
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -169,8 +171,8 @@ void TestRejection() {
     CHECK(ssf2t::KeyboardBindingFor(key, false, false, false).empty());
   }
   // Reserved: the port and the SDK already use these while playing.
-  for (ImGuiKey key : {ImGuiKey_F2, ImGuiKey_F3, ImGuiKey_F4, ImGuiKey_F7, ImGuiKey_F9, ImGuiKey_F11, ImGuiKey_F12,
-                       ImGuiKey_Escape, ImGuiKey_GraveAccent}) {
+  for (ImGuiKey key : {ImGuiKey_F2, ImGuiKey_F3, ImGuiKey_F4, ImGuiKey_F7, ImGuiKey_F9, ImGuiKey_F10, ImGuiKey_F11,
+                       ImGuiKey_F12, ImGuiKey_Escape, ImGuiKey_GraveAccent}) {
     CHECK(ssf2t::KeyboardBindingIsReserved(key));
     CHECK(ssf2t::KeyboardBindingFor(key, false, false, false).empty());
     // A reserved key is refused with a modifier too.
@@ -186,6 +188,7 @@ void TestRejection() {
   CHECK(!ssf2t::KeyboardBindingIsValid("Escape"));
   CHECK(!ssf2t::KeyboardBindingIsValid("F12"));
   CHECK(!ssf2t::KeyboardBindingIsValid("Backtick"));
+  CHECK(!ssf2t::KeyboardBindingIsValid("F10"));
 }
 
 void TestEscapeCancelsCapture() {
@@ -425,6 +428,28 @@ void TestLauncherCtrlSSave() {
 
 }  // namespace
 
+void TestEveryPortHotkeyIsReserved() {
+  std::printf("every function key the port listens to while playing cannot be a gameplay binding\n");
+  int listeners = 0;
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(SSF2T_SRC_DIR)) {
+    if (!entry.is_regular_file() || entry.path().extension() != ".cpp") continue;
+    const std::string text = ReadSource(std::filesystem::relative(entry.path(), SSF2T_SRC_DIR).string().c_str());
+    const std::string marker = "VirtualKey::kF";
+    for (size_t at = text.find(marker); at != std::string::npos; at = text.find(marker, at + 1)) {
+      const int number = std::atoi(text.c_str() + at + marker.size());
+      if (number < 1 || number > 24) continue;
+      ++listeners;
+      const ImGuiKey key = ImGuiKey(ImGuiKey_F1 + number - 1);
+      if (!ssf2t::KeyboardBindingIsReserved(key)) {
+        std::printf("  F%d has a listener in %s but is not reserved\n", number,
+                    entry.path().filename().string().c_str());
+      }
+      CHECK(ssf2t::KeyboardBindingIsReserved(key));
+    }
+  }
+  CHECK(listeners >= 2);
+}
+
 int main() {
   TestTable();
   TestMapping();
@@ -441,6 +466,7 @@ int main() {
   TestHotkeySeparation();
   TestLocalPlayerSlots();
   TestLauncherCtrlSSave();
+  TestEveryPortHotkeyIsReserved();
   std::printf("%d checks, %d failures\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;
 }

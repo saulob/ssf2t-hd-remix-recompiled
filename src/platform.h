@@ -17,8 +17,8 @@ std::filesystem::path PathFromUtf8(const std::string& utf8);
 // The folder the player sees the port in: the executable's, or the AppImage's.
 std::filesystem::path PortFolder();
 
-// Windows: caches the current run's log file and installs the unhandled exception filter that appends
-// a CRASH REPORT block to it. A no-op on Linux.
+// Caches the current run's log file and installs the crash handlers (the unhandled exception filter on Windows,
+// fatal signal handlers on Linux) that append a CRASH REPORT block to it.
 void InstallCrashReports();
 
 // The architecture this build runs as ("x86-64", "arm64", ...), for the startup log line.

@@ -1,10 +1,20 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <string_view>
 
 namespace ssf2t {
+
+// The string table splitter of each game version, the function the menu text patches run before.
+struct Base013MenuText {
+  static constexpr uint32_t kStringTableSplitter = 0x82439830;
+};
+
+struct TitleUpdate023MenuText {
+  static constexpr uint32_t kStringTableSplitter = 0x82439FA0;
+};
 
 struct MenuTextReplacement {
   std::string_view original;

@@ -13,6 +13,15 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#else
+#include <dlfcn.h>
+#include <execinfo.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/syscall.h>
+#include <time.h>
+#include <ucontext.h>
+#include <unistd.h>
 #endif
 
 #if defined(SSF2T_PORT_VERSION)
@@ -372,6 +381,160 @@ void CacheLogFile(const char* utf8_log_file) {
     g_log_path[i] = path[i];
   }
 }
+#else
+constexpr const char* kArchitecture = "x86-64";
+constexpr const char* kGameVersion = SSF2T_CRASH_GAME_VERSION;
+constexpr int kFatalSignals[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT};
+
+char g_log_path[kLogPathChars];
+char g_report_buffer[kReportBufferBytes];
+CrashReport g_report;
+volatile int g_filter_installed = 0;
+uint64_t g_process_start_ms = 0;
+alignas(16) char g_signal_stack[1 << 16];
+
+uint64_t MonotonicMs() {
+  timespec now{};
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  return uint64_t(now.tv_sec) * 1000 + uint64_t(now.tv_nsec) / 1000000;
+}
+
+void FillModule(CrashModuleRef& module, const void* address) {
+  Dl_info info{};
+  if (address == nullptr || dladdr(address, &info) == 0 || info.dli_fname == nullptr) {
+    return;
+  }
+  const char* name = info.dli_fname;
+  for (const char* c = info.dli_fname; *c != '\0'; ++c) {
+    if (*c == '/') {
+      name = c + 1;
+    }
+  }
+  module.known = true;
+  module.base = reinterpret_cast<uint64_t>(info.dli_fbase);
+  CopyText(module.name, sizeof(module.name), name);
+}
+
+// The Windows exception code each fatal signal is reported as, so one report format serves both platforms.
+uint32_t CodeForSignal(int signal, int si_code) {
+  switch (signal) {
+    case SIGSEGV:
+      return 0xC0000005u;
+    case SIGBUS:
+      return 0xC0000006u;
+    case SIGILL:
+      return 0xC000001Du;
+    case SIGFPE:
+      return si_code == FPE_INTOVF ? 0xC0000095u : 0xC0000094u;
+    default:
+      return 0x40000015u;
+  }
+}
+
+void FillReport(CrashReport& report, int signal, const siginfo_t* info, const void* context) {
+  timespec wall{};
+  clock_gettime(CLOCK_REALTIME, &wall);
+  tm local{};
+  localtime_r(&wall.tv_sec, &local);
+  report.time = {local.tm_year + 1900, local.tm_mon + 1, local.tm_mday, local.tm_hour,
+                 local.tm_min,         local.tm_sec,     int(wall.tv_nsec / 1000000)};
+  report.signal_number = signal;
+  report.code = CodeForSignal(signal, info->si_code);
+  report.address = reinterpret_cast<uint64_t>(info->si_addr);
+  report.thread_id = static_cast<uint32_t>(syscall(SYS_gettid));
+  report.process_id = static_cast<uint32_t>(getpid());
+  report.product = kProduct;
+  report.architecture = kArchitecture;
+  report.game_version = kGameVersion;
+  report.build_config = kBuildConfig;
+  report.uptime_ms = g_process_start_ms != 0 ? MonotonicMs() - g_process_start_ms : 0;
+#if defined(__x86_64__)
+  if (const auto* user = static_cast<const ucontext_t*>(context); user != nullptr) {
+    const auto& registers = user->uc_mcontext.gregs;
+    report.has_context = true;
+    report.instruction_pointer = uint64_t(registers[REG_RIP]);
+    report.stack_pointer = uint64_t(registers[REG_RSP]);
+    report.frame_pointer = uint64_t(registers[REG_RBP]);
+    if (signal == SIGSEGV) {
+      const uint64_t error = uint64_t(registers[REG_ERR]);
+      report.parameter_count = 2;
+      report.parameters[0] = (error & 0x10) != 0 ? 8 : ((error & 0x2) != 0 ? 1 : 0);
+      report.parameters[1] = reinterpret_cast<uint64_t>(info->si_addr);
+    }
+    report.address = report.instruction_pointer;
+  }
+#else
+  (void)context;
+#endif
+  FillModule(report.faulting_module, reinterpret_cast<const void*>(report.address));
+  void* addresses[kCrashReportMaxFrames] = {};
+  const int count = backtrace(addresses, int(kCrashReportMaxFrames));
+  report.frame_count = count > 0 ? uint32_t(count) : 0;
+  for (uint32_t i = 0; i < report.frame_count; ++i) {
+    report.frames[i].address = reinterpret_cast<uint64_t>(addresses[i]);
+    FillModule(report.frames[i].module, addresses[i]);
+  }
+  if (const CrashGuestFunctionResolver resolver = g_guest_resolver.load(std::memory_order_acquire);
+      resolver != nullptr) {
+    resolver(report.address, &report.guest_function);
+  }
+  FillRuntimeState(report);
+}
+
+void WriteReport(int signal, const siginfo_t* info, const void* context) {
+  g_report = CrashReport{};
+  FillReport(g_report, signal, info, context);
+  const size_t length = FormatCrashReport(g_report, g_report_buffer, sizeof(g_report_buffer));
+  const int file = open(g_log_path, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0644);
+  if (length == 0 || file < 0) {
+    return;
+  }
+  size_t offset = 0;
+  while (offset < length) {
+    const ssize_t written = write(file, g_report_buffer + offset, length - offset);
+    if (written <= 0) {
+      break;
+    }
+    offset += size_t(written);
+  }
+  fsync(file);
+  close(file);
+}
+
+// SA_RESETHAND restores the default action, so the signal raised here ends the process as it would have, core dump
+// included, once this handler returns.
+void HandleFatalSignal(int signal, siginfo_t* info, void* context) {
+  if (crash_detail::EnterCrashWrite() && g_log_path[0] != '\0') {
+    WriteReport(signal, info, context);
+  }
+  raise(signal);
+}
+
+void InstallPosixHandlers(const char* utf8_log_file) {
+  CopyText(g_log_path, sizeof(g_log_path), utf8_log_file);
+  if (g_log_path[0] == '\0') {
+    return;
+  }
+  if (g_process_start_ms == 0) {
+    g_process_start_ms = MonotonicMs();
+  }
+  if (__atomic_exchange_n(&g_filter_installed, 1, __ATOMIC_ACQ_REL) != 0) {
+    return;
+  }
+  void* backtrace_warmup[1];
+  backtrace(backtrace_warmup, 1);
+  stack_t stack{};
+  stack.ss_sp = g_signal_stack;
+  stack.ss_size = sizeof(g_signal_stack);
+  sigaltstack(&stack, nullptr);
+  struct sigaction action {};
+  action.sa_sigaction = &HandleFatalSignal;
+  action.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_RESETHAND;
+  sigemptyset(&action.sa_mask);
+  for (const int signal : kFatalSignals) {
+    sigaction(signal, &action, nullptr);
+  }
+}
 #endif
 
 }  // namespace
@@ -398,6 +561,8 @@ const char* ExceptionCodeName(uint32_t code) {
       return "STATUS_STACK_OVERFLOW";
     case 0xC000013Au:
       return "STATUS_CONTROL_C_EXIT";
+    case 0x40000015u:
+      return "STATUS_FATAL_APP_EXIT";
     case 0xC0000374u:
       return "STATUS_HEAP_CORRUPTION";
     case 0xC0000409u:
@@ -419,7 +584,13 @@ size_t FormatCrashReport(const CrashReport& report, char* buffer, size_t size) {
   Separator(writer, report);
 
   Prefix(writer, report);
-  writer.Text("Windows unhandled exception\n");
+  writer.Text(report.signal_number != 0 ? "Linux fatal signal\n" : "Windows unhandled exception\n");
+  if (report.signal_number != 0) {
+    Prefix(writer, report);
+    writer.Text("Signal: ");
+    writer.Dec(uint64_t(report.signal_number));
+    writer.Char('\n');
+  }
 
   if (report.product != nullptr) {
     Prefix(writer, report);
@@ -616,7 +787,7 @@ void InstallCrashReporting(const char* utf8_log_file) {
     SetUnhandledExceptionFilter(&HandleUnhandledException);
   }
 #else
-  (void)utf8_log_file;
+  InstallPosixHandlers(utf8_log_file);
 #endif
 }
 
@@ -632,11 +803,7 @@ void SetCrashGuestFunctionResolver(CrashGuestFunctionResolver resolver) {
 }
 
 bool CrashReportingInstalled() {
-#if defined(_WIN32)
   return g_filter_installed != 0;
-#else
-  return false;
-#endif
 }
 
 namespace crash_detail {

@@ -152,6 +152,7 @@ set(SSF2T_ONLINE_SOURCES
     src/online/stun.cpp
     src/online/upnp.cpp
     src/online/websocket.cpp
+    src/online/websocket_frame.cpp
     src/updater/json.cpp
     src/updater/sha256.cpp
     src/updater/update_paths.cpp
@@ -161,15 +162,9 @@ if(WIN32)
     list(APPEND SSF2T_ONLINE_SOURCES src/online/websocket_win.cpp)
     list(APPEND SSF2T_ONLINE_LIBS winhttp ws2_32 bcrypt)
 else()
-    find_package(OpenSSL QUIET COMPONENTS SSL Crypto)
-    if(OpenSSL_FOUND)
-        list(APPEND SSF2T_ONLINE_SOURCES src/online/websocket_posix.cpp)
-        list(APPEND SSF2T_ONLINE_LIBS OpenSSL::SSL OpenSSL::Crypto)
-    else()
-        message(WARNING "OpenSSL not found: online play reports itself unavailable in this build")
-        list(APPEND SSF2T_ONLINE_SOURCES src/online/websocket_none.cpp)
-    endif()
-    list(APPEND SSF2T_ONLINE_LIBS Threads::Threads)
+    # libssl is loaded at run time (src/online/websocket_posix.cpp), so no OpenSSL is needed to build.
+    list(APPEND SSF2T_ONLINE_SOURCES src/online/websocket_posix.cpp)
+    list(APPEND SSF2T_ONLINE_LIBS Threads::Threads ${CMAKE_DL_LIBS})
 endif()
 find_package(Threads REQUIRED)
 
@@ -214,6 +209,7 @@ set(SSF2T_SOURCES
     src/player_match_net_hook.cpp
     src/ping_display.cpp
     src/platform.cpp
+    src/port_folder.cpp
     src/session_log.cpp
     src/settings.cpp
     src/stfs.cpp
@@ -330,6 +326,25 @@ function(ssf2t_enable_thinlto target)
 endfunction()
 ssf2t_enable_thinlto(ssf2t_hd_remix)
 
+# tools/test.sh: every production source of the program, compiled and linked without the recompiled game images (their
+# symbols stay unresolved). Nothing runs it; it exists so the compile, the glibc versions and the library dependencies
+# of the real sources can be checked without a full build.
+if(UNIX AND NOT APPLE)
+    add_executable(ssf2t_linux_production_check EXCLUDE_FROM_ALL ${SSF2T_SOURCES})
+    target_include_directories(ssf2t_linux_production_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(ssf2t_linux_production_check PRIVATE
+        SSF2T_PORT_VERSION="${PROJECT_VERSION}"
+        SSF2T_TRG_VERSION="${SSF2T_TRG_VERSION}"
+        SSF2T_BUILD_CONFIG="$<CONFIG>")
+    target_link_libraries(ssf2t_linux_production_check PRIVATE rex::runtime trg::launcher ${SSF2T_ONLINE_LIBS})
+    target_link_options(ssf2t_linux_production_check PRIVATE -Wl,--unresolved-symbols=ignore-all)
+    set_target_properties(ssf2t_linux_production_check PROPERTIES INSTALL_RPATH "$ORIGIN" BUILD_WITH_INSTALL_RPATH ON)
+    add_custom_command(TARGET ssf2t_linux_production_check POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rex::runtime>" "$<TARGET_FILE_DIR:ssf2t_linux_production_check>"
+        VERBATIM
+    )
+endif()
+
 # The update helper runs from the temporary update workspace, away from the installation, so it keeps its runtime
 # inside the executable. Release packages ship the MSYS2 CLANG64 build of these sources (tools/build-updater.ps1).
 if(WIN32)
@@ -399,15 +414,22 @@ target_include_directories(ssf2t_fight_area_tests PRIVATE src)
 target_compile_definitions(ssf2t_fight_area_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_dependencies(ssf2t_runtime_tests ssf2t_fight_area_tests)
 
-# Graphics card setting tests, not part of the default build: cmake --build <dir> --target ssf2t_graphics_adapter_tests
+# Graphics card setting: values, persistence, registration and, on Windows, the DXGI adapter order. Headless.
 add_executable(ssf2t_graphics_adapter_tests EXCLUDE_FROM_ALL tests/graphics_adapter_tests.cpp src/graphics_adapters.cpp)
 target_include_directories(ssf2t_graphics_adapter_tests PRIVATE src)
 target_include_directories(ssf2t_graphics_adapter_tests SYSTEM PRIVATE "${SSF2T_SDK_DIR}/include" "${_trg_dir}/include")
 target_link_libraries(ssf2t_graphics_adapter_tests PRIVATE trg::launcher)
 if(WIN32)
     target_link_libraries(ssf2t_graphics_adapter_tests PRIVATE dxgi d3d12)
+else()
+    target_link_libraries(ssf2t_graphics_adapter_tests PRIVATE ${CMAKE_DL_LIBS})
+    add_library(ssf2t_fake_vulkan SHARED EXCLUDE_FROM_ALL tests/fake_vulkan_driver.cpp)
+    target_include_directories(ssf2t_fake_vulkan SYSTEM PRIVATE "${SSF2T_SDK_DIR}/include")
+    add_dependencies(ssf2t_graphics_adapter_tests ssf2t_fake_vulkan)
+    target_compile_definitions(ssf2t_graphics_adapter_tests PRIVATE SSF2T_FAKE_VULKAN_LIBRARY="$<TARGET_FILE:ssf2t_fake_vulkan>")
 endif()
 target_compile_definitions(ssf2t_graphics_adapter_tests PRIVATE SSF2T_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src")
+add_dependencies(ssf2t_runtime_tests ssf2t_graphics_adapter_tests)
 
 # Infinite Time: the setting, the F10 toggle, the notice and the timer hook decision. Headless.
 add_executable(ssf2t_infinite_time_tests EXCLUDE_FROM_ALL tests/infinite_time_tests.cpp
@@ -449,6 +471,15 @@ foreach(_test protocol identity service rendezvous connection integration)
     target_link_libraries(${_name} PRIVATE ${SSF2T_ONLINE_LIBS})
     add_dependencies(ssf2t_runtime_tests ${_name})
 endforeach()
+
+if(NOT WIN32)
+    add_executable(ssf2t_online_websocket_tls_tests EXCLUDE_FROM_ALL tests/online_websocket_tls_tests.cpp ${SSF2T_ONLINE_SOURCES})
+    target_include_directories(ssf2t_online_websocket_tls_tests PRIVATE src tests)
+    target_compile_definitions(ssf2t_online_websocket_tls_tests PRIVATE SSF2T_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_options(ssf2t_online_websocket_tls_tests PRIVATE -Wall -Wextra)
+    target_link_libraries(ssf2t_online_websocket_tls_tests PRIVATE ${SSF2T_ONLINE_LIBS})
+    add_dependencies(ssf2t_runtime_tests ssf2t_online_websocket_tls_tests)
+endif()
 
 add_executable(ssf2t_online_setting_tests EXCLUDE_FROM_ALL tests/online_setting_tests.cpp)
 target_include_directories(ssf2t_online_setting_tests PRIVATE src)
@@ -603,6 +634,11 @@ target_include_directories(ssf2t_relaunch_tests PRIVATE src)
 target_compile_definitions(ssf2t_relaunch_tests PRIVATE SSF2T_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src")
 add_dependencies(ssf2t_runtime_tests ssf2t_relaunch_tests)
 
+add_executable(ssf2t_user_data_tests EXCLUDE_FROM_ALL tests/user_data_tests.cpp src/user_data.cpp)
+target_include_directories(ssf2t_user_data_tests PRIVATE src)
+target_compile_definitions(ssf2t_user_data_tests PRIVATE SSF2T_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src")
+add_dependencies(ssf2t_runtime_tests ssf2t_user_data_tests)
+
 add_executable(ssf2t_file_dialog_tests EXCLUDE_FROM_ALL tests/file_dialog_tests.cpp "${_trg_patched_dir}/src/file_dialog.cpp")
 target_include_directories(ssf2t_file_dialog_tests PRIVATE "${_trg_patched_dir}/include")
 add_dependencies(ssf2t_runtime_tests ssf2t_file_dialog_tests)
@@ -627,6 +663,8 @@ target_compile_definitions(ssf2t_crash_report_tests PRIVATE
     SSF2T_BUILD_CONFIG="RelWithDebInfo")
 if(WIN32)
     target_link_libraries(ssf2t_crash_report_tests PRIVATE shell32)
+else()
+    target_link_libraries(ssf2t_crash_report_tests PRIVATE ${CMAKE_DL_LIBS})
 endif()
 add_dependencies(ssf2t_runtime_tests ssf2t_crash_report_tests)
 
@@ -660,6 +698,8 @@ target_compile_definitions(ssf2t_log_filter_tests PRIVATE
 target_link_libraries(ssf2t_log_filter_tests PRIVATE rex::runtime)
 if(WIN32)
     target_link_libraries(ssf2t_log_filter_tests PRIVATE shell32)
+else()
+    target_link_libraries(ssf2t_log_filter_tests PRIVATE ${CMAKE_DL_LIBS})
 endif()
 add_custom_command(TARGET ssf2t_log_filter_tests POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rex::runtime>" "$<TARGET_FILE_DIR:ssf2t_log_filter_tests>"
@@ -675,9 +715,78 @@ add_executable(ssf2t_guest_build_tests EXCLUDE_FROM_ALL tests/guest_build_tests.
 target_compile_definitions(ssf2t_guest_build_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_dependencies(ssf2t_runtime_tests ssf2t_guest_build_tests)
 
+# Both game images have the same features: every per-build table and hook has its counterpart, and against the real
+# images in gamenalysis every address pair names the same code or data and every fingerprint matches its own image.
+add_executable(ssf2t_guest_parity_tests EXCLUDE_FROM_ALL tests/guest_parity_tests.cpp src/updater/sha256.cpp
+    src/updater/update_paths.cpp)
+target_include_directories(ssf2t_guest_parity_tests PRIVATE src)
+target_compile_definitions(ssf2t_guest_parity_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(ssf2t_guest_parity_tests PRIVATE -Wall -Wextra)
+add_dependencies(ssf2t_runtime_tests ssf2t_guest_parity_tests)
+
+# Every wire format is byte-identical on every platform and to the online service: tests/wire-vectors.txt.
+set(_wire_sources ${SSF2T_NETPLAY_SOURCES})
+foreach(_online_source IN LISTS SSF2T_ONLINE_SOURCES)
+    if(NOT _online_source IN_LIST _wire_sources)
+        list(APPEND _wire_sources ${_online_source})
+    endif()
+endforeach()
+add_executable(ssf2t_wire_parity_tests EXCLUDE_FROM_ALL tests/wire_parity_tests.cpp ${_wire_sources})
+target_include_directories(ssf2t_wire_parity_tests PRIVATE src)
+target_compile_definitions(ssf2t_wire_parity_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(ssf2t_wire_parity_tests PRIVATE -Wall -Wextra)
+target_link_libraries(ssf2t_wire_parity_tests PRIVATE ${SSF2T_ONLINE_LIBS})
+add_dependencies(ssf2t_runtime_tests ssf2t_wire_parity_tests)
+
+# Windows and Linux offer the same features: platform pairs, build lists, packaging and version. Static.
+add_executable(ssf2t_platform_parity_tests EXCLUDE_FROM_ALL tests/platform_parity_tests.cpp)
+target_compile_definitions(ssf2t_platform_parity_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(ssf2t_platform_parity_tests PRIVATE -Wall -Wextra)
+add_dependencies(ssf2t_runtime_tests ssf2t_platform_parity_tests)
+
+# Every supported game build and platform exposes the same features (src/feature_parity.h). Static, headless.
+add_executable(ssf2t_global_feature_parity_tests EXCLUDE_FROM_ALL tests/global_feature_parity_tests.cpp)
+target_include_directories(ssf2t_global_feature_parity_tests PRIVATE src tests)
+target_compile_definitions(ssf2t_global_feature_parity_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(ssf2t_global_feature_parity_tests PRIVATE -Wall -Wextra)
+add_dependencies(ssf2t_runtime_tests ssf2t_global_feature_parity_tests)
+
 # A development build without the Title Update image: the base game alone is ready, a Title Update never is.
 add_executable(ssf2t_game_files_base_only_tests EXCLUDE_FROM_ALL tests/game_files_base_only_tests.cpp src/game_files.cpp src/stfs.cpp)
 target_include_directories(ssf2t_game_files_base_only_tests PRIVATE src)
 target_compile_definitions(ssf2t_game_files_base_only_tests PRIVATE SSF2T_TITLE_UPDATE_IMAGE=0
     SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_dependencies(ssf2t_runtime_tests ssf2t_game_files_base_only_tests)
+
+# AppImage paths and the Linux self-updater, run against real folders. Headless: the "restarted" program is a script.
+if(UNIX AND NOT APPLE)
+    add_executable(ssf2t_linux_appimage_tests EXCLUDE_FROM_ALL tests/linux_appimage_tests.cpp
+        src/log_path.cpp src/port_folder.cpp src/user_data.cpp
+        src/updater/sha256.cpp src/updater/update_paths.cpp src/updater/update_platform.cpp)
+    target_include_directories(ssf2t_linux_appimage_tests PRIVATE src)
+    target_include_directories(ssf2t_linux_appimage_tests SYSTEM PRIVATE "${SSF2T_SDK_DIR}/include" "${_trg_dir}/include")
+    target_compile_definitions(ssf2t_linux_appimage_tests PRIVATE
+        SSF2T_PORT_VERSION="${PROJECT_VERSION}"
+        SSF2T_BUILD_CONFIG="RelWithDebInfo")
+    target_link_libraries(ssf2t_linux_appimage_tests PRIVATE rex::runtime trg::launcher Threads::Threads ${CMAKE_DL_LIBS})
+    add_custom_command(TARGET ssf2t_linux_appimage_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rex::runtime>" "$<TARGET_FILE_DIR:ssf2t_linux_appimage_tests>"
+        VERBATIM
+    )
+    set_target_properties(ssf2t_linux_appimage_tests PROPERTIES BUILD_RPATH "$ORIGIN")
+    add_dependencies(ssf2t_runtime_tests ssf2t_linux_appimage_tests)
+endif()
+
+# The Linux clipboard against SDL's offscreen video driver.
+if(UNIX AND NOT APPLE)
+    add_executable(ssf2t_clipboard_sdl_tests EXCLUDE_FROM_ALL tests/clipboard_sdl_tests.cpp src/clipboard_sdl.cpp)
+    target_include_directories(ssf2t_clipboard_sdl_tests PRIVATE src)
+    target_include_directories(ssf2t_clipboard_sdl_tests SYSTEM PRIVATE "${SSF2T_SDK_DIR}/include")
+    target_link_libraries(ssf2t_clipboard_sdl_tests PRIVATE rex::runtime)
+    add_custom_command(TARGET ssf2t_clipboard_sdl_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rex::runtime>" "$<TARGET_FILE_DIR:ssf2t_clipboard_sdl_tests>"
+        VERBATIM
+    )
+    set_target_properties(ssf2t_clipboard_sdl_tests PROPERTIES BUILD_RPATH "$ORIGIN")
+    add_dependencies(ssf2t_runtime_tests ssf2t_clipboard_sdl_tests)
+endif()

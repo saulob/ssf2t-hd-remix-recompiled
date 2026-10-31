@@ -102,7 +102,7 @@ The recompiled C++ is generated from your own game files, so the repository does
 2. Extract your game package into `game\extracted` with `tools\extract_stfs.ps1`, so that `game\extracted\default.xex` exists. Optionally extract the Title Update package the same way (`default.xexp`) to build the updated version too.
 3. `.\tools\codegen.ps1` downloads the pinned ReXGlue SDK 0.10.0 and generates the C++ of `generated\base` from `default.xex` (0.0.1.3) and, when `default.xexp` is present, of `generated\tu` from `default.xex` with `default.xexp` (0.0.2.3). Their symbols are prefixed `base013_` and `tu023_` so both link into one program. Without `default.xexp` the build holds the base game alone, which is a complete build. An image that is already current is skipped. `python -I tools\xex_image.py` writes the updated image to `game\analysis\default.image.bin` for the function scanner and the image tests.
 4. `.\tools\build.ps1` builds `build\ssf2t_hd_remix.exe`; it runs `codegen.ps1` first, so a build never needs `default.xexp`. It also checks that ReXGlue's runtime and Xenos GPU plugin in `tools\rexglue` were built from this project's patches (`patches\rexglue-sdk`) and rebuilds them from the v0.10.0 source when they were not.
-5. `.\tools\test.ps1` runs the headless tests.
+5. `.\tools\test.ps1` runs the headless tests for Windows and, inside WSL (Ubuntu 20.04), for Linux; it is the only command needed for parity.
 6. `.\tools\package-release.ps1` (PowerShell 7, and MSYS2 CLANG64 for the update helper) makes the release ZIP in `dist\`. It refuses to package a runtime that does not match the patches and publishes nothing. See [docs/release.md](docs/release.md).
 
 ## Sponsoring

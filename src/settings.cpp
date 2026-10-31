@@ -60,7 +60,7 @@ REXCVAR_DEFINE_STRING(ssf2t_fight_area, "original", "SSF2T",
                       "Fight area chosen in the launcher: original or fill_16_9 "
                       "(removes the side bars of fights, Character Select and VS)");
 REXCVAR_DEFINE_STRING(ssf2t_graphics_adapter, "auto", "SSF2T",
-                      "Graphics card: auto, or the index d3d12_adapter takes (applied at start)");
+                      "Graphics card: auto, or the index d3d12_adapter (Windows) or vulkan_device (Linux) takes (applied at start)");
 REXCVAR_DEFINE_STRING(ssf2t_language, "en-US", "SSF2T",
                       "Game language: en-US, fr-FR, de-DE, it-IT or es-ES (sets user_language at start)");
 REXCVAR_DEFINE_STRING(ssf2t_player_1_name, "Player 1", "SSF2T", "Name shown in-game for local player 1");
@@ -462,12 +462,17 @@ void ApplyInternalRenderPath() {
 }
 
 void ApplyGraphicsAdapter() {
-#if defined(_WIN32)
   const std::string setting = REXCVAR_GET(ssf2t_graphics_adapter);
+#if !defined(_WIN32)
+  // Until a card is chosen in the launcher the loader's and Mesa's own device selection stands.
+  if (!ParseGraphicsAdapter(setting)) {
+    return;
+  }
+#endif
   const std::vector<GraphicsAdapter> adapters = ListGraphicsAdapters();
   const std::optional<int> index = ResolveGraphicsAdapter(setting, adapters);
   if (!index) {
-    REXLOG_WARN("No usable Direct3D 12 graphics card found");
+    REXLOG_WARN("No usable {} graphics card found", GraphicsBackendName());
     return;
   }
   const auto chosen = std::find_if(adapters.begin(), adapters.end(),
@@ -477,9 +482,8 @@ void ApplyGraphicsAdapter() {
   } else {
     REXLOG_INFO("Graphics card: {} (adapter {})", chosen->name, *index);
   }
-  rex::cvar::SetFlagByName("d3d12_adapter", std::to_string(*index));
+  rex::cvar::SetFlagByName(kBackendAdapterCvar, std::to_string(*index));
   rex::cvar::SetFlagByName("ssf2t_graphics_adapter", std::to_string(*index));
-#endif
 }
 
 void GameSettings::MarkWindowCreated() {
@@ -553,7 +557,7 @@ void LogStartupDiagnostics(const GameSettings& settings, const MonitorInfo& disp
 
   diagnostics.gpu.selected = selected_card;
   const GraphicsAdapterDetails adapter =
-      EffectiveGraphicsAdapter(std::atoi(CvarText("d3d12_adapter", "-1").c_str()));
+      EffectiveGraphicsAdapter(std::atoi(CvarText(kBackendAdapterCvar, "-1").c_str()));
   diagnostics.gpu.resolved = adapter.name;
   diagnostics.gpu.adapter = adapter.index;
   diagnostics.gpu.vendor_id = adapter.vendor_id;

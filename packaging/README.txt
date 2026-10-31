@@ -124,7 +124,7 @@ If the game does not start or crashes, please attach the newest file from the
 "logs" folder to a report at
 https://github.com/saulob/ssf2t-hd-remix-recompiled/issues
 The launcher and the game write to the same log for one session, and after a
-crash on Windows the log ends with a CRASH REPORT section. For other problems,
+crash the log ends with a CRASH REPORT section. For other problems,
 turn on Detailed logging on the About page, reproduce the problem and attach
 the newest log. "Open logs folder" on the same page opens the folder.
 

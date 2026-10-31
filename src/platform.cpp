@@ -165,16 +165,6 @@ std::filesystem::path PathFromUtf8(const std::string& utf8) {
   return std::filesystem::path(std::u8string(utf8.begin(), utf8.end()));
 }
 
-std::filesystem::path PortFolder() {
-#if !defined(_WIN32)
-  // An AppImage runs from a read-only mount that is gone once it exits.
-  if (const char* appimage = std::getenv("APPIMAGE"); appimage && *appimage) {
-    return std::filesystem::path(appimage).parent_path();
-  }
-#endif
-  return rex::filesystem::GetExecutableFolder();
-}
-
 const char* ArchitectureName() {
 #if defined(_M_ARM64)
   return "arm64";
@@ -196,16 +186,18 @@ const char* GraphicsBackendName() {
 }
 
 void InstallCrashReports() {
-#if defined(_WIN32)
   const std::filesystem::path file = ActiveLogFile();
   if (file.empty()) {
-    REXLOG_WARN("Windows crash reporting disabled: the current log file could not be resolved");
+    REXLOG_WARN("Crash reporting disabled: the current log file could not be resolved");
     return;
   }
   std::error_code ec;
   const std::filesystem::path absolute = std::filesystem::absolute(file, ec);
   InstallCrashReporting(Utf8(ec ? file : absolute).c_str());
+#if defined(_WIN32)
   REXLOG_INFO("Windows crash reporting enabled for current log.");
+#else
+  REXLOG_INFO("Linux crash reporting enabled for current log.");
 #endif
 }
 

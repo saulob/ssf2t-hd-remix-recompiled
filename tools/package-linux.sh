@@ -26,15 +26,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # On the Linux filesystem: much faster than a Windows drive under /mnt, and case-sensitive.
 WORK="${SSF2T_WORK:-$HOME/ssf2t-linux-build}"
 PRESET=linux-amd64-release
-MAX_GLIBC=2.31
-BIN_NAME=ssf2t_hd_remix
 
 BASELINE="$ROOT/patches/rexglue-sdk/baseline.env"
 baseline() { sed -n "s|^$1=||p" "$BASELINE" | tr -d '\r'; }
 SDK_VERSION="$(baseline SDK_VERSION)"
 SDK_SHA256="$(baseline SDK_LINUX_ZIP_SHA256 | tr 'A-F' 'a-f')"
-APPIMAGETOOL_VERSION=1.9.1
-APPIMAGETOOL_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
 
 CLEAN=0
 VERIFY_ONLY=""
@@ -50,105 +46,13 @@ while [ $# -gt 0 ]; do
 done
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
-
-download() {  # url file sha256
-  if [ ! -f "$2" ] || ! echo "$3  $2" | sha256sum -c --status -; then
-    rm -f "$2"
-    if command -v wget >/dev/null; then wget -q -O "$2" "$1"; else curl -fsSL -o "$2" "$1"; fi
-  fi
-  echo "$3  $2" | sha256sum -c --status - || fail "$2 does not match its pinned SHA-256"
-}
+. "$ROOT/tools/linux-policy.sh"
+. "$ROOT/tools/linux-work.sh"
 
 VERSION="$(sed -nE 's/^[[:space:]]*project\([[:space:]]*ssf2t_hd_remix[[:space:]]+VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$ROOT/CMakeLists.txt")"
 [ -n "$VERSION" ] || fail "project VERSION not found in CMakeLists.txt"
-APP_ID="$(sed -nE 's/^[[:space:]]*constexpr char kApplicationId\[\] = "([^"]+)";.*/\1/p' "$ROOT/src/platform.cpp")"
-[[ "$APP_ID" =~ ^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+$ ]] ||
-  fail "src/platform.cpp must declare kApplicationId exactly once, as a dotted name on one line (found: '$APP_ID')"
-[ -f "$ROOT/packaging/linux/$APP_ID.desktop" ] || fail "packaging/linux/$APP_ID.desktop is missing: the desktop file is named after kApplicationId"
+policy_init "$ROOT"
 NAME="SSF2THDRemix-v$VERSION-x86_64"
-
-EXPECTED=".DirIcon
-AppRun
-$BIN_NAME.png
-$APP_ID.desktop
-usr/bin/$BIN_NAME
-usr/bin/$BIN_NAME.toml
-usr/bin/assets/launcher/header-art.png
-usr/bin/librexgpu-xenos.so
-usr/bin/librexruntime.so
-usr/lib/libgcc_s.so.1
-usr/lib/libstdc++.so.6
-usr/share/doc/$BIN_NAME/LICENSE
-usr/share/doc/$BIN_NAME/ReXGlue-LICENSE.txt
-usr/share/doc/$BIN_NAME/THIRD-PARTY-LICENSES-LINUX.txt
-usr/share/doc/$BIN_NAME/THIRD-PARTY-LICENSES.txt
-usr/share/doc/$BIN_NAME/libstdc++-copyright.txt
-usr/share/icons/hicolor/128x128/apps/$BIN_NAME.png
-usr/share/icons/hicolor/16x16/apps/$BIN_NAME.png
-usr/share/icons/hicolor/24x24/apps/$BIN_NAME.png
-usr/share/icons/hicolor/256x256/apps/$BIN_NAME.png
-usr/share/icons/hicolor/32x32/apps/$BIN_NAME.png
-usr/share/icons/hicolor/48x48/apps/$BIN_NAME.png
-usr/share/icons/hicolor/512x512/apps/$BIN_NAME.png
-usr/share/icons/hicolor/64x64/apps/$BIN_NAME.png
-usr/share/icons/hicolor/scalable/apps/$BIN_NAME.svg"
-
-EXPECTED="$(printf '%s\n' "$EXPECTED" | LC_ALL=C sort)"
-
-# Checks a staged or extracted AppDir; extra_paths are build or home folders that must not appear in any file.
-scan_appdir() {  # appdir label [extra_paths...]
-  local appdir="$1" label="$2" item rel base path utf16 f glibc missing rpath problems=0
-  shift 2
-  problem() { echo "  $*" >&2; problems=$((problems + 1)); }
-  while IFS= read -r -d '' item; do
-    rel="${item#"$appdir"/}"
-    base="$(basename "$item")"
-    case "${base,,}" in
-      default.xex | default.xexp | game | game-install-temp | game-install-backup | user_data | cache | logs | settings.toml | 584108a4 | \
-        '$systemupdate') problem "forbidden name: $rel" ;;
-      *.xex | *.xexp | *.iso | *.fpg | *.log | *.dmp | *.pdb | *.debug | *.bak | *.tmp | *.sav | *.invalid | *.pyc | *~ | settings.toml.*) problem "forbidden file type: $rel" ;;
-    esac
-    case "${base,,}" in
-      *renderdoc* | *vklayer* | *.json | implicit_layer.d | explicit_layer.d) problem "RenderDoc or Vulkan layer file: $rel" ;;
-    esac
-    [ -L "$item" ] && problem "symbolic link: $rel"
-    if [ -f "$item" ]; then
-      case "$(head -c 4 "$item" | tr -d '\0')" in LIVE | PIRS | "CON " | XEX2) problem "Xbox 360 package or executable: $rel" ;; esac
-      for path in "$@"; do
-        grep -qaF "$path" "$item" && problem "local path in file: $rel ($path)"
-        utf16="$(printf '%s' "$path" | od -An -tx1 | tr -d ' \n' | sed 's/../\\x&\\x00/g')"
-        LC_ALL=C grep -qaP "$utf16" "$item" && problem "UTF-16 local path in file: $rel ($path)"
-      done
-      grep -qaF DEBUG_SAULO "$item" && problem "DEBUG_SAULO in file: $rel"
-      [ "$(head -c 2 "$item")" = MZ ] && problem "Windows binary: $rel"
-    fi
-  done < <(find "$appdir" -mindepth 1 -print0)
-  local actual
-  actual="$(cd "$appdir" && find . ! -type d | sed 's|^\./||' | LC_ALL=C sort)"
-  [ "$actual" = "$EXPECTED" ] || { problem "unexpected AppDir contents:"; diff <(echo "$EXPECTED") <(echo "$actual") >&2 || true; }
-  grep -qxF "StartupWMClass=$APP_ID" "$appdir/$APP_ID.desktop" || problem "StartupWMClass in $APP_ID.desktop is not $APP_ID"
-  grep -qxF "Exec=$BIN_NAME" "$appdir/$APP_ID.desktop" || problem "Exec in $APP_ID.desktop is not $BIN_NAME"
-  grep -qaF "$APP_ID" "$appdir/usr/bin/$BIN_NAME" || problem "the program does not contain the application id $APP_ID"
-  for f in $BIN_NAME librexruntime.so librexgpu-xenos.so; do
-    if readelf -d "$appdir/usr/bin/$f" | grep -i renderdoc >/dev/null; then problem "$f links RenderDoc"; fi
-    if readelf -S -W "$appdir/usr/bin/$f" | grep -F ' .debug_' >/dev/null; then problem "$f holds debug sections"; fi
-    rpath="$(readelf -d "$appdir/usr/bin/$f" | sed -n 's/.*R\(UN\)\?PATH.*\[\(.*\)\]/\2/p')"
-    case "$f" in
-      $BIN_NAME) [ "$rpath" = '$ORIGIN' ] || problem "$f RPATH/RUNPATH is '$rpath', not \$ORIGIN" ;;
-      *) case "$rpath" in '' | '$ORIGIN' | '$ORIGIN:$ORIGIN/../lib') ;; *) problem "$f RPATH/RUNPATH is '$rpath'" ;; esac ;;
-    esac
-  done
-  missing="$(LD_LIBRARY_PATH="$appdir/usr/lib" ldd "$appdir/usr/bin/$BIN_NAME" | grep 'not found' || true)"
-  [ -z "$missing" ] || problem "unresolved libraries: $missing"
-  [ "$problems" = 0 ] || fail "the $label holds files that must not be released"
-  echo "  $label clean"
-  for f in usr/bin/$BIN_NAME usr/bin/librexruntime.so usr/bin/librexgpu-xenos.so usr/lib/libstdc++.so.6 usr/lib/libgcc_s.so.1; do
-    glibc="$(readelf --dyn-syms -W "$appdir/$f" | grep -oE 'GLIBC_[0-9.]+' | sort -Vu | tail -1)"
-    echo "  $f needs $glibc"
-    [ "$(printf '%s\n' "${glibc#GLIBC_}" "$MAX_GLIBC" | sort -V | tail -1)" = "$MAX_GLIBC" ] ||
-      fail "$f needs $glibc, above the glibc $MAX_GLIBC baseline"
-  done
-}
 
 if [ -n "$VERIFY_ONLY" ]; then
   [ -f "$VERIFY_ONLY" ] || fail "missing $VERIFY_ONLY"
@@ -240,62 +144,17 @@ bash "$PATCHED" --check "$SDK" --staged "$BIN" || fail "the build folder does no
 
 echo "== AppDir"
 APPDIR="$WORK/AppDir"
-DOC="$APPDIR/usr/share/doc/$BIN_NAME"
 SYMBOLS="$OUT_DIR/$NAME-symbols"
-rm -rf "$APPDIR" "$SYMBOLS"
-mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" "$DOC" "$SYMBOLS"
-cp "$BIN/librexruntime.so" "$BIN/librexgpu-xenos.so" "$BIN/$BIN_NAME.toml" "$APPDIR/usr/bin/"
-mkdir -p "$APPDIR/usr/bin/assets/launcher"
-cp "$BIN/assets/launcher/header-art.png" "$APPDIR/usr/bin/assets/launcher/"
-# The debug sections carry the build machine's folders, so they stay in $SYMBOLS.
-objcopy --only-keep-debug "$BIN/$BIN_NAME" "$SYMBOLS/$BIN_NAME.debug"
-objcopy --strip-debug --add-gnu-debuglink="$SYMBOLS/$BIN_NAME.debug" "$BIN/$BIN_NAME" "$APPDIR/usr/bin/$BIN_NAME"
-# ReXGlue needs GLIBCXX_3.4.32 (GCC 13); AppRun uses this copy only on systems without it.
-for lib in libstdc++.so.6 libgcc_s.so.1; do
-  src="$(g++ -print-file-name=$lib 2>/dev/null || true)"
-  [ -f "$src" ] || src="/usr/lib/x86_64-linux-gnu/$lib"
-  cp -L "$src" "$APPDIR/usr/lib/$lib"
-done
-grep -q GLIBCXX_3.4.32 "$APPDIR/usr/lib/libstdc++.so.6" || fail "the build machine's libstdc++ is older than GCC 13"
-cp "$WORK/LICENSE" "$WORK/packaging/licenses/ReXGlue-LICENSE.txt" "$WORK/packaging/licenses/THIRD-PARTY-LICENSES.txt" \
-  "$WORK/packaging/licenses/THIRD-PARTY-LICENSES-LINUX.txt" "$DOC/"
-for component in type2-runtime libfuse squashfuse Zstandard zlib mimalloc musl libgcc; do
-  grep -qF "AppImage runtime: $component" "$DOC/THIRD-PARTY-LICENSES-LINUX.txt" ||
-    fail "THIRD-PARTY-LICENSES-LINUX.txt has no notice for the AppImage runtime component $component"
-done
-CXX_COPYRIGHT=/usr/share/doc/libstdc++6/copyright
-[ -f "$CXX_COPYRIGHT" ] || fail "missing $CXX_COPYRIGHT (the license of the bundled C++ runtime)"
-cp "$CXX_COPYRIGHT" "$DOC/libstdc++-copyright.txt"
-cp "$WORK/packaging/linux/AppRun" "$WORK/packaging/linux/$APP_ID.desktop" "$APPDIR/"
-# The icon is the root file the .desktop names, the .DirIcon file managers show, and the theme the desktop integrates.
-ICONS="$WORK/packaging/icons"
-THEME="$APPDIR/usr/share/icons/hicolor"
-for size in 16 24 32 48 64 128 256 512; do
-  mkdir -p "$THEME/${size}x${size}/apps"
-  cp "$ICONS/app-icon-$size.png" "$THEME/${size}x${size}/apps/$BIN_NAME.png"
-done
-mkdir -p "$THEME/scalable/apps"
-cp "$ICONS/app-icon.svg" "$THEME/scalable/apps/$BIN_NAME.svg"
-cp "$ICONS/app-icon-256.png" "$APPDIR/$BIN_NAME.png"
-cp "$ICONS/app-icon-256.png" "$APPDIR/.DirIcon"
-chmod 755 "$APPDIR/AppRun" "$APPDIR/usr/bin/$BIN_NAME"
-chmod 644 "$APPDIR/"*.desktop "$APPDIR/"*.png "$APPDIR/.DirIcon" "$APPDIR/usr/bin/"*.so \
-  "$APPDIR/usr/bin/$BIN_NAME.toml" "$APPDIR/usr/bin/assets/launcher/header-art.png" "$APPDIR/usr/lib/"* "$DOC/"*
-find "$THEME" -type f -exec chmod 644 {} +
+stage_appdir "$APPDIR" "$BIN" "$SYMBOLS" "$WORK"
 bash "$PATCHED" --check "$SDK" --staged "$APPDIR/usr/bin" || fail "the AppDir does not hold the patched ReXGlue libraries"
 
 echo "== Release check"
 scan_appdir "$APPDIR" AppDir "$ROOT" "$WORK" "$HOME"
 
 echo "== AppImage"
-TOOLS="$WORK/tools/appimage"
-mkdir -p "$TOOLS"
-TOOL="$TOOLS/appimagetool-$APPIMAGETOOL_VERSION-x86_64.AppImage"
-RUNTIME="$TOOLS/runtime-ssf2t-x86_64"
-download "https://github.com/AppImage/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-x86_64.AppImage" \
-  "$TOOL" "$APPIMAGETOOL_SHA256"
-bash "$ROOT/tools/build-appimage-runtime.sh" "$RUNTIME" "$WORK/appimage-runtime"
-chmod +x "$TOOL"
+ensure_appimage_tools "$ROOT" "$WORK"
+TOOL="$APPIMAGETOOL"
+RUNTIME="$APPIMAGE_RUNTIME"
 mkdir -p "$OUT_DIR"
 OUT="$OUT_DIR/$NAME.AppImage"
 rm -f "$OUT"

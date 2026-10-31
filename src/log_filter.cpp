@@ -40,6 +40,7 @@ constexpr std::string_view kEssentialInfo[] = {
     "Vulkan instance API version",
     "SDL video driver:",
     "Windows crash reporting enabled for current log.",
+    "Linux crash reporting enabled for current log.",
     "Execution complete: clean exit",
     "Window closing",
     "Title terminated",

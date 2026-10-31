@@ -1,6 +1,6 @@
 // Services against a real online service: node server/ssf2t-lobby/local/server.js, then
 //   SSF2T_LOBBY_TEST_URL=ws://127.0.0.1:8791/ ssf2t_online_integration_tests
-// Skips (and passes) without the variable. Only the online protocol runs; no game, no window.
+// Exits 77 (not run) without the variable. Only the online protocol runs; no game, no window.
 
 #include <cctype>
 #include <chrono>
@@ -175,7 +175,7 @@ int main() {
   const char* url = std::getenv("SSF2T_LOBBY_TEST_URL");
   if (!url || !*url) {
     std::printf("skipped: SSF2T_LOBBY_TEST_URL is not set\n");
-    return 0;
+    return 77;
   }
   TestFriendsPlayerMatchAndHandoff(url);
   TestStrangersAndSimultaneousMatches(url);

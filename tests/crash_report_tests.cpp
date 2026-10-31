@@ -16,6 +16,10 @@
 #if defined(_WIN32)
 #include <windows.h>
 #include <shellapi.h>
+#else
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 namespace {
@@ -378,11 +382,129 @@ void TestIntentionalExitHasNoBlock() {
   std::filesystem::remove_all(dir, ec);
 }
 
+#else
+
+std::filesystem::path TempDir() {
+  const std::filesystem::path dir =
+      std::filesystem::temp_directory_path() / ("ssf2t_crash_report_tests_" + std::to_string(getpid()));
+  std::error_code ec;
+  std::filesystem::remove_all(dir, ec);
+  std::filesystem::create_directories(dir, ec);
+  return dir;
+}
+
+void WriteText(const std::filesystem::path& file, const std::string& text) {
+  std::ofstream out(file, std::ios::binary | std::ios::trunc);
+  out.write(text.data(), std::streamsize(text.size()));
+}
+
+std::string ReadText(const std::filesystem::path& file) {
+  std::ifstream in(file, std::ios::binary);
+  return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+// Runs this executable as the child mode; returns the wait status, or -1.
+int RunChild(const char* mode, const std::filesystem::path& log) {
+  const pid_t child = fork();
+  if (child < 0) {
+    return -1;
+  }
+  if (child == 0) {
+    alarm(30);
+    execl("/proc/self/exe", "ssf2t_crash_report_tests", "--child", mode, log.c_str(), static_cast<char*>(nullptr));
+    _exit(127);
+  }
+  int status = -1;
+  if (waitpid(child, &status, 0) != child) {
+    return -1;
+  }
+  return status;
+}
+
+int RunChildMode(const std::string& mode, const std::string& log) {
+  ssf2t::InstallCrashReporting(log.c_str());
+  ssf2t::InstallCrashReporting(log.c_str());
+  ssf2t::SetCrashRuntimeState("Test GPU", "1920x1080 | window=1280x720",
+                            "guest 60Hz | host VBlank (VSync On)", "render=100% 1280x720 | msaa=2x native");
+  if (mode == "segv") {
+    *reinterpret_cast<volatile int*>(0x1234) = 1;
+  } else if (mode == "abort") {
+    std::abort();
+  } else if (mode == "exit") {
+    std::_Exit(0);
+  }
+  return 0;
+}
+
+void TestInstallOnce() {
+  std::printf("crash reporter installs once and repeated install is harmless\n");
+  CHECK(!ssf2t::CrashReportingInstalled());
+  ssf2t::InstallCrashReporting("/tmp/ssf2t_crash_report_tests_install.log");
+  CHECK(ssf2t::CrashReportingInstalled());
+  ssf2t::InstallCrashReporting("/tmp/ssf2t_crash_report_tests_install.log");
+  CHECK(ssf2t::CrashReportingInstalled());
+}
+
+void TestRealSegmentationFaultAppendsToActiveLog() {
+  std::printf("a real segmentation fault appends one block to the active log\n");
+  const std::filesystem::path dir = TempDir();
+  const std::filesystem::path log = dir / "ssf2t_hd_remix_023.log";
+  WriteText(log, "run started\n");
+
+  const int status = RunChild("segv", log);
+  CHECK(WIFSIGNALED(status) && WTERMSIG(status) == SIGSEGV);
+
+  const std::string text = ReadText(log);
+  CHECK(Has(text, "run started"));
+  CHECK(CountOf(text, "CRASH REPORT") == 1);
+  CHECK(Has(text, "Linux fatal signal"));
+  CHECK(Has(text, "Signal: 11"));
+  CHECK(Has(text, "Exception code: 0xC0000005 (ACCESS_VIOLATION)"));
+  CHECK(Has(text, "Memory access: write"));
+  CHECK(Has(text, "Referenced address: 0x0000000000001234"));
+  CHECK(Has(text, "Product: Super Street Fighter II Turbo HD Remix"));
+  CHECK(Has(text, "Build: RelWithDebInfo x86-64"));
+  CHECK(Has(text, "Faulting module:"));
+  CHECK(Has(text, "Thread ID:"));
+  CHECK(Has(text, "Process ID:"));
+  CHECK(Has(text, "Instruction pointer: 0x"));
+  CHECK(Has(text, "Stack trace:"));
+  CHECK(Has(text, "gpu=Test GPU"));
+  CHECK(Has(text, "timing=guest 60Hz | host VBlank (VSync On)"));
+  std::error_code ec;
+  std::filesystem::remove_all(dir, ec);
+}
+
+void TestAbortAndIntentionalExit() {
+  std::printf("an abort is reported once; a hard exit and a normal return leave no crash block\n");
+  const std::filesystem::path dir = TempDir();
+  const std::filesystem::path aborted = dir / "abort.log";
+  const std::filesystem::path hard_exit = dir / "hard_exit.log";
+  const std::filesystem::path normal = dir / "normal_exit.log";
+  WriteText(hard_exit, "Window closing, hard-exiting process.\n");
+
+  const int status = RunChild("abort", aborted);
+  CHECK(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT);
+  const std::string text = ReadText(aborted);
+  CHECK(CountOf(text, "CRASH REPORT") == 1);
+  CHECK(Has(text, "Signal: 6"));
+  CHECK(Has(text, "(STATUS_FATAL_APP_EXIT)"));
+
+  const int hard = RunChild("exit", hard_exit);
+  CHECK(WIFEXITED(hard) && WEXITSTATUS(hard) == 0);
+  CHECK(!Has(ReadText(hard_exit), "CRASH REPORT"));
+  const int soft = RunChild("normal", normal);
+  CHECK(WIFEXITED(soft) && WEXITSTATUS(soft) == 0);
+  CHECK(!Has(ReadText(normal), "CRASH REPORT"));
+  std::error_code ec;
+  std::filesystem::remove_all(dir, ec);
+}
+
 #endif
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
 #if defined(_WIN32)
   int wide_argc = 0;
   LPWSTR* wide_argv = CommandLineToArgvW(GetCommandLineW(), &wide_argc);
@@ -395,7 +517,13 @@ int main() {
   if (wide_argv != nullptr) {
     LocalFree(wide_argv);
   }
+#else
+  if (argc >= 4 && std::string_view(argv[1]) == "--child") {
+    return RunChildMode(argv[2], argv[3]);
+  }
 #endif
+  (void)argc;
+  (void)argv;
 
   TestHeapCorruptionBlock();
   TestExceptionCodeNames();
@@ -411,6 +539,10 @@ int main() {
   TestRealCrashAppendsToActiveLog();
   TestRealAccessViolationBlock();
   TestIntentionalExitHasNoBlock();
+#else
+  TestInstallOnce();
+  TestRealSegmentationFaultAppendsToActiveLog();
+  TestAbortAndIntentionalExit();
 #endif
   std::printf("%d checks, %d failures\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;

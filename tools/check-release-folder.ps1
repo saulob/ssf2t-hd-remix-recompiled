@@ -18,9 +18,10 @@ $AssetFiles = @('assets\launcher\header-art.png')
 # Names that mean game data, a package, saves, settings, caches or logs.
 $ForbiddenNames = @('default.xex', 'default.xexp', 'game', 'game-install-temp', 'game-install-backup', 'user_data', 'user_data.migrating',
     'content', 'cache', 'logs', 'settings.toml', 'settings.toml.bak', 'flog_x360.fpg', '584108A4', 'renderdoc', 'renderdoc.dll',
-    'vulkan-1.dll')
-$ForbiddenPatterns = @('*.xex', '*.xexp', '*.fpg', '*.log', '*.dmp', '*.pdb', '*.debug', '*.xsh', '*.xpso', '*.bak', '*.tmp', '*.sav', 'VkLayer_*', 'renderdoc*',
-    'TracyClient*', '*.pyc', '*.obj', '*.lib', '*.ilk', '*.orig', '*.rej', '*.rdc', 'Thumbs.db', 'desktop.ini', '.git*')
+    'vulkan-1.dll', '$SystemUpdate')
+$ForbiddenPatterns = @('*.xex', '*.xexp', '*.iso', '*.fpg', '*.log', '*.dmp', '*.pdb', '*.debug', '*.xsh', '*.xpso', '*.bak', '*.tmp', '*.sav',
+    '*.invalid', 'VkLayer_*', 'renderdoc*', 'TracyClient*', '*.pyc', '*.obj', '*.lib', '*.ilk', '*.orig', '*.rej', '*.rdc', 'Thumbs.db',
+    'desktop.ini', '.git*', '*~', 'settings.toml.*')
 $PackageMagic = @('LIVE', 'PIRS', 'CON ', 'XEX2')
 $Markers = @('DEBUG_SAULO')
 

@@ -1,4 +1,4 @@
-// WebSocket client on BSD sockets, with OpenSSL for wss:// (system certificate store, host name checked).
+// WebSocket client on BSD sockets, with the system's OpenSSL for wss:// (its certificate store, host name checked).
 #include "online/websocket.h"
 
 #include <algorithm>
@@ -8,29 +8,91 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <type_traits>
 #include <vector>
 
+#include <dlfcn.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include <openssl/err.h>
-#include <openssl/evp.h>
-#include <openssl/sha.h>
-#include <openssl/ssl.h>
-
 #include "online/random.h"
+#include "online/websocket_frame.h"
 
 namespace ssf2t::online {
 namespace {
 
-std::string Base64(const uint8_t* data, size_t size) {
-  std::string out(4 * ((size + 2) / 3), '\0');
-  EVP_EncodeBlock(reinterpret_cast<unsigned char*>(out.data()), data, int(size));
-  return out;
+using ws::Base64;
+
+// libssl is loaded at run time: an AppImage cannot carry a GPL-compatible copy, and distributions ship either
+// libssl.so.3 or libssl.so.1.1. Both export these functions with the same signatures.
+struct SSL_CTX;
+struct SSL;
+struct SSL_METHOD;
+
+constexpr int SSL_ERROR_WANT_READ = 2;
+constexpr int SSL_ERROR_WANT_WRITE = 3;
+constexpr int SSL_VERIFY_PEER = 1;
+constexpr int SSL_CTRL_SET_TLSEXT_HOSTNAME = 55;
+constexpr int SSL_CTRL_SET_MIN_PROTO_VERSION = 123;
+constexpr long TLSEXT_NAMETYPE_host_name = 0;
+constexpr long TLS1_2_VERSION = 0x0303;
+
+struct OpenSsl {
+  const SSL_METHOD* (*TLS_client_method)();
+  SSL_CTX* (*SSL_CTX_new)(const SSL_METHOD*);
+  void (*SSL_CTX_free)(SSL_CTX*);
+  long (*SSL_CTX_ctrl)(SSL_CTX*, int, long, void*);
+  int (*SSL_CTX_set_default_verify_paths)(SSL_CTX*);
+  void (*SSL_CTX_set_verify)(SSL_CTX*, int, int (*)(int, void*));
+  SSL* (*SSL_new)(SSL_CTX*);
+  void (*SSL_free)(SSL*);
+  long (*SSL_ctrl)(SSL*, int, long, void*);
+  int (*SSL_set_fd)(SSL*, int);
+  int (*SSL_set1_host)(SSL*, const char*);
+  int (*SSL_connect)(SSL*);
+  int (*SSL_read)(SSL*, void*, int);
+  int (*SSL_write)(SSL*, const void*, int);
+  int (*SSL_get_error)(const SSL*, int);
+};
+
+const OpenSsl* LoadOpenSsl() {
+  static const OpenSsl* loaded = [] () -> const OpenSsl* {
+    void* library = nullptr;
+    for (const char* name : {"libssl.so.3", "libssl.so.1.1", "libssl.so"}) {
+      if ((library = dlopen(name, RTLD_NOW | RTLD_LOCAL))) break;
+    }
+    if (!library) return nullptr;
+    static OpenSsl table;
+    bool complete = true;
+    const auto take = [&](auto& function, const char* name) {
+      function = reinterpret_cast<std::remove_reference_t<decltype(function)>>(dlsym(library, name));
+      complete = complete && function;
+    };
+    take(table.TLS_client_method, "TLS_client_method");
+    take(table.SSL_CTX_new, "SSL_CTX_new");
+    take(table.SSL_CTX_free, "SSL_CTX_free");
+    take(table.SSL_CTX_ctrl, "SSL_CTX_ctrl");
+    take(table.SSL_CTX_set_default_verify_paths, "SSL_CTX_set_default_verify_paths");
+    take(table.SSL_CTX_set_verify, "SSL_CTX_set_verify");
+    take(table.SSL_new, "SSL_new");
+    take(table.SSL_free, "SSL_free");
+    take(table.SSL_ctrl, "SSL_ctrl");
+    take(table.SSL_set_fd, "SSL_set_fd");
+    take(table.SSL_set1_host, "SSL_set1_host");
+    take(table.SSL_connect, "SSL_connect");
+    take(table.SSL_read, "SSL_read");
+    take(table.SSL_write, "SSL_write");
+    take(table.SSL_get_error, "SSL_get_error");
+    return complete ? &table : nullptr;
+  }();
+  return loaded;
 }
+
+// Only called once a TLS stream exists, so the library is loaded.
+const OpenSsl& Ssl() { return *LoadOpenSsl(); }
 
 int Connect(const WsUrl& url, int timeout_ms, std::string* error) {
   addrinfo hints{};
@@ -73,8 +135,8 @@ public:
 
   ~PosixSocket() override {
     close();
-    if (ssl_) SSL_free(ssl_);
-    if (context_) SSL_CTX_free(context_);
+    if (ssl_) Ssl().SSL_free(ssl_);
+    if (context_) Ssl().SSL_CTX_free(context_);
     ::close(fd_);
   }
 
@@ -85,9 +147,9 @@ public:
       if (closed_) return false;
       int n;
       if (ssl_) {
-        n = SSL_write(ssl_, p, int(size));
+        n = Ssl().SSL_write(ssl_, p, int(size));
         if (n <= 0) {
-          const int e = SSL_get_error(ssl_, n);
+          const int e = Ssl().SSL_get_error(ssl_, n);
           if (e != SSL_ERROR_WANT_READ && e != SSL_ERROR_WANT_WRITE) return false;
           if (!Wait(e == SSL_ERROR_WANT_READ ? POLLIN : POLLOUT, 10000)) return false;
           continue;
@@ -110,9 +172,9 @@ public:
     for (;;) {
       if (closed_) return false;
       if (ssl_) {
-        const int n = SSL_read(ssl_, out, int(size));
+        const int n = Ssl().SSL_read(ssl_, out, int(size));
         if (n > 0) return got = size_t(n), true;
-        const int e = SSL_get_error(ssl_, n);
+        const int e = Ssl().SSL_get_error(ssl_, n);
         if (e != SSL_ERROR_WANT_READ && e != SSL_ERROR_WANT_WRITE) return false;
         if (!Wait(e == SSL_ERROR_WANT_READ ? POLLIN : POLLOUT, timeout_ms)) return false;
       } else {
@@ -141,23 +203,9 @@ public:
   }
 
   bool Frame(uint8_t opcode, const void* payload, size_t size) {
-    std::vector<uint8_t> frame;
-    frame.push_back(uint8_t(0x80 | opcode));
-    if (size < 126) {
-      frame.push_back(uint8_t(0x80 | size));
-    } else if (size < 0x10000) {
-      frame.push_back(0x80 | 126);
-      frame.push_back(uint8_t(size >> 8));
-      frame.push_back(uint8_t(size));
-    } else {
-      frame.push_back(0x80 | 127);
-      for (int i = 7; i >= 0; --i) frame.push_back(uint8_t(uint64_t(size) >> (8 * i)));
-    }
     uint8_t mask[4];
     RandomBytes(mask, sizeof(mask));
-    frame.insert(frame.end(), mask, mask + 4);
-    const auto* p = static_cast<const uint8_t*>(payload);
-    for (size_t i = 0; i < size; ++i) frame.push_back(p[i] ^ mask[i & 3]);
+    const std::vector<uint8_t> frame = ws::ClientFrame(opcode, static_cast<const uint8_t*>(payload), size, mask);
     std::lock_guard<std::mutex> lock(send_mutex_);
     return Write(frame.data(), frame.size());
   }
@@ -200,9 +248,27 @@ public:
     }
   }
 
+  // Like the Windows client, ends the session with a Close frame so the service sees the player leave at once.
   void close() override {
-    if (closed_.exchange(true)) return;
+    if (closing_.exchange(true)) return;
+    {
+      std::unique_lock<std::mutex> lock(send_mutex_, std::try_to_lock);
+      if (lock.owns_lock()) SendCloseFrame();
+    }
+    closed_ = true;
     ::shutdown(fd_, SHUT_RDWR);
+  }
+
+  void SendCloseFrame() {
+    uint8_t mask[4];
+    RandomBytes(mask, sizeof(mask));
+    const uint8_t normal_closure[2] = {0x03, 0xE8};
+    const std::vector<uint8_t> frame = ws::ClientFrame(8, normal_closure, sizeof(normal_closure), mask);
+    if (ssl_) {
+      Ssl().SSL_write(ssl_, frame.data(), int(frame.size()));
+    } else {
+      ::send(fd_, frame.data(), frame.size(), MSG_NOSIGNAL | MSG_DONTWAIT);
+    }
   }
 
   bool Wait(short events, int timeout_ms) {
@@ -214,6 +280,7 @@ private:
   int fd_;
   SSL_CTX* context_;
   SSL* ssl_;
+  std::atomic<bool> closing_{false};
   std::atomic<bool> closed_{false};
   std::mutex send_mutex_;
   std::vector<uint8_t> pending_;
@@ -227,29 +294,35 @@ std::unique_ptr<PosixSocket> OpenStream(const WsUrl& parts, int timeout_ms, std:
   SSL_CTX* context = nullptr;
   SSL* ssl = nullptr;
   if (parts.tls) {
-    context = SSL_CTX_new(TLS_client_method());
-    if (context) {
-      SSL_CTX_set_min_proto_version(context, TLS1_2_VERSION);
-      SSL_CTX_set_default_verify_paths(context);
-      SSL_CTX_set_verify(context, SSL_VERIFY_PEER, nullptr);
-      ssl = SSL_new(context);
-    }
-    if (!ssl) {
-      if (error) *error = "TLS is unavailable";
-      if (context) SSL_CTX_free(context);
+    const OpenSsl* lib = LoadOpenSsl();
+    if (!lib) {
+      if (error) *error = "TLS is unavailable: this system has no libssl.so.3 or libssl.so.1.1";
       ::close(fd);
       return nullptr;
     }
-    SSL_set_fd(ssl, fd);
-    SSL_set_tlsext_host_name(ssl, parts.host.c_str());
-    SSL_set1_host(ssl, parts.host.c_str());
+    context = lib->SSL_CTX_new(lib->TLS_client_method());
+    if (context) {
+      lib->SSL_CTX_ctrl(context, SSL_CTRL_SET_MIN_PROTO_VERSION, TLS1_2_VERSION, nullptr);
+      lib->SSL_CTX_set_default_verify_paths(context);
+      lib->SSL_CTX_set_verify(context, SSL_VERIFY_PEER, nullptr);
+      ssl = lib->SSL_new(context);
+    }
+    if (!ssl) {
+      if (error) *error = "TLS is unavailable";
+      if (context) lib->SSL_CTX_free(context);
+      ::close(fd);
+      return nullptr;
+    }
+    lib->SSL_set_fd(ssl, fd);
+    lib->SSL_ctrl(ssl, SSL_CTRL_SET_TLSEXT_HOSTNAME, TLSEXT_NAMETYPE_host_name, const_cast<char*>(parts.host.c_str()));
+    lib->SSL_set1_host(ssl, parts.host.c_str());
   }
   auto socket = std::make_unique<PosixSocket>(fd, context, ssl);
   if (ssl) {
     for (;;) {
-      const int r = SSL_connect(ssl);
+      const int r = Ssl().SSL_connect(ssl);
       if (r == 1) break;
-      const int e = SSL_get_error(ssl, r);
+      const int e = Ssl().SSL_get_error(ssl, r);
       if ((e != SSL_ERROR_WANT_READ && e != SSL_ERROR_WANT_WRITE) || !socket->Wait(e == SSL_ERROR_WANT_READ ? POLLIN : POLLOUT, timeout_ms)) {
         if (error) *error = "the online service's TLS certificate was not accepted or the handshake failed";
         return nullptr;
@@ -291,10 +364,7 @@ std::unique_ptr<WebSocket> WebSocket::connect(const std::string& url, int timeou
   const size_t end = response.find("\r\n\r\n") + 4;
   socket->pending_.assign(response.begin() + ptrdiff_t(end), response.end());
   response.resize(end);
-  const std::string expected_source = key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-  uint8_t digest[SHA_DIGEST_LENGTH];
-  SHA1(reinterpret_cast<const unsigned char*>(expected_source.data()), expected_source.size(), digest);
-  const std::string accept = Base64(digest, sizeof(digest));
+  const std::string accept = ws::AcceptFor(key);
   std::string lower = response;
   for (char& c : lower) c = char(std::tolower(static_cast<unsigned char>(c)));
   if (response.rfind("HTTP/1.1 101", 0) != 0) {
@@ -316,18 +386,8 @@ bool http_get(const std::string& ws_url, const std::string& path, int timeout_ms
   if (!parse_ws_url(ws_url, parts, error)) return false;
   std::unique_ptr<PosixSocket> socket = OpenStream(parts, timeout_ms, error);
   if (!socket) return false;
-  const std::string request = "GET " + path + " HTTP/1.1
-
-Host: " + parts.host +
-                "
-
-Connection: close
-
-User-Agent: SSF2TPC
-
-
-
-";
+  const std::string request = "GET " + path + " HTTP/1.1\r\nHost: " + parts.host +
+                "\r\nConnection: close\r\nUser-Agent: SSF2TPC\r\n\r\n";
   if (!socket->Write(request.data(), request.size())) {
     if (error) *error = "the online service closed the connection";
     return false;
@@ -338,11 +398,7 @@ User-Agent: SSF2TPC
   while (response.size() < 20 * 1024 && socket->Read(chunk, sizeof(chunk), got, timeout_ms)) {
     response.append(reinterpret_cast<char*>(chunk), got);
   }
-  const size_t head_end = response.find("
-
-
-
-");
+  const size_t head_end = response.find("\r\n\r\n");
   if (response.rfind("HTTP/1.", 0) != 0 || head_end == std::string::npos) {
     if (error) *error = "the online service did not answer";
     return false;

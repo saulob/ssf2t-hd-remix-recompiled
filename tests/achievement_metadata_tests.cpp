@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
   std::error_code ec;
   if (!std::filesystem::exists(game / "default.xex", ec)) {
     std::printf("skipped: no default.xex in %s\n", game.string().c_str());
-    return 0;
+    return 77;
   }
   TestCleanUserDataStartsLocked(game);
   TestPersistedUnlockIsRead(game);
