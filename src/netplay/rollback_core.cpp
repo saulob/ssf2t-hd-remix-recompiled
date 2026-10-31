@@ -180,7 +180,11 @@ void RollbackCore::CompareChecksums() {
       ++local;
       continue;
     }
-    if (local->value != remote->value && !desync_) desync_ = Desync{local->frame, local->value, remote->value};
+    ++stats_.checksums;
+    if (local->value != remote->value) {
+      ++stats_.mismatches;
+      if (!desync_) desync_ = Desync{local->frame, local->value, remote->value};
+    }
     remote_checks_.erase(remote);
     local = local_checks_.erase(local);
   }

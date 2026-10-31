@@ -215,7 +215,9 @@ void TestSettingsWiring() {
     CHECK(Has(patch, std::string("REXCVAR_DEFINE_STRING(") + player.sdk_key + ", \"\""));
   }
   CHECK(Has(settings, "ApplyPlayerNames();"));
-  CHECK(Has(launcher, "ui.Section(\"Player names\", true)"));
+  CHECK(Has(launcher, "ui.Section(kPlayerNamesTitle, true)"));
+  CHECK(!Has(launcher, "ui.Section(\"Player names\""));
+  CHECK(std::string(kPlayerNamesTitle) == "Local player names");
   CHECK(Has(launcher, "kPlayerNamesHelp"));
   CHECK(kPlayerNames.size() == 2);
   CHECK(!Has(settings, "ssf2t_player_3_name") && !Has(settings, "ssf2t_player_4_name"));
@@ -224,7 +226,12 @@ void TestSettingsWiring() {
   for (const char* sdk : {"local_player_3_name", "local_player_4_name"}) {
     CHECK(Has(patch, std::string("REXCVAR_DEFINE_STRING(") + sdk + ", \"\""));
   }
-  CHECK(std::string(kPlayerNamesHelp) == "Changes the name shown in-game. Save data is not affected.");
+  // Local names belong to Local Match only; Online Match uses the Online name.
+  CHECK(std::string(kPlayerNamesHelp) == "Names shown in Local Match. Online Match uses your Online name.");
+  CHECK(Has(settings, "REXLOG_INFO(\"Local player names (Local Match only): {}\", names);"));
+  for (const PlayerNameSetting& player : kPlayerNames) {
+    CHECK(std::string(player.key) != "ssf2t_online_name" && std::string(player.sdk_key) != "ssf2t_online_name");
+  }
 
   CHECK(Has(patch, "user_index == 0 ? REX_KERNEL_STATE()->user_profile()->name()"));
   CHECK(Has(patch, "input ? input->PlayerNumber(user_index) : 0"));

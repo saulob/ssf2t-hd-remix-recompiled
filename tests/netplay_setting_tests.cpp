@@ -1,5 +1,5 @@
-// Netplay Determinism Test setting: default, launcher wiring, persisted value, and the single runtime setting both
-// guests read. Headless: no window, no game runtime.
+// Netplay Determinism Test setting: default, developer-only launcher wiring, persisted value, and the single runtime
+// setting both guests read. Headless: no window, no game runtime.
 // Run: ssf2t_netplay_setting_tests
 
 #include <algorithm>
@@ -67,14 +67,19 @@ void TestDefaultIsOff() {
 void TestLauncherWording() {
   CHECK(std::string_view(kNetplayDeterminismLabel) == "Netplay Determinism Test");
   CHECK(std::string_view(kNetplayDeterminismHelp) ==
-        "Runs rollback save/load/resimulation checks during Local Versus matches.");
+        "Developer: runs rollback save/load/resimulation checks during Local Versus matches.");
+  // Not a player setting: only the developer controls show it.
   const std::string launcher = ReadSource("launcher.cpp");
-  CHECK(launcher.find("ui.Toggle(kNetplayDeterminismLabel, kNetplayDeterminismHelp, kNetplayDeterminismSetting, "
-                      "kDefaultNetplayDeterminism,\n              \"Off\", \"On\");") != std::string::npos);
+  CHECK(launcher.find("ui.Toggle(kNetplayDeterminismLabel, kNetplayDeterminismHelp, kNetplayDeterminismSetting,\n"
+                      "                kDefaultNetplayDeterminism, \"Off\", \"On\");") != std::string::npos);
   const size_t gameplay = launcher.find("static void PageGameplay(");
+  const size_t developer = launcher.find("if (DeveloperControlsEnabled()) {", gameplay);
   const size_t toggle = launcher.find("kNetplayDeterminismLabel");
+  const size_t developer_end = launcher.find("\n    }\n", launcher.find("kNetplayPeerAddressLabel"));
   const size_t achievements = launcher.find("void PageAchievements(");
-  CHECK(gameplay != std::string::npos && gameplay < toggle && toggle < achievements);
+  CHECK(gameplay != std::string::npos && gameplay < developer && developer < toggle && toggle < developer_end &&
+        developer_end < achievements);
+  CHECK(Count(launcher, "kNetplayDeterminismLabel") == 1);
 }
 
 void TestPersistedValueRoundTrip() {
@@ -109,6 +114,37 @@ void TestSettingReachesTheRuntimeCvar() {
   CHECK(settings.find("rex::cvar::SetFlagByName(key, value);") != std::string::npos);
 }
 
+void TestNetplayRoleDefaultsToOff() {
+  CHECK(std::string_view(kDefaultNetplayRole) == "off");
+  CHECK(std::string_view(kNetplayRoleSetting) == "ssf2t_netplay_role");
+  CHECK(std::string_view(kDefaultNetplayPeerAddress) == "127.0.0.1");
+  CHECK(std::string_view(kNetplayPeerAddressSetting) == "ssf2t_netplay_peer_address");
+  const std::string hook = ReadSource("netplay_hook.cpp");
+  CHECK(hook.find("REXCVAR_DEFINE_STRING(ssf2t_netplay_role, ssf2t::kDefaultNetplayRole, \"SSF2T\"") !=
+        std::string::npos);
+  CHECK(hook.find("REXCVAR_DEFINE_STRING(ssf2t_netplay_peer_address, ssf2t::kDefaultNetplayPeerAddress, \"SSF2T\"") !=
+        std::string::npos);
+}
+
+void TestNetplayRoleLauncherWiring() {
+  const std::string launcher = ReadSource("launcher.cpp");
+  CHECK(launcher.find("ui.Choice(kNetplayRoleLabel, kNetplayRoleHelp, kNetplayRoleSetting, kDefaultNetplayRole,") !=
+        std::string::npos);
+  CHECK(launcher.find("ui.InputText(kNetplayPeerAddressLabel, kNetplayPeerAddressHelp, kNetplayPeerAddressSetting,") !=
+        std::string::npos);
+  // Peer Address is only shown for Join.
+  const size_t role_row = launcher.find("kNetplayRoleLabel");
+  const size_t peer_row = launcher.find("kNetplayPeerAddressLabel");
+  const size_t join_check = launcher.find("kNetplayRoleJoin", role_row);
+  CHECK(role_row != std::string::npos && join_check != std::string::npos && join_check < peer_row);
+}
+
+void TestNetplaySettingsReachTheRuntimeCvar() {
+  const std::string settings = ReadSource("settings.cpp");
+  CHECK(settings.find("      kNetplayRoleSetting,\n") != std::string::npos);
+  CHECK(settings.find("      kNetplayPeerAddressSetting,\n") != std::string::npos);
+}
+
 void TestOneSettingServesBothGuests() {
   CHECK(CountInSources("REXCVAR_DEFINE_BOOL(ssf2t_netplay_determinism_test") == 1);
   CHECK(CountInSources("\"ssf2t_netplay_determinism_test\"") == 1);
@@ -116,7 +152,9 @@ void TestOneSettingServesBothGuests() {
   const std::string hook = ReadSource("netplay_hook.cpp");
   CHECK(Count(hook, "FightStep<np::Base013Netplay>(") == 1);
   CHECK(Count(hook, "FightStep<np::TitleUpdate023Netplay>(") == 1);
-  const size_t gate = hook.find("if (REXCVAR_GET(ssf2t_netplay_determinism_test) && CodeMatches<G>(base)");
+  CHECK(hook.find("return developer && REXCVAR_GET(ssf2t_netplay_determinism_test);") != std::string::npos);
+  CHECK(hook.find("static const bool developer = ssf2t::DeveloperControlsEnabled();") != std::string::npos);
+  const size_t gate = hook.find("if (DeterminismTestOn() && CodeMatches<G>(base)");
   CHECK(gate != std::string::npos && gate < hook.find("RunDeterminismSample<G>(ctx, base, calls, frame);"));
 }
 
@@ -128,6 +166,9 @@ int main() {
   TestPersistedValueRoundTrip();
   TestSettingReachesTheRuntimeCvar();
   TestOneSettingServesBothGuests();
+  TestNetplayRoleDefaultsToOff();
+  TestNetplayRoleLauncherWiring();
+  TestNetplaySettingsReachTheRuntimeCvar();
   std::printf("%d checks, %d failures\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;
 }

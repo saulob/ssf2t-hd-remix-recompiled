@@ -107,6 +107,36 @@ void WriteBody(Writer& w, const Checksum& b) {
 
 void WriteBody(Writer& w, const Bye& b) { w.U8(uint8_t(b.reason)); }
 
+void WriteBody(Writer& w, const Ready& b) {
+  w.U8(b.ready ? 1 : 0);
+  w.U8(b.has_start_frame ? 1 : 0);
+  w.U32(b.start_frame);
+}
+
+void WriteBody(Writer& w, const StateDigest& b) {
+  w.U32(b.fight);
+  w.U8(b.round);
+  w.U8(uint8_t(b.setup.size()));
+  for (const uint32_t hash : b.regions) w.U32(hash);
+  for (const uint32_t word : b.setup) w.U32(word);
+}
+
+void WriteBody(Writer& w, const StateBlocks& b) {
+  w.U32(b.fight);
+  w.U16(b.first);
+  w.U8(uint8_t(b.hashes.size()));
+  w.U8(b.round);
+  for (const uint32_t hash : b.hashes) w.U32(hash);
+}
+
+void WriteBody(Writer& w, const StateBytes& b) {
+  w.U32(b.fight);
+  w.U32(b.offset);
+  w.U8(uint8_t(b.bytes.size()));
+  w.U8(b.round);
+  for (const uint8_t byte : b.bytes) w.U8(byte);
+}
+
 std::optional<Body> ReadHello(Reader& r) {
   Hello b;
   const uint8_t guest = r.U8();
@@ -159,6 +189,72 @@ std::optional<Body> ReadBye(Reader& r) {
   return b;
 }
 
+std::optional<Body> ReadReady(Reader& r) {
+  Ready b;
+  const uint8_t ready = r.U8();
+  const uint8_t has_start = r.U8();
+  b.start_frame = r.U32();
+  if (!r.ok() || !r.done() || ready > 1 || has_start > 1) return std::nullopt;
+  b.ready = ready != 0;
+  b.has_start_frame = has_start != 0;
+  return b;
+}
+
+std::optional<Body> ReadStateDigest(Reader& r) {
+  StateDigest b;
+  b.fight = r.U32();
+  b.round = r.U8();
+  const uint8_t count = r.U8();
+  for (uint32_t& hash : b.regions) hash = r.U32();
+  if (!r.ok() || b.round > 1 || count > kMaxSetupWords || r.remaining() != size_t(count) * 4) return std::nullopt;
+  b.setup.reserve(count);
+  for (uint8_t i = 0; i < count; ++i) b.setup.push_back(r.U32());
+  return b;
+}
+
+std::optional<Body> ReadStateBlocks(Reader& r) {
+  StateBlocks b;
+  b.fight = r.U32();
+  b.first = r.U16();
+  const uint8_t count = r.U8();
+  b.round = r.U8();
+  if (!r.ok() || b.round > 1 || count == 0 || count > kMaxBlockHashesPerPacket ||
+      r.remaining() != size_t(count) * 4) {
+    return std::nullopt;
+  }
+  b.hashes.reserve(count);
+  for (uint8_t i = 0; i < count; ++i) b.hashes.push_back(r.U32());
+  return b;
+}
+
+std::optional<Body> ReadStateBytes(Reader& r) {
+  StateBytes b;
+  b.fight = r.U32();
+  b.offset = r.U32();
+  const uint8_t count = r.U8();
+  b.round = r.U8();
+  if (!r.ok() || b.round > 1 || count == 0 || count > kMaxStateBytesPerPacket || r.remaining() != count) {
+    return std::nullopt;
+  }
+  b.bytes.reserve(count);
+  for (uint8_t i = 0; i < count; ++i) b.bytes.push_back(r.U8());
+  return b;
+}
+
+bool BodyFits(const Body& body) {
+  if (const Input* input = std::get_if<Input>(&body)) return input->words.size() <= kMaxInputsPerPacket;
+  if (const StateBlocks* blocks = std::get_if<StateBlocks>(&body)) {
+    return !blocks->hashes.empty() && blocks->hashes.size() <= kMaxBlockHashesPerPacket && blocks->round <= 1;
+  }
+  if (const StateBytes* bytes = std::get_if<StateBytes>(&body)) {
+    return !bytes->bytes.empty() && bytes->bytes.size() <= kMaxStateBytesPerPacket && bytes->round <= 1;
+  }
+  if (const StateDigest* digest = std::get_if<StateDigest>(&body)) {
+    return digest->setup.size() <= kMaxSetupWords && digest->round <= 1;
+  }
+  return true;
+}
+
 }  // namespace
 
 PacketType TypeOf(const Body& body) {
@@ -168,19 +264,21 @@ PacketType TypeOf(const Body& body) {
     PacketType operator()(const Input&) const { return PacketType::kInput; }
     PacketType operator()(const Checksum&) const { return PacketType::kChecksum; }
     PacketType operator()(const Bye&) const { return PacketType::kBye; }
+    PacketType operator()(const Ready&) const { return PacketType::kReady; }
+    PacketType operator()(const StateDigest&) const { return PacketType::kStateDigest; }
+    PacketType operator()(const StateBlocks&) const { return PacketType::kStateBlocks; }
+    PacketType operator()(const StateBytes&) const { return PacketType::kStateBytes; }
   };
   return std::visit(Visitor{}, body);
 }
 
 size_t Encode(const Header& header, const Body& body, uint8_t* out, size_t capacity) {
-  if (const Input* input = std::get_if<Input>(&body); input != nullptr && input->words.size() > kMaxInputsPerPacket) {
-    return 0;
-  }
+  if (!BodyFits(body)) return 0;
   Writer w(out, capacity);
   w.U32(kPacketMagic);
   w.U8(kProtocolVersion);
   w.U8(uint8_t(TypeOf(body)));
-  w.U16(0);
+  w.U16(header.fight);
   w.U32(header.session);
   w.U16(header.seq);
   w.U16(header.ack);
@@ -193,8 +291,8 @@ std::optional<Packet> Decode(const uint8_t* data, size_t size) {
   Reader r(data, size);
   if (r.U32() != kPacketMagic || r.U8() != kProtocolVersion) return std::nullopt;
   const uint8_t type = r.U8();
-  r.U16();
   Packet packet;
+  packet.header.fight = r.U16();
   packet.header.session = r.U32();
   packet.header.seq = r.U16();
   packet.header.ack = r.U16();
@@ -214,6 +312,18 @@ std::optional<Packet> Decode(const uint8_t* data, size_t size) {
       break;
     case PacketType::kBye:
       body = ReadBye(r);
+      break;
+    case PacketType::kReady:
+      body = ReadReady(r);
+      break;
+    case PacketType::kStateDigest:
+      body = ReadStateDigest(r);
+      break;
+    case PacketType::kStateBlocks:
+      body = ReadStateBlocks(r);
+      break;
+    case PacketType::kStateBytes:
+      body = ReadStateBytes(r);
       break;
     default:
       return std::nullopt;

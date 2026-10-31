@@ -157,6 +157,8 @@ void TestDesyncIsDetectedAtAChecksumPoint() {
   CHECK(b.core.desync().has_value());
   if (a.core.desync()) CHECK(a.core.desync()->frame > 55 && a.core.desync()->frame % 10 == 0);
   CHECK(!a.core.faulted());
+  // Only the first mismatch is kept as the desync; the count shows it was not a one-off.
+  CHECK(a.core.stats().mismatches > 1 && a.core.stats().mismatches < a.core.stats().checksums);
 }
 
 void TestMatchingRunsReportNoDesync() {
@@ -165,6 +167,7 @@ void TestMatchingRunsReportNoDesync() {
   CHECK(b.core.Start());
   RunPair(a, b, 400, {2, 2, 10, 10, false}, 12);
   CHECK(!a.core.desync() && !b.core.desync());
+  CHECK(a.core.stats().checksums > 10 && a.core.stats().mismatches == 0 && b.core.stats().mismatches == 0);
 }
 
 void TestSimulationFailuresFault() {

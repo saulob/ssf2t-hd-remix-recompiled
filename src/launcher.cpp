@@ -12,6 +12,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -42,6 +43,9 @@
 #include "language_setting.h"
 #include "local_player_name.h"
 #include "netplay_setting.h"
+#include "online_page.h"
+#include "online_runtime.h"
+#include "online_setting.h"
 #include "player_name_setting.h"
 #include "launcher_achievements.h"
 #include "log_filter.h"
@@ -202,8 +206,10 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     if (done_) {
       return;
     }
+    online_page_.SetOwnerWindow(WindowHandle());
     PollInstall();
     PollUpdate();
+    PollOnline();
     TrackPlacement();
     if (!nav_taken_) {
       saved_nav_flags_ = io.ConfigFlags & kNavFlags;
@@ -328,6 +334,13 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   void PollUpdate() {
     if (updater_) {
       updater_->Poll();
+    }
+  }
+
+  void PollOnline() {
+    const std::vector<std::string> notices = online_page_.Tick(settings_);
+    if (!notices.empty()) {
+      launcher_->SetStatus(notices.back(), 5.0);
     }
   }
 
@@ -473,6 +486,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   trg::LauncherConfig MakeConfig() {
     trg::LauncherConfig c;
     c.settings = &settings_;
+    online_page_.SetSaveNow(
+        [this](std::string_view key, const std::string& value) { return settings_.SaveNow({{std::string(key), value}}); });
     // PLAY saves in RequestPlay, so a failed save keeps the launcher open.
     c.save_on_play = false;
     c.theme = LauncherTheme();
@@ -497,19 +512,28 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         {"Graphics", "Graphics card, render resolution, anti-aliasing and texture filtering.",
          [this](trg::Ui& ui) { PageGraphics(ui); }},
         {"Gameplay", "Language, and what the window shows while you play.", [](trg::Ui& ui) { PageGameplay(ui); }},
+        {"Online", "Add friends and see who is online. Play them from Multiplayer > Online Match.",
+         [this](trg::Ui& ui) { online_page_.Draw(ui); }, [this] { return online_page_.NeedsAttention(); }},
         {"Achievements", "Your achievements on this PC.", [this](trg::Ui& ui) { PageAchievements(ui); }},
         {"Controls", "Controller and keyboard.", [](trg::Ui& ui) { PageControls(ui); }},
         {"About", "About this port, and where your files and settings live.",
          [this](trg::Ui& ui) { PageAbout(ui); }},
     };
-    c.can_play = [this] {
+    const auto online = std::find_if(c.pages.begin(), c.pages.end(), [](const trg::Page& p) { return p.name == "Online"; });
+    const int online_page = int(online - c.pages.begin());
+    c.can_play = [this, online_page] {
+      const bool pressed = play_attempt_.PressedThisCall(ImGui::GetFrameCount());
       if (install_.running()) {
         return trg::PlayCheck{false, "Wait for the install to finish.", 0};
       }
-      if (playable_) {
-        return trg::PlayCheck{};
+      if (!playable_) {
+        return trg::PlayCheck{false, "The game files are not ready: see the Play page.", 0};
       }
-      return trg::PlayCheck{false, "The game files are not ready: see the Play page.", 0};
+      if (online_page_.PlayNeedsTest(settings_)) {
+        if (pressed) online_page_.RequestConnectionTestAttention();
+        return trg::PlayCheck{false, kConnectionTestRequired, online_page};
+      }
+      return trg::PlayCheck{};
     };
     return c;
   }
@@ -520,6 +544,11 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     } else {
       const trg::Status status = playable_ ? trg::Status::kReady : trg::Status::kAttention;
       ui.StatusCard(status, play_card_.title.c_str(), play_card_.detail.empty() ? nullptr : play_card_.detail.c_str());
+    }
+    if (playable_ && online_page_.PlayNeedsTest(settings_)) {
+      ImGui::PushStyleColor(ImGuiCol_Text, ui.theme().warn_dot);
+      ImGui::TextWrapped("%s", kConnectionTestRequired);
+      ImGui::PopStyleColor();
     }
     if (!install_failure_.empty()) {
       DrawFailure(ui, install_failure_, install_failure_text_);
@@ -628,6 +657,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
 
   void SetGameFiles(const GameCheck& check) {
     game_check_ = check;
+    ConfigureOnline(paths_.user_dir, check.guest);
     game_files_ = check.state;
     playable_ = SelectGuest(check).has_value();
     game_files_problem_ = DescribeGameFilesProblem(check);
@@ -858,12 +888,24 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
               "ssf2t_show_fps", true, "Off", "On");
     ui.Toggle("Render resolution in title", "Shows the game's render resolution in the window title",
               "ssf2t_show_render_resolution", false, "Off", "On");
-    ui.Toggle("Frame counter", "Shows the game's frame rate in the corner. F2 toggles it while playing.",
+    ui.Toggle("Frame counter", "Shows the game's frame rate in the corner. F2 switches it while playing.",
               "ssf2t_show_frame_counter", false, "Hidden", "Shown");
-    ui.Toggle(kInfiniteTimeLabel, kInfiniteTimeHelp, kInfiniteTimeSetting, kDefaultInfiniteTime, "Off", "On");
-    ui.Toggle(kNetplayDeterminismLabel, kNetplayDeterminismHelp, kNetplayDeterminismSetting, kDefaultNetplayDeterminism,
-              "Off", "On");
-    if (ui.Section("Player names", true)) {
+    if (ui.settings().GetBool(kOnlineEnabledSetting, kDefaultOnlineEnabled)) {
+      ui.Info(kInfiniteTimeLabel, kInfiniteTimeOnlineNotice);
+    } else {
+      ui.Toggle(kInfiniteTimeLabel, kInfiniteTimeHelp, kInfiniteTimeSetting, kDefaultInfiniteTime, "Off", "On");
+    }
+    if (DeveloperControlsEnabled()) {
+      ui.Toggle(kNetplayDeterminismLabel, kNetplayDeterminismHelp, kNetplayDeterminismSetting,
+                kDefaultNetplayDeterminism, "Off", "On");
+      ui.Choice(kNetplayRoleLabel, kNetplayRoleHelp, kNetplayRoleSetting, kDefaultNetplayRole,
+                {{kNetplayRoleOff, "Off"}, {kNetplayRoleHost, "Host"}, {kNetplayRoleJoin, "Join"}});
+      if (ui.settings().Get(kNetplayRoleSetting, kDefaultNetplayRole) == kNetplayRoleJoin) {
+        ui.InputText(kNetplayPeerAddressLabel, kNetplayPeerAddressHelp, kNetplayPeerAddressSetting,
+                     kDefaultNetplayPeerAddress);
+      }
+    }
+    if (ui.Section(kPlayerNamesTitle, true)) {
       ui.Help(kPlayerNamesHelp);
       for (const PlayerNameSetting& player : kPlayerNames) {
         PlayerNameRow(ui, player);
@@ -1052,6 +1094,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   std::vector<GraphicsAdapter> graphics_adapters_;
   std::unique_ptr<rex::ui::ImmediateTexture> header_art_;
   std::unique_ptr<trg::Launcher> launcher_;
+  OnlinePage online_page_;
+  PlayAttemptDetector play_attempt_;
   ImGuiGamepad gamepad_;
   bool nav_taken_ = false;
   bool starting_ = false;

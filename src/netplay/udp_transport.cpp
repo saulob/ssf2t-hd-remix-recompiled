@@ -1,5 +1,6 @@
 #include "netplay/udp_transport.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 
@@ -104,6 +105,62 @@ bool ParseIPv4(std::string_view text, uint32_t& address) {
   if (pos != text.size()) return false;
   address = value;
   return true;
+}
+
+const char* PeerAddressKindName(PeerAddressKind kind) {
+  switch (kind) {
+    case PeerAddressKind::kEmpty: return "empty";
+    case PeerAddressKind::kIPv4: return "ipv4";
+    case PeerAddressKind::kIPv4MappedIPv6: return "ipv4_mapped_ipv6";
+    case PeerAddressKind::kHostPort: return "host_port";
+    case PeerAddressKind::kIPv6: return "ipv6";
+    default: return "invalid";
+  }
+}
+
+namespace {
+
+std::string_view Trim(std::string_view text) {
+  size_t begin = 0, end = text.size();
+  while (begin < end && (text[begin] == ' ' || text[begin] == '\t')) ++begin;
+  while (end > begin && (text[end - 1] == ' ' || text[end - 1] == '\t')) --end;
+  return text.substr(begin, end - begin);
+}
+
+bool StartsWithIgnoreCase(std::string_view text, std::string_view prefix) {
+  if (text.size() < prefix.size()) return false;
+  for (size_t i = 0; i < prefix.size(); ++i) {
+    if ((text[i] | 0x20) != (prefix[i] | 0x20)) return false;
+  }
+  return true;
+}
+
+}  // namespace
+
+PeerAddressKind ParsePeerAddress(std::string_view text, uint32_t& address) {
+  address = 0;
+  std::string_view value = Trim(text);
+  if (value.empty()) return PeerAddressKind::kEmpty;
+
+  bool had_port_suffix = false;
+  if (value.front() == '[') {
+    const size_t close = value.find(']');
+    if (close == std::string_view::npos) return PeerAddressKind::kInvalid;
+    value = value.substr(1, close - 1);
+    if (value.empty()) return PeerAddressKind::kEmpty;
+  } else if (const size_t colons = size_t(std::count(value.begin(), value.end(), ':')); colons == 1) {
+    value = value.substr(0, value.find(':'));
+    had_port_suffix = true;
+  } else if (colons >= 2 && !StartsWithIgnoreCase(value, "::ffff:")) {
+    return PeerAddressKind::kIPv6;
+  }
+
+  if (ParseIPv4(value, address)) return had_port_suffix ? PeerAddressKind::kHostPort : PeerAddressKind::kIPv4;
+  if (StartsWithIgnoreCase(value, "::ffff:") && ParseIPv4(value.substr(7), address)) {
+    return PeerAddressKind::kIPv4MappedIPv6;
+  }
+  if (std::count(value.begin(), value.end(), ':') >= 2) return PeerAddressKind::kIPv6;
+  return PeerAddressKind::kInvalid;
 }
 
 UdpTransport::~UdpTransport() { Close(); }

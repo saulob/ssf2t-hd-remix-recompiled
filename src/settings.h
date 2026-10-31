@@ -28,6 +28,7 @@ REXCVAR_DECLARE(int32_t, ssf2t_launcher_height);
 REXCVAR_DECLARE(bool, ssf2t_launcher_maximized);
 REXCVAR_DECLARE(bool, ssf2t_launcher_fullscreen);
 REXCVAR_DECLARE(bool, ssf2t_infinite_time);
+REXCVAR_DECLARE(bool, ssf2t_online_enabled);
 REXCVAR_DECLARE(std::string, ssf2t_player_1_name);
 REXCVAR_DECLARE(std::string, ssf2t_player_2_name);
 
@@ -65,7 +66,8 @@ void ApplyPlayerNames();
 // Sets the guest hook for ssf2t_fight_area. Call with ApplyLanguage.
 void ApplyFightArea();
 
-// Sets the guest timer hook from ssf2t_infinite_time. Call with ApplyFightArea.
+// Sets the guest timer hook from ssf2t_infinite_time, which is ignored while ssf2t_online_enabled is on. Call with
+// ApplyFightArea.
 void ApplyInfiniteTime();
 
 // Windows: makes the D3D12 render target path the host one when Internal render resolution is below 100%. Call
@@ -134,7 +136,8 @@ class GameSettings final : public trg::SettingsStore {
   std::set<std::string> unregistered_;
 };
 
-// Flips ssf2t_infinite_time, applies it and saves it to the player file, where the launcher reads it.
+// Flips ssf2t_infinite_time, applies it and saves it to the player file, where the launcher reads it. Does nothing
+// and returns false while Online play is on.
 bool ToggleInfiniteTime(GameSettings& settings);
 
 }  // namespace ssf2t

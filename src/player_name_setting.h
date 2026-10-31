@@ -13,7 +13,8 @@ struct PlayerNameSetting {
 };
 
 inline constexpr char kPlayerNameHint[] = "Up to 15 characters.";
-inline constexpr char kPlayerNamesHelp[] = "Changes the name shown in-game. Save data is not affected.";
+inline constexpr char kPlayerNamesTitle[] = "Local player names";
+inline constexpr char kPlayerNamesHelp[] = "Names shown in Local Match. Online Match uses your Online name.";
 
 inline constexpr std::array<PlayerNameSetting, 2> kPlayerNames = {{
     {"ssf2t_player_1_name", "local_player_1_name", "Player 1", "Player 1"},

@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <iterator>
 #include <span>
+#include <vector>
 
 #include "guest_memory.h"
 #include "netplay/packet.h"
@@ -14,11 +16,13 @@ inline constexpr uint32_t kArenaSaveSize = 0x10000;
 inline constexpr uint32_t kGlobalsSaveSize = 0x29A00;
 inline constexpr uint32_t kGuestStateSize = kArenaSaveSize + kGlobalsSaveSize;
 
-// Commands of the game's rollback callback.
+// Commands of the game's rollback callback. Step runs one whole simulated frame: the sim step and the per-frame work
+// the fight loop's frame tail otherwise runs after it.
 inline constexpr uint32_t kCmdSave = 0;
 inline constexpr uint32_t kCmdLoad = 1;
 inline constexpr uint32_t kCmdSetInput = 2;
 inline constexpr uint32_t kCmdChecksum = 4;
+inline constexpr uint32_t kCmdStep = 5;
 
 // Input tables hold one 156-byte entry per player: the pad word of this frame and of the one before.
 inline constexpr uint32_t kPlayersInTable = 4;
@@ -59,7 +63,11 @@ struct Base013Netplay {
   static constexpr uint32_t kFrameCounter = 0x83E37F78;
   static constexpr uint32_t kStateFunction = 0x83C1A820;
   static constexpr uint32_t kNetActive = 0x847D3A2D;
+  static constexpr uint32_t kGameMode = 0x83CA294F;
   static constexpr uint32_t kInputTable = 0x83CD62F0;
+  static constexpr uint32_t kControllerInputTable = 0x83CD6560;
+  static constexpr uint32_t kActiveUser = 0x83A38770;
+  static constexpr uint32_t kUiInputPointer = 0x8480BD30;
   static constexpr uint32_t kInputRing = 0x83C19F40;
   static constexpr uint32_t kInputDecode = 0x82250968;
   static constexpr uint32_t kInputHistoryStep = 0x8237B170;
@@ -67,6 +75,14 @@ struct Base013Netplay {
   static constexpr uint32_t kSideOrder = 0x83C19C4C;
   static constexpr uint32_t kRandStep = 0x823E1CF0;
   static constexpr uint32_t kSideSetup = 0x82318618;
+  static constexpr uint32_t kNetActiveQuery = 0x8241CC08;
+  static constexpr uint32_t kFrameTailNetCheck = 0x823EDF04;
+  static constexpr uint32_t kFramePump = 0x82252B90;
+  static constexpr uint32_t kFightWork = 0x83CD52DC;
+  static constexpr uint32_t kOnlineStage = 0x83C24D98;
+  static constexpr uint32_t kButtonConfigFlag = 0x83CA6D66;
+  static constexpr uint32_t kButtonConfigA = 0x83CA6D2C;
+  static constexpr uint32_t kButtonConfigB = 0x83CD5158;
   static constexpr uint32_t kPaceCounter = 0x83E37F5C;
   static constexpr uint32_t kDrawListLow = 0x83BE2E80;
   static constexpr uint32_t kDrawListHigh = 0x83BE5C80;
@@ -103,6 +119,10 @@ struct Base013Netplay {
       0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x396B52CC, 0x39400000, 0xB14B0002, 0x49632B5D,
       0x48000054, 0x3D6083E1, 0x816B9CC0, 0x3940FFFF, 0xB14B072C, 0x3D6083E1, 0x816B9CC0, 0x3940FFFF,
   };
+  static constexpr uint32_t kNetActiveQueryWords[] = {0x3D60847D, 0x886B3A2D, 0x4E800020};
+  static constexpr uint32_t kFrameTailNetCheckWords[] = {0x4802ED05, 0x546B063F, 0x4082013C, 0x4BFFBAE9};
+  static constexpr uint32_t kFramePumpWords[] = {0x7D8802A6, 0x9181FFF8, 0x9421FFA0,
+                                                 0x90610074, 0x4819AF79, 0x481CA065};
 };
 
 struct TitleUpdate023Netplay {
@@ -120,7 +140,11 @@ struct TitleUpdate023Netplay {
   static constexpr uint32_t kFrameCounter = 0x83E38490;
   static constexpr uint32_t kStateFunction = 0x83C1A8A0;
   static constexpr uint32_t kNetActive = 0x847D3F4C;
+  static constexpr uint32_t kGameMode = 0x83CA2E67;
   static constexpr uint32_t kInputTable = 0x83CD6808;
+  static constexpr uint32_t kControllerInputTable = 0x83CD6A78;
+  static constexpr uint32_t kActiveUser = 0x83A387E8;
+  static constexpr uint32_t kUiInputPointer = 0x8480C250;
   static constexpr uint32_t kInputRing = 0x83C19FC0;
   static constexpr uint32_t kInputDecode = 0x822509B0;
   static constexpr uint32_t kInputHistoryStep = 0x8237B240;
@@ -128,6 +152,14 @@ struct TitleUpdate023Netplay {
   static constexpr uint32_t kSideOrder = 0x83C19CCC;
   static constexpr uint32_t kRandStep = 0x823E23C8;
   static constexpr uint32_t kSideSetup = 0x82318558;
+  static constexpr uint32_t kNetActiveQuery = 0x8241D2E0;
+  static constexpr uint32_t kFrameTailNetCheck = 0x823EE670;
+  static constexpr uint32_t kFramePump = 0x82252BD8;
+  static constexpr uint32_t kFightWork = 0x83CD57F4;
+  static constexpr uint32_t kOnlineStage = 0x83C25110;
+  static constexpr uint32_t kButtonConfigFlag = 0x83CA727E;
+  static constexpr uint32_t kButtonConfigA = 0x83CA7244;
+  static constexpr uint32_t kButtonConfigB = 0x83CD5670;
   static constexpr uint32_t kPaceCounter = 0x83E38474;
   static constexpr uint32_t kDrawListLow = 0x83BE2F00;
   static constexpr uint32_t kDrawListHigh = 0x83BE5D00;
@@ -164,6 +196,10 @@ struct TitleUpdate023Netplay {
       0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x396B57E4, 0x39400000, 0xB14B0002, 0x49469AA5,
       0x48000054, 0x3D6083E1, 0x816BA1D8, 0x3940FFFF, 0xB14B072C, 0x3D6083E1, 0x816BA1D8, 0x3940FFFF,
   };
+  static constexpr uint32_t kNetActiveQueryWords[] = {0x3D60847D, 0x886B3F4C, 0x4E800020};
+  static constexpr uint32_t kFrameTailNetCheckWords[] = {0x4802EC71, 0x546B063F, 0x4082013C, 0x4BFFBAB5};
+  static constexpr uint32_t kFramePumpWords[] = {0x7D8802A6, 0x9181FFF8, 0x9421FFA0,
+                                                 0x90610074, 0x4819B621, 0x481CA6F5};
 };
 
 // `base` is the guest memory.
@@ -184,7 +220,55 @@ bool NetplayCodeMatches(const uint8_t* base) {
          WordsMatch(base, G::kFightLoop, G::kFightLoopWords) &&
          WordsMatch(base, G::kInputDecode, G::kInputDecodeWords) &&
          WordsMatch(base, G::kInputHistoryStep, G::kInputHistoryStepWords) &&
-         WordsMatch(base, G::kRandStep, G::kRandStepWords) && WordsMatch(base, G::kSideSetup, G::kSideSetupWords);
+         WordsMatch(base, G::kRandStep, G::kRandStepWords) && WordsMatch(base, G::kSideSetup, G::kSideSetupWords) &&
+         WordsMatch(base, G::kNetActiveQuery, G::kNetActiveQueryWords) &&
+         WordsMatch(base, G::kFrameTailNetCheck, G::kFrameTailNetCheckWords) &&
+         WordsMatch(base, G::kFramePump, G::kFramePumpWords);
+}
+
+// The frame tail asks whether the game's NetSync is active right after the sim step; when it is, the tail skips the
+// per-frame simulation work (input decode, the post-step updates) because the step command runs it instead.
+template <typename G>
+constexpr uint32_t FrameTailNetCheckReturn() {
+  return G::kFrameTailNetCheck + 4;
+}
+
+// What the fight reads outside the snapshot, so the peers must already share it when they meet: the game mode, the
+// phase each met at, the online stage the stage pick reads, and the attack buttons the input decode maps each
+// fighter's pad with.
+inline constexpr size_t kButtonConfigBytes = 6;
+inline constexpr const char* kSetupWordNames[] = {"mode",       "phase01",        "phase23",    "stage",
+                                                  "buttons_p1", "buttons_p1_ext", "buttons_p2", "buttons_p2_ext"};
+inline constexpr size_t kSetupWordCount = std::size(kSetupWordNames);
+
+struct SetupFields {
+  uint8_t mode = 0;
+  uint16_t phase[4] = {};
+  uint32_t stage = 0;
+  uint8_t buttons[2][kButtonConfigBytes] = {};
+};
+
+inline std::vector<uint32_t> SetupWords(const SetupFields& f) {
+  std::vector<uint32_t> words = {f.mode, uint32_t(f.phase[0]) << 16 | f.phase[1], uint32_t(f.phase[2]) << 16 | f.phase[3],
+                                 f.stage};
+  for (const auto& slot : f.buttons) {
+    words.push_back(uint32_t(slot[0]) << 24 | uint32_t(slot[1]) << 16 | uint32_t(slot[2]) << 8 | slot[3]);
+    words.push_back(uint32_t(slot[4]) << 8 | slot[5]);
+  }
+  return words;
+}
+
+// The decode reads fighter slot 0's and 1's buttons from one of two tables, by a flag.
+template <typename G>
+constexpr uint32_t ButtonConfigAddress(bool flag, uint32_t slot) {
+  return flag ? G::kButtonConfigA + slot * 10 : G::kButtonConfigB + slot * 8;
+}
+
+// A phase that waits on presentation (the stage pick before the airplane) presents whole frames through the frame pump
+// from inside one simulated frame, and only that tail's work ends the wait; those tails belong to the simulated frame.
+template <typename G>
+constexpr bool AnswerFrameTailNetActive(uint32_t return_address, bool in_frame_pump, bool owns_fight) {
+  return owns_fight && !in_frame_pump && return_address == FrameTailNetCheckReturn<G>();
 }
 
 }  // namespace ssf2t::netplay

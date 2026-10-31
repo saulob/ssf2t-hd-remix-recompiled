@@ -15,6 +15,23 @@ struct Endpoint {
 // Dotted quad or "localhost".
 bool ParseIPv4(std::string_view text, uint32_t& address);
 
+// What ParsePeerAddress made of a signaling-supplied peer address, for diagnostics; kIPv4 and kIPv4MappedIPv6 are
+// the only kinds that fill `address`.
+enum class PeerAddressKind { kEmpty, kIPv4, kIPv4MappedIPv6, kHostPort, kIPv6, kInvalid };
+
+const char* PeerAddressKindName(PeerAddressKind kind);
+
+// Normalizes a peer address the signaling service may legitimately hand back (a plain IPv4 literal, an IPv4-mapped
+// IPv6 literal such as "::ffff:1.2.3.4", "host:port", or a bracketed "[addr]" with an optional ":port") to the IPv4
+// address UdpTransport speaks. A `:port` suffix is always ignored: the real port is a separate protocol field.
+// Native IPv6 is recognised, not translated — this transport has no IPv6 socket support — and reported as kIPv6.
+PeerAddressKind ParsePeerAddress(std::string_view text, uint32_t& address);
+
+// Whether `kind` left `address` filled with a usable IPv4 value.
+constexpr bool UsableAddress(PeerAddressKind kind) {
+  return kind == PeerAddressKind::kIPv4 || kind == PeerAddressKind::kIPv4MappedIPv6 || kind == PeerAddressKind::kHostPort;
+}
+
 class Transport {
  public:
   virtual ~Transport() = default;

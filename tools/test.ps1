@@ -55,6 +55,22 @@ Write-Host '== release folder check'
 & (Join-Path $PSScriptRoot 'test-release-check.ps1')
 if ($LASTEXITCODE) { throw "Release folder check tests failed ($LASTEXITCODE)" }
 
+Write-Host '== online instance script'
+& (Join-Path $PSScriptRoot 'test-online-instance.ps1')
+if ($LASTEXITCODE) { throw "Online instance script tests failed ($LASTEXITCODE)" }
+
+$node = Get-Command node -ErrorAction SilentlyContinue
+if ($node) {
+    Write-Host '== online service (Node)'
+    Push-Location (Join-Path $Root 'server\ssf2t-lobby')
+    try {
+        & $node.Source --test 'test/*.test.js'
+        if ($LASTEXITCODE) { throw "Online service tests failed ($LASTEXITCODE)" }
+    } finally { Pop-Location }
+} else {
+    Write-Host '== online service tests skipped (node not found)'
+}
+
 if ($SkipRuntime) { return }
 
 $SdkRoot = Join-Path $Root 'tools\rexglue\win-amd64'
@@ -107,7 +123,22 @@ Invoke-Step 'netplay session' { & (Join-Path $BuildDir 'ssf2t_netplay_session_te
 Invoke-Step 'netplay guest' { & (Join-Path $BuildDir 'ssf2t_netplay_guest_tests.exe') }
 Invoke-Step 'netplay input' { & (Join-Path $BuildDir 'ssf2t_netplay_input_tests.exe') }
 Invoke-Step 'netplay state' { & (Join-Path $BuildDir 'ssf2t_netplay_state_tests.exe') }
+Invoke-Step 'netplay online game socket' { & (Join-Path $BuildDir 'ssf2t_netplay_online_game_socket_tests.exe') }
 Invoke-Step 'netplay setting' { & (Join-Path $BuildDir 'ssf2t_netplay_setting_tests.exe') }
+Invoke-Step 'online protocol' { & (Join-Path $BuildDir 'ssf2t_online_protocol_tests.exe') }
+Invoke-Step 'online identity' { & (Join-Path $BuildDir 'ssf2t_online_identity_tests.exe') }
+Invoke-Step 'online service' { & (Join-Path $BuildDir 'ssf2t_online_service_tests.exe') }
+Invoke-Step 'online rendezvous' { & (Join-Path $BuildDir 'ssf2t_online_rendezvous_tests.exe') }
+Invoke-Step 'online connection test' { & (Join-Path $BuildDir 'ssf2t_online_connection_tests.exe') }
+Invoke-Step 'friend code field' { & (Join-Path $BuildDir 'ssf2t_friend_field_tests.exe') }
+Invoke-Step 'clipboard' { & (Join-Path $BuildDir 'ssf2t_clipboard_tests.exe') }
+Invoke-Step 'online integration' { & (Join-Path $BuildDir 'ssf2t_online_integration_tests.exe') }
+Invoke-Step 'online setting' { & (Join-Path $BuildDir 'ssf2t_online_setting_tests.exe') }
+Invoke-Step 'player match' { & (Join-Path $BuildDir 'ssf2t_player_match_tests.exe') }
+Invoke-Step 'guest ui' { & (Join-Path $BuildDir 'ssf2t_guest_ui_tests.exe') }
+Invoke-Step 'player match net' { & (Join-Path $BuildDir 'ssf2t_player_match_net_tests.exe') }
+Invoke-Step 'online menu' { & (Join-Path $BuildDir 'ssf2t_online_menu_tests.exe') }
+Invoke-Step 'player match lobby' { & (Join-Path $BuildDir 'ssf2t_player_match_lobby_tests.exe') }
 Invoke-Step 'keyboard remapping' { & (Join-Path $BuildDir 'ssf2t_keyboard_tests.exe') }
 Invoke-Step 'player names' { & (Join-Path $BuildDir 'ssf2t_player_name_tests.exe') }
 Invoke-Step 'launcher quit' { & (Join-Path $BuildDir 'ssf2t_launcher_quit_tests.exe') }

@@ -76,6 +76,13 @@ class InfiniteTimeNotice {
     state_ = State::kShown;
   }
 
+  void ShowText(const char* text, double seconds, double now) {
+    text_ = text;
+    seconds_ = seconds;
+    shown_at_ = now;
+    state_ = State::kShown;
+  }
+
   // The clock starts at the first frame where the notice is ready.
   void Queue(bool enabled, double seconds) {
     Begin(enabled, seconds);

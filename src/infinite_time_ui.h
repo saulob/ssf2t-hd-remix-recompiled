@@ -11,6 +11,7 @@ namespace ssf2t {
 
 void CreateInfiniteTimeNotice(rex::ui::ImGuiDrawer* drawer);
 void ShowInfiniteTimeNotice(bool enabled, double seconds);
+void ShowInfiniteTimeMessage(const char* text, double seconds);
 void QueueStartupInfiniteTimeNotice(bool enabled);
 
 // F10 calls `toggle` once per press while the game runs. The key is left for the game and the other listeners.

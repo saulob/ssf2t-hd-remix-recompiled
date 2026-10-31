@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cinttypes>
 #include <cstdio>
+#include <iterator>
 
 #include "netplay/guest_netplay.h"
 
@@ -67,6 +68,50 @@ std::string DescribeOffset(size_t offset) {
   }
   std::snprintf(text, sizeof text, "host+0x%zX", offset - kSimStateSize);
   return text;
+}
+
+namespace {
+
+struct StateRegion {
+  const char* name;
+  size_t size;
+};
+
+constexpr StateRegion kStateRegionTable[] = {
+    {"arena", kArenaSaveSize}, {"globals", kGlobalsSaveSize}, {"table", kInputTableStateBytes},
+    {"ring", kInputRingBytes}, {"rng", kRngStateBytes},       {"side", kSideOrderBytes},
+    {"prev", kSimBlobSize - kSimStateSize},
+};
+static_assert(std::size(kStateRegionTable) == kStateRegions);
+
+}  // namespace
+
+const char* StateRegionName(size_t region) {
+  return region < kStateRegions ? kStateRegionTable[region].name : "?";
+}
+
+std::array<uint32_t, kStateRegions> StateRegionHashes(const std::vector<uint8_t>& blob) {
+  std::array<uint32_t, kStateRegions> hashes{};
+  if (blob.size() != kSimBlobSize) return hashes;
+  size_t offset = 0;
+  for (size_t i = 0; i < kStateRegions; ++i) {
+    const uint64_t hash = Fnv1a64(blob.data() + offset, kStateRegionTable[i].size);
+    hashes[i] = uint32_t(hash ^ (hash >> 32));
+    offset += kStateRegionTable[i].size;
+  }
+  return hashes;
+}
+
+std::string DescribeStateHashes(const std::vector<uint8_t>& blob) {
+  if (blob.size() != kSimBlobSize) return "unavailable";
+  const auto hashes = StateRegionHashes(blob);
+  std::string out;
+  char text[32];
+  for (size_t i = 0; i < kStateRegions; ++i) {
+    std::snprintf(text, sizeof text, "%s%s=%08X", out.empty() ? "" : " ", StateRegionName(i), hashes[i]);
+    out += text;
+  }
+  return out;
 }
 
 DiffRuns FindRuns(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, size_t merge_gap, size_t max_runs) {

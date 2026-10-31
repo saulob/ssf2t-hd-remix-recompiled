@@ -123,11 +123,55 @@ get_directory_property(SSF2T_TRG_VERSION DIRECTORY "${_trg_patched_dir}" DEFINIT
 
 set(SSF2T_NETPLAY_SOURCES
     src/netplay/determinism.cpp
+    src/netplay/frame_zero.cpp
+    src/netplay/lobby_mux.cpp
+    src/netplay/online_game_socket.cpp
     src/netplay/packet.cpp
+    src/netplay/relay_frame.cpp
     src/netplay/rollback_core.cpp
     src/netplay/session.cpp
     src/netplay/udp_transport.cpp
 )
+
+# Online play: the lobby client, identity and signalling. No game runtime needed; the tests build it as it is.
+set(SSF2T_ONLINE_SOURCES
+    src/netplay/online_game_socket.cpp
+    src/netplay/relay_frame.cpp
+    src/netplay/udp_transport.cpp
+    src/online/connection_test.cpp
+    src/online/friend_view.cpp
+    src/online/identity.cpp
+    src/online/instance.cpp
+    src/online/lobby_link.cpp
+    src/online/local_addresses.cpp
+    src/online/net_addr.cpp
+    src/online/online_service.cpp
+    src/online/protocol.cpp
+    src/online/random.cpp
+    src/online/rendezvous.cpp
+    src/online/stun.cpp
+    src/online/upnp.cpp
+    src/online/websocket.cpp
+    src/updater/json.cpp
+    src/updater/sha256.cpp
+    src/updater/update_paths.cpp
+)
+set(SSF2T_ONLINE_LIBS)
+if(WIN32)
+    list(APPEND SSF2T_ONLINE_SOURCES src/online/websocket_win.cpp)
+    list(APPEND SSF2T_ONLINE_LIBS winhttp ws2_32 bcrypt)
+else()
+    find_package(OpenSSL QUIET COMPONENTS SSL Crypto)
+    if(OpenSSL_FOUND)
+        list(APPEND SSF2T_ONLINE_SOURCES src/online/websocket_posix.cpp)
+        list(APPEND SSF2T_ONLINE_LIBS OpenSSL::SSL OpenSSL::Crypto)
+    else()
+        message(WARNING "OpenSSL not found: online play reports itself unavailable in this build")
+        list(APPEND SSF2T_ONLINE_SOURCES src/online/websocket_none.cpp)
+    endif()
+    list(APPEND SSF2T_ONLINE_LIBS Threads::Threads)
+endif()
+find_package(Threads REQUIRED)
 
 set(SSF2T_SOURCES
     src/main.cpp
@@ -141,12 +185,16 @@ set(SSF2T_SOURCES
     src/frame_counter.cpp
     src/game_files.cpp
     src/graphics_adapters.cpp
+    src/friend_code_field.cpp
     src/imgui_gamepad.cpp
     src/guest_functions.cpp
     src/guest_image.cpp
     src/infinite_time.cpp
     src/infinite_time_ui.cpp
     src/input_summary.cpp
+    src/invite_ui.cpp
+    src/message_box_hook.cpp
+    src/message_box_ui.cpp
     src/menu_text_hook.cpp
     src/launcher.cpp
     src/launcher_achievements.cpp
@@ -154,6 +202,17 @@ set(SSF2T_SOURCES
     src/log_path.cpp
     src/modal_dialog.cpp
     src/netplay_hook.cpp
+    src/online_menu.cpp
+    src/online_menu_hook.cpp
+    src/online_page.cpp
+    src/online_runtime.cpp
+    src/player_match.cpp
+    src/player_match_hook.cpp
+    src/player_match_lobby.cpp
+    src/player_match_lobby_hook.cpp
+    src/player_match_net.cpp
+    src/player_match_net_hook.cpp
+    src/ping_display.cpp
     src/platform.cpp
     src/session_log.cpp
     src/settings.cpp
@@ -175,6 +234,16 @@ set(SSF2T_SOURCES
     src/window_host.cpp
     ${SSF2T_NETPLAY_SOURCES}
 )
+if(WIN32)
+    list(APPEND SSF2T_SOURCES src/clipboard_win32.cpp)
+else()
+    list(APPEND SSF2T_SOURCES src/clipboard_sdl.cpp)
+endif()
+foreach(_online_source IN LISTS SSF2T_ONLINE_SOURCES)
+    if(NOT _online_source IN_LIST SSF2T_SOURCES)
+        list(APPEND SSF2T_SOURCES ${_online_source})
+    endif()
+endforeach()
 set_source_files_properties(src/updater/third_party/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "-w")
 set_property(SOURCE src/update_config.cpp src/updater/github_release.cpp src/updater/json.cpp src/updater/sha256.cpp
     src/updater/update_controller.cpp src/updater/update_job.cpp src/updater/update_paths.cpp
@@ -198,7 +267,7 @@ target_include_directories(ssf2t_hd_remix PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${
 target_link_libraries(ssf2t_hd_remix PRIVATE rex::runtime ${SSF2T_GUEST_IMAGES})
 ssf2t_check_guest_images(ssf2t_hd_remix)
 rexglue_configure_target(ssf2t_hd_remix GPU_PLUGINS xenos)
-target_link_libraries(ssf2t_hd_remix PRIVATE trg::launcher)
+target_link_libraries(ssf2t_hd_remix PRIVATE trg::launcher ${SSF2T_ONLINE_LIBS})
 if(WIN32)
     target_link_libraries(ssf2t_hd_remix PRIVATE shcore synchronization dxgi ws2_32)
     foreach(_sdk_dll rexruntime rexruntimed rexruntimerd rexgpu-xenos rexgpu-xenosd rexgpu-xenosrd)
@@ -357,7 +426,7 @@ add_dependencies(ssf2t_runtime_tests ssf2t_netplay_setting_tests)
 
 # Netplay foundation: packets, rollback core, session, UDP loopback and the guest bindings. Headless; the UDP test
 # binds 127.0.0.1 only.
-foreach(_test packet rollback session guest input state)
+foreach(_test packet rollback session guest input state online_game_socket)
     set(_name ssf2t_netplay_${_test}_tests)
     add_executable(${_name} EXCLUDE_FROM_ALL tests/netplay_${_test}_tests.cpp ${SSF2T_NETPLAY_SOURCES})
     target_include_directories(${_name} PRIVATE src tests)
@@ -368,6 +437,75 @@ foreach(_test packet rollback session guest input state)
     endif()
     add_dependencies(ssf2t_runtime_tests ${_name})
 endforeach()
+
+# Online play: protocol, identity and instance isolation, the service state machine over a scripted channel, and the
+# settings wiring. Headless; nothing opens a window. The integration test skips unless SSF2T_LOBBY_TEST_URL names a
+# lobby server (node server/ssf2t-lobby/local/server.js).
+foreach(_test protocol identity service rendezvous connection integration)
+    set(_name ssf2t_online_${_test}_tests)
+    add_executable(${_name} EXCLUDE_FROM_ALL tests/online_${_test}_tests.cpp ${SSF2T_ONLINE_SOURCES})
+    target_include_directories(${_name} PRIVATE src tests)
+    target_compile_options(${_name} PRIVATE -Wall -Wextra)
+    target_link_libraries(${_name} PRIVATE ${SSF2T_ONLINE_LIBS})
+    add_dependencies(ssf2t_runtime_tests ${_name})
+endforeach()
+
+add_executable(ssf2t_online_setting_tests EXCLUDE_FROM_ALL tests/online_setting_tests.cpp)
+target_include_directories(ssf2t_online_setting_tests PRIVATE src)
+target_link_libraries(ssf2t_online_setting_tests PRIVATE trg::launcher)
+target_compile_definitions(ssf2t_online_setting_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_online_setting_tests)
+
+add_executable(ssf2t_player_match_tests EXCLUDE_FROM_ALL tests/player_match_tests.cpp src/player_match.cpp
+    src/player_match_net.cpp src/online/protocol.cpp src/updater/json.cpp)
+target_include_directories(ssf2t_player_match_tests PRIVATE src)
+target_compile_options(ssf2t_player_match_tests PRIVATE -Wall -Wextra)
+add_dependencies(ssf2t_runtime_tests ssf2t_player_match_tests)
+
+add_executable(ssf2t_guest_ui_tests EXCLUDE_FROM_ALL tests/guest_ui_tests.cpp)
+target_include_directories(ssf2t_guest_ui_tests PRIVATE src)
+target_compile_definitions(ssf2t_guest_ui_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(ssf2t_guest_ui_tests PRIVATE -Wall -Wextra)
+add_dependencies(ssf2t_runtime_tests ssf2t_guest_ui_tests)
+
+add_executable(ssf2t_player_match_lobby_tests EXCLUDE_FROM_ALL tests/player_match_lobby_tests.cpp
+    src/player_match_lobby.cpp)
+target_include_directories(ssf2t_player_match_lobby_tests PRIVATE src)
+target_compile_definitions(ssf2t_player_match_lobby_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(ssf2t_player_match_lobby_tests PRIVATE -Wall -Wextra)
+add_dependencies(ssf2t_runtime_tests ssf2t_player_match_lobby_tests)
+
+add_executable(ssf2t_online_menu_tests EXCLUDE_FROM_ALL tests/online_menu_tests.cpp src/online_menu.cpp
+    src/player_match.cpp src/player_match_net.cpp src/online/protocol.cpp src/updater/json.cpp)
+target_include_directories(ssf2t_online_menu_tests PRIVATE src)
+target_compile_definitions(ssf2t_online_menu_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(ssf2t_online_menu_tests PRIVATE -Wall -Wextra)
+add_dependencies(ssf2t_runtime_tests ssf2t_online_menu_tests)
+
+add_executable(ssf2t_player_match_net_tests EXCLUDE_FROM_ALL tests/player_match_net_tests.cpp src/player_match.cpp
+    src/player_match_net.cpp src/netplay/lobby_mux.cpp src/netplay/udp_transport.cpp src/online/protocol.cpp
+    src/updater/json.cpp)
+target_include_directories(ssf2t_player_match_net_tests PRIVATE src)
+target_compile_definitions(ssf2t_player_match_net_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(ssf2t_player_match_net_tests PRIVATE -Wall -Wextra)
+if(WIN32)
+    target_link_libraries(ssf2t_player_match_net_tests PRIVATE ws2_32)
+endif()
+add_dependencies(ssf2t_runtime_tests ssf2t_player_match_net_tests)
+
+add_executable(ssf2t_friend_field_tests EXCLUDE_FROM_ALL tests/friend_field_tests.cpp src/friend_code_field.cpp
+    src/online/protocol.cpp src/updater/json.cpp)
+target_include_directories(ssf2t_friend_field_tests PRIVATE src tests)
+target_link_libraries(ssf2t_friend_field_tests PRIVATE trg::launcher)
+add_dependencies(ssf2t_runtime_tests ssf2t_friend_field_tests)
+
+if(WIN32)
+    add_executable(ssf2t_clipboard_tests EXCLUDE_FROM_ALL tests/clipboard_tests.cpp src/clipboard_win32.cpp
+        src/online/protocol.cpp src/updater/json.cpp)
+    target_include_directories(ssf2t_clipboard_tests PRIVATE src tests)
+    target_sources(ssf2t_friend_field_tests PRIVATE src/clipboard_win32.cpp)
+    add_dependencies(ssf2t_runtime_tests ssf2t_clipboard_tests)
+endif()
 
 add_executable(ssf2t_achievement_tests EXCLUDE_FROM_ALL tests/achievement_tests.cpp)
 target_include_directories(ssf2t_achievement_tests PRIVATE src "${SSF2T_SDK_DIR}/include")

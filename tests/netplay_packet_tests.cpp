@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include "netplay/frame.h"
@@ -92,12 +93,25 @@ void TestRoundTrips() {
     const Bye* b = p ? std::get_if<Bye>(&p->body) : nullptr;
     CHECK(b && b->reason == ByeReason::kDesync);
   }
+  {
+    const auto bytes = Encoded(header, Ready{true, true, 0xABCD1234});
+    const auto p = Decode(bytes.data(), bytes.size());
+    const Ready* r = p ? std::get_if<Ready>(&p->body) : nullptr;
+    CHECK(r && r->ready && r->has_start_frame && r->start_frame == 0xABCD1234);
+  }
+  {
+    const auto bytes = Encoded(header, Ready{false, false, 0});
+    const auto p = Decode(bytes.data(), bytes.size());
+    const Ready* r = p ? std::get_if<Ready>(&p->body) : nullptr;
+    CHECK(r && !r->ready && !r->has_start_frame);
+  }
 }
 
 void TestEveryTruncationAndExtensionIsRejected() {
   Input input;
   input.words = {1, 2, 3};
-  const Body bodies[] = {Hello{}, HelloAck{}, input, Checksum{1, 2}, Bye{}};
+  const Body bodies[] = {Hello{}, HelloAck{}, input, Checksum{1, 2}, Bye{}, Ready{}, StateDigest{},
+                         StateBlocks{1, 2, {3, 4}}, StateBytes{1, 2, {3, 4, 5}}};
   for (const Body& body : bodies) {
     const std::vector<uint8_t> bytes = Encoded({1, 2, 3}, body);
     CHECK(Decode(bytes.data(), bytes.size()).has_value());
@@ -118,7 +132,7 @@ void TestHeaderFieldsAreValidated() {
   bad = good;
   bad[4] = kProtocolVersion + 1;
   CHECK(!Decode(bad.data(), bad.size()).has_value());
-  for (int type : {0, 6, 7, 255}) {
+  for (int type : {0, 7, 8, 255}) {
     bad = good;
     bad[5] = uint8_t(type);
     CHECK(!Decode(bad.data(), bad.size()).has_value());
@@ -145,6 +159,14 @@ void TestBodyFieldsAreValidated() {
   std::vector<uint8_t> bye = Encoded({}, Bye{});
   bye[kHeaderSize] = 3;
   CHECK(!Decode(bye.data(), bye.size()).has_value());
+
+  std::vector<uint8_t> ready = Encoded({}, Ready{});
+  bad = ready;
+  bad[kHeaderSize] = 2;
+  CHECK(!Decode(bad.data(), bad.size()).has_value());
+  bad = ready;
+  bad[kHeaderSize + 1] = 2;
+  CHECK(!Decode(bad.data(), bad.size()).has_value());
 
   Input input;
   input.words = {1, 2};
@@ -210,6 +232,115 @@ void TestParseIPv4() {
   }
 }
 
+// What the signaling service may legitimately hand back for a peer address (real Internet test 84b7d2f1: a
+// CF-Connecting-IP of "bad_peer_address" with no logged value turned out to plausibly be an IPv6 literal, which the
+// IPv4-only transport cannot use).
+void TestParsePeerAddress() {
+  uint32_t a = 0;
+  CHECK(ParsePeerAddress("177.18.65.229", a) == PeerAddressKind::kIPv4 && a == 0xB11241E5);
+  CHECK(ParsePeerAddress("  179.113.149.63 ", a) == PeerAddressKind::kIPv4 && a == 0xB371953F);
+  CHECK(ParsePeerAddress("", a) == PeerAddressKind::kEmpty);
+  CHECK(ParsePeerAddress("   ", a) == PeerAddressKind::kEmpty);
+
+  CHECK(ParsePeerAddress("::ffff:179.113.149.63", a) == PeerAddressKind::kIPv4MappedIPv6 && a == 0xB371953F);
+  CHECK(ParsePeerAddress("::FFFF:10.0.0.1", a) == PeerAddressKind::kIPv4MappedIPv6 && a == 0x0A000001);
+  CHECK(ParsePeerAddress("[::ffff:179.113.149.63]", a) == PeerAddressKind::kIPv4MappedIPv6 && a == 0xB371953F);
+
+  CHECK(ParsePeerAddress("179.113.149.63:54114", a) == PeerAddressKind::kHostPort && a == 0xB371953F);
+  CHECK(ParsePeerAddress("[179.113.149.63]", a) == PeerAddressKind::kIPv4 && a == 0xB371953F);
+
+  CHECK(ParsePeerAddress("2804:14d::1", a) == PeerAddressKind::kIPv6);
+  CHECK(ParsePeerAddress("::1", a) == PeerAddressKind::kIPv6);
+  CHECK(ParsePeerAddress("[2804:14d::1]", a) == PeerAddressKind::kIPv6);
+  CHECK(ParsePeerAddress("[2804:14d::1]:7001", a) == PeerAddressKind::kIPv6);
+  CHECK(ParsePeerAddress("fe80::1%eth0", a) == PeerAddressKind::kIPv6);
+
+  CHECK(ParsePeerAddress("example.com:7001", a) == PeerAddressKind::kInvalid);
+  CHECK(ParsePeerAddress("not-an-address", a) == PeerAddressKind::kInvalid);
+  CHECK(ParsePeerAddress("[", a) == PeerAddressKind::kInvalid);
+  CHECK(ParsePeerAddress("[]", a) == PeerAddressKind::kEmpty);
+
+  for (const PeerAddressKind kind : {PeerAddressKind::kEmpty, PeerAddressKind::kInvalid, PeerAddressKind::kIPv6}) {
+    CHECK(!UsableAddress(kind));
+  }
+  for (const PeerAddressKind kind : {PeerAddressKind::kIPv4, PeerAddressKind::kIPv4MappedIPv6, PeerAddressKind::kHostPort}) {
+    CHECK(UsableAddress(kind));
+  }
+  CHECK(std::string(PeerAddressKindName(PeerAddressKind::kIPv6)) == "ipv6");
+  CHECK(std::string(PeerAddressKindName(PeerAddressKind::kIPv4MappedIPv6)) == "ipv4_mapped_ipv6");
+}
+
+// The frame-0 handshake: one digest per peer, then block hashes and raw bytes only while the states disagree.
+void TestFrameZeroBodies() {
+  StateDigest digest;
+  digest.fight = 0x01020304;
+  for (size_t i = 0; i < kStateRegions; ++i) digest.regions[i] = 0xA0000000u + uint32_t(i);
+  std::vector<uint8_t> bytes = Encoded({1, 2, 3}, digest);
+  CHECK(bytes.size() == kHeaderSize + 6 + 4 * kStateRegions);
+  CHECK(bytes[5] == uint8_t(PacketType::kStateDigest));
+  auto p = Decode(bytes.data(), bytes.size());
+  const StateDigest* d = p ? std::get_if<StateDigest>(&p->body) : nullptr;
+  CHECK(d && d->fight == 0x01020304 && d->regions == digest.regions && d->round == 0 && d->setup.empty());
+
+  digest.round = 1;
+  digest.setup.assign(kMaxSetupWords, 0);
+  for (size_t i = 0; i < kMaxSetupWords; ++i) digest.setup[i] = 0x10000000u * uint32_t(i % 16) + uint32_t(i);
+  bytes = Encoded({1, 2, 3}, digest);
+  CHECK(bytes.size() == kHeaderSize + 6 + 4 * kStateRegions + 4 * kMaxSetupWords && bytes.size() <= kMaxPacketSize);
+  p = Decode(bytes.data(), bytes.size());
+  d = p ? std::get_if<StateDigest>(&p->body) : nullptr;
+  CHECK(d && d->round == 1 && d->setup == digest.setup && d->regions == digest.regions);
+
+  StateBlocks blocks{7, 900, std::vector<uint32_t>(kMaxBlockHashesPerPacket, 0xDEADBEEF), 1};
+  bytes = Encoded({1, 2, 3}, blocks);
+  CHECK(bytes.size() <= kMaxPacketSize);
+  p = Decode(bytes.data(), bytes.size());
+  const StateBlocks* b = p ? std::get_if<StateBlocks>(&p->body) : nullptr;
+  CHECK(b && b->fight == 7 && b->first == 900 && b->hashes == blocks.hashes && b->round == 1);
+
+  StateBytes raw{7, 0x123456, std::vector<uint8_t>(kMaxStateBytesPerPacket, 0x5A), 1};
+  bytes = Encoded({1, 2, 3}, raw);
+  CHECK(bytes.size() <= kMaxPacketSize);
+  p = Decode(bytes.data(), bytes.size());
+  const StateBytes* r = p ? std::get_if<StateBytes>(&p->body) : nullptr;
+  CHECK(r && r->fight == 7 && r->offset == 0x123456 && r->bytes == raw.bytes && r->round == 1);
+
+  uint8_t buffer[kMaxPacketSize];
+  CHECK(Encode({}, StateBlocks{1, 0, {}}, buffer, sizeof buffer) == 0);
+  CHECK(Encode({}, StateBlocks{1, 0, std::vector<uint32_t>(kMaxBlockHashesPerPacket + 1)}, buffer, sizeof buffer) == 0);
+  CHECK(Encode({}, StateBytes{1, 0, {}}, buffer, sizeof buffer) == 0);
+  CHECK(Encode({}, StateBytes{1, 0, std::vector<uint8_t>(kMaxStateBytesPerPacket + 1)}, buffer, sizeof buffer) == 0);
+  CHECK(Encode({}, StateBytes{1, 0, {1}, 2}, buffer, sizeof buffer) == 0);
+  StateDigest too_many;
+  too_many.setup.assign(kMaxSetupWords + 1, 1);
+  CHECK(Encode({}, too_many, buffer, sizeof buffer) == 0);
+
+  // Rounds above 1 and setup counts that disagree with the length are refused.
+  std::vector<uint8_t> bad = Encoded({}, StateDigest{});
+  bad[kHeaderSize + 4] = 2;
+  CHECK(!Decode(bad.data(), bad.size()).has_value());
+  bad = Encoded({}, StateDigest{});
+  bad[kHeaderSize + 5] = 1;
+  CHECK(!Decode(bad.data(), bad.size()).has_value());
+  bad = Encoded({}, StateBlocks{1, 0, {5}});
+  bad[kHeaderSize + 7] = 2;
+  CHECK(!Decode(bad.data(), bad.size()).has_value());
+  bad = Encoded({}, StateBytes{1, 0, {5}});
+  bad[kHeaderSize + 9] = 2;
+  CHECK(!Decode(bad.data(), bad.size()).has_value());
+  // A build without the setup agreement would leave its peer waiting at frame 0, so it is refused at Hello.
+  CHECK(kNetplayBuild == 3);
+}
+
+// The header's reserved word carries the sender's fight count, so a late packet of an earlier fight is recognised.
+void TestHeaderCarriesTheFight() {
+  const Header header{0x11223344, 5, 6, 0xBEEF};
+  const std::vector<uint8_t> bytes = Encoded(header, Checksum{1, 2});
+  CHECK(bytes[6] == 0xBE && bytes[7] == 0xEF);
+  const auto p = Decode(bytes.data(), bytes.size());
+  CHECK(p && p->header.fight == 0xBEEF && p->header.session == 0x11223344 && p->header.seq == 5 && p->header.ack == 6);
+}
+
 }  // namespace
 
 int main() {
@@ -224,6 +355,9 @@ int main() {
   TestRandomBytesNeverCrashAndReencode();
   TestFrameArithmeticWraps();
   TestParseIPv4();
+  TestParsePeerAddress();
+  TestFrameZeroBodies();
+  TestHeaderCarriesTheFight();
   std::printf("%d checks, %d failures\n", netplay_test::g_checks, netplay_test::g_failures);
   return netplay_test::g_failures == 0 ? 0 : 1;
 }

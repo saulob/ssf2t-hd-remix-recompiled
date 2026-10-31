@@ -49,6 +49,8 @@ struct CoreStats {
   uint32_t resimulated = 0;
   uint32_t max_depth = 0;
   uint32_t stalls = 0;
+  uint32_t checksums = 0;
+  uint32_t mismatches = 0;
 };
 
 struct ChecksumPoint {

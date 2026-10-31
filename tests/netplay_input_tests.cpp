@@ -5,7 +5,10 @@
 #include <algorithm>
 #include <cstring>
 
+#include "guest_memory.h"
+#include "input_owner.h"
 #include "netplay/input_model.h"
+#include "netplay/input_route.h"
 #include "netplay/rollback_core.h"
 #include "netplay_test_support.h"
 
@@ -298,6 +301,135 @@ void TestEdgeSensitiveSimulationSurvivesRollbackAndWrap() {
   RunWrapCase(0xFFFFFF00u, {4, 2, 25, 5, false}, 23);
 }
 
+// A fake guest with both input tables: the controller table the pads fill (one entry per local user) and the fighter
+// table the rollback writes. Table bases are small offsets; the stride and field match the game's.
+constexpr uint32_t kControllerTable = 0x100;
+constexpr uint32_t kFighterTable = 0x400;
+constexpr InputWord kStale = 0x0F0F;
+
+struct FakeGuest {
+  std::vector<uint8_t> memory = std::vector<uint8_t>(0x800, 0);
+
+  FakeGuest() {
+    for (uint32_t player = 0; player < kPlayersInTable; ++player) {
+      ssf2t::StoreBE32(memory.data(), kFighterTable + player * kInputEntryStride + kInputCurrentOffset, kStale);
+    }
+  }
+  void Pad(uint32_t user, uint32_t raw) {
+    ssf2t::StoreBE32(memory.data(), ControllerWordAddress(kControllerTable, user), raw);
+  }
+  // What the takeover sends for an online fight.
+  InputWord Local(uint32_t active_user) const {
+    return ControllerWord(
+        ssf2t::LoadBE32(memory.data(), ControllerWordAddress(kControllerTable, LocalInputUser(active_user))));
+  }
+};
+
+void TestHostAndJoinerBothUseTheirController() {
+  std::printf("  online input route\n");
+  FakeGuest guest;
+  guest.Pad(1, 0x0010);
+  // The route takes no network index: host (player 0) and joiner (player 1) on a controller in slot 1 both read user 1,
+  // never their fighter entry.
+  CHECK(guest.Local(1) == 0x0010);
+  CHECK(guest.Local(1) != kStale);
+  CHECK(ControllerWordAddress(kControllerTable, 1) == kControllerTable + 156 + 8);
+  // The match owner decides, whatever the game's active user says: host B (player 0) and joiner A (player 1, whose
+  // game was left on active user 0) both read slot 1.
+  ssf2t::MatchInputOwner host;
+  host.Set({1, "menu"});
+  ssf2t::MatchInputOwner joiner;
+  joiner.Set({1, "invite-controller"});
+  CHECK(guest.Local(uint32_t(host.FightUser(1))) == 0x0010);
+  CHECK(guest.Local(uint32_t(joiner.FightUser(0))) == 0x0010);
+  guest.Pad(0, 0x0100);
+  ssf2t::MatchInputOwner keyboard;
+  keyboard.Set({0, "invite-keyboard"});
+  CHECK(guest.Local(uint32_t(keyboard.FightUser(1))) == 0x0100);
+}
+
+void TestActiveUserNotNetworkIndexSelectsTheDevice() {
+  FakeGuest guest;
+  guest.Pad(0, 0x0100);  // keyboard
+  guest.Pad(1, 0x0400);  // controller
+  guest.Pad(2, 0x0020);
+  CHECK(guest.Local(0) == 0x0100);
+  CHECK(guest.Local(1) == 0x0400);
+  CHECK(guest.Local(2) == 0x0020);
+  // No active user yet (-1) falls back to user 0, as the LIVE profile does.
+  CHECK(LocalInputUser(0xFFFFFFFFu) == 0 && guest.Local(0xFFFFFFFFu) == 0x0100);
+  CHECK(LocalInputUser(4) == 0);
+  for (uint32_t user = 0; user < kLocalUsers; ++user) CHECK(LocalInputUser(user) == user);
+}
+
+void TestSamplingLeavesThePadTableAlone() {
+  FakeGuest guest;
+  guest.Pad(1, 0xABCD0440);
+  const std::vector<uint8_t> before = guest.memory;
+  CHECK(guest.Local(1) == 0x0440);
+  CHECK(guest.Local(1) == 0x0440);
+  CHECK(guest.memory == before);
+}
+
+// Two cores, each fed only by its own pad on user 1; the peer's word arrives over the wire. Both fights see the host's
+// word as player 0 and the joiner's as player 1, never one word in both slots.
+void TestLocalAndRemoteStayInTheirSlots() {
+  FakeGuest host_guest;
+  FakeGuest join_guest;
+  host_guest.Pad(1, 0x0010);
+  join_guest.Pad(1, 0x0400);
+  constexpr uint32_t kDelay = 2;
+  ToySim host_sim;
+  ToySim join_sim;
+  RollbackCore host(host_sim, RollbackConfig{0, kDelay, 8, 30, 0});
+  RollbackCore join(join_sim, RollbackConfig{1, kDelay, 8, 30, 0});
+  CHECK(host.Start() && join.Start());
+  const auto exchange = [](RollbackCore& from, RollbackCore& to) {
+    Frame first = 0;
+    InputWord words[kWindow];
+    const size_t n = from.CollectLocalInputs(first, words, kWindow);
+    to.OnRemoteInputs(first, words, n);
+    to.OnPeerWanted(from.remote_wanted());
+  };
+  for (uint32_t tick = 0; tick < 40; ++tick) {
+    host.Tick(host_guest.Local(1));
+    join.Tick(join_guest.Local(1));
+    exchange(host, join);
+    exchange(join, host);
+  }
+  constexpr uint32_t kFrames = 30;
+  uint64_t expected = 1;
+  for (uint32_t frame = 0; frame < kFrames; ++frame) {
+    expected = Mix(expected, frame < kDelay ? 0 : 0x0010, frame < kDelay ? 0 : 0x0400);
+  }
+  CHECK(host.confirmed_frame() >= kFrames && join.confirmed_frame() >= kFrames);
+  CHECK(host_sim.after[kFrames] == expected);
+  CHECK(join_sim.after[kFrames] == expected);
+  CHECK(!host.desync() && !join.desync());
+}
+
+void TestInputChangesAreLoggedOnlyEarly() {
+  std::printf("  input change log\n");
+  InputChangeLog log;
+  PadSample idle;
+  PadSample punch{0x1000, 0, 0, 0x0010};
+  CHECK(log.ShouldLog(0, idle));
+  CHECK(!log.ShouldLog(1, idle));
+  CHECK(log.ShouldLog(2, punch));
+  CHECK(!log.ShouldLog(3, punch));
+  PadSample stick = punch;
+  stick.stick_x = 1;
+  CHECK(log.ShouldLog(4, stick));
+  CHECK(!log.ShouldLog(InputChangeLog::kFrames, idle));
+  log.Reset();
+  CHECK(log.ShouldLog(0, idle));
+  CHECK(StickDirection(32767) == 1 && StickDirection(-32768) == -1);
+  CHECK(StickDirection(kStickDeadzone) == 0 && StickDirection(-kStickDeadzone) == 0);
+  CHECK(DescribeFightBits(0) == "none");
+  CHECK(DescribeFightBits(0x0010) == "LP");
+  CHECK(DescribeFightBits(0x0614) == "LP+MK+HK+dir4");
+}
+
 }  // namespace
 
 int main() {
@@ -311,6 +443,11 @@ int main() {
   TestRestoreCarriesEveryInputState();
   TestNoStaleInputStateLeaksBetweenPasses();
   TestEdgeSensitiveSimulationSurvivesRollbackAndWrap();
+  TestHostAndJoinerBothUseTheirController();
+  TestActiveUserNotNetworkIndexSelectsTheDevice();
+  TestSamplingLeavesThePadTableAlone();
+  TestLocalAndRemoteStayInTheirSlots();
+  TestInputChangesAreLoggedOnlyEarly();
   std::printf("%d checks, %d failures\n", netplay_test::g_checks, netplay_test::g_failures);
   return netplay_test::g_failures == 0 ? 0 : 1;
 }

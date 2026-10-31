@@ -29,7 +29,8 @@
 - **Local saves**: the game saves and loads as on the console.
 - **Offline achievements**: the game's 12 achievements (200G) are kept on this PC, listed with **F7**, in the game's own Achievements menu item and in the launcher. There is no Xbox Live connection, and the four achievements that need online ranked matches cannot be earned.
 - **Xbox controller support** with no setup, and keyboard play as an Xbox 360 controller.
-- **In-game frame counter** (**F2**) and optional frame rate or render resolution in the window title.
+- **In-game frame counter** (**F2**), online **Ping display** (**F3**), and optional frame rate or render resolution in
+  the window title.
 - **Portable user data**: saves, settings and achievements are in a `user_data` folder beside the program.
 
 The game runs at its original speed of 60 updates per second. Online play is not supported.

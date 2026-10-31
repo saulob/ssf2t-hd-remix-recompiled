@@ -112,7 +112,8 @@ void TestF10WiringUsesOneSetting() {
   const std::string app = ReadSource("ssf2t_hd_remix_app.h");
   CHECK(app.find("ShowInfiniteTimeNotice(ToggleInfiniteTime(game_settings_), kInfiniteTimeToggleNoticeSeconds);") !=
         std::string::npos);
-  CHECK(app.find("QueueStartupInfiniteTimeNotice(REXCVAR_GET(ssf2t_infinite_time));") != std::string::npos);
+  CHECK(app.find("QueueStartupInfiniteTimeNotice(\n        InfiniteTimeActive(REXCVAR_GET(ssf2t_infinite_time), REXCVAR_GET(ssf2t_online_enabled)));") !=
+        std::string::npos);
   CHECK(app.find("QueueStartupInfiniteTimeNotice(") == app.rfind("QueueStartupInfiniteTimeNotice("));
   CHECK(app.find("DetachInfiniteTimeKey();") != std::string::npos);
   CHECK(app.find("ApplyInfiniteTime();") != std::string::npos);

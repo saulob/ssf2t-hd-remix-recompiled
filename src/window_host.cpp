@@ -33,6 +33,7 @@
 #include "aspect_ratio.h"
 #include "cursor_input.h"
 #include "input_activity.h"
+#include "netplay_runtime.h"
 #include "settings.h"
 #include "window_title.h"
 
@@ -299,4 +300,5 @@ void VdSwap_entry(mapped_void buffer_ptr, mapped_void fetch_ptr, mapped_void unk
 REX_HOOK_RAW(__imp__VdSwap) {
   rex::ppc::HostToGuestFunction<rex::kernel::xboxkrnl::VdSwap_entry>(ctx, base);
   CountGuestFrame();
+  ssf2t::PumpNetplayNetwork(base);
 }

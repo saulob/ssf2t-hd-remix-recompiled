@@ -1,4 +1,6 @@
+#include "connection_test_gate.h"
 #include "netplay_setting.h"
+#include "online_setting.h"
 #include "settings.h"
 
 #include <algorithm>
@@ -93,6 +95,12 @@ std::vector<std::string> GameSettingKeys() {
       kFightAreaSetting,
       kInfiniteTimeSetting,
       kNetplayDeterminismSetting,
+      kNetplayRoleSetting,
+      kNetplayPeerAddressSetting,
+      kOnlineEnabledSetting,
+      kOnlineNameSetting,
+      kOnlinePingSetting,
+      kConnectionTestSetting,
       "resolution_scale",
       "ssf2t_internal_render_scale",
       "swap_post_effect",
@@ -362,7 +370,7 @@ bool GameSettings::Save() {
 bool GameSettings::SaveNow(const SettingValues& values) {
   trg::TextFileSettings file = OpenPlayerFile(player_file_);
   for (const auto& [key, value] : values) {
-    file.Set(key, value);
+    file.Set(key, TomlValue(key, value));
   }
   if (!file.Save()) {
     REXLOG_ERROR("Cannot write player settings to {}", Utf8(player_file_.filename()));
@@ -407,10 +415,13 @@ void ApplyLanguage() {
 }
 
 void ApplyPlayerNames() {
+  std::string names;
   for (const PlayerNameSetting& player : kPlayerNames) {
-    rex::cvar::SetFlagByName(player.sdk_key,
-                             local_player_name::SdkValue(rex::cvar::GetFlagByName(player.key), player.default_name));
+    const std::string value = local_player_name::SdkValue(rex::cvar::GetFlagByName(player.key), player.default_name);
+    rex::cvar::SetFlagByName(player.sdk_key, value);
+    names += std::string(names.empty() ? "" : ", ") + player.label + "=" + (value.empty() ? player.default_name : value);
   }
+  REXLOG_INFO("Local player names (Local Match only): {}", names);
 }
 
 void ApplyFightArea() {
@@ -418,10 +429,13 @@ void ApplyFightArea() {
 }
 
 void ApplyInfiniteTime() {
-  SetInfiniteTimeEnabled(REXCVAR_GET(ssf2t_infinite_time));
+  SetInfiniteTimeEnabled(InfiniteTimeActive(REXCVAR_GET(ssf2t_infinite_time), REXCVAR_GET(ssf2t_online_enabled)));
 }
 
 bool ToggleInfiniteTime(GameSettings& settings) {
+  if (!InfiniteTimeToggleAllowed(REXCVAR_GET(ssf2t_online_enabled))) {
+    return false;
+  }
   const bool enabled = ToggledInfiniteTime(REXCVAR_GET(ssf2t_infinite_time));
   const std::string value = enabled ? "true" : "false";
   rex::cvar::SetFlagByName(kInfiniteTimeSetting, value);

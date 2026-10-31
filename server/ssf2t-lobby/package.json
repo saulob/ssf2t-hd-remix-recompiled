@@ -1,0 +1,17 @@
+{
+  "name": "ssf2t-lobby",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Super Street Fighter II Turbo HD Remix PC port: online lobby (players meet here; fights are peer-to-peer)",
+  "license": "GPL-2.0-only",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "local": "node local/server.js",
+    "test": "node --test \"test/*.test.js\"",
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy"
+  }
+}

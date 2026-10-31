@@ -88,6 +88,10 @@ void ShowInfiniteTimeNotice(bool enabled, double seconds) {
   g_notice.Show(enabled, seconds, NowSeconds());
 }
 
+void ShowInfiniteTimeMessage(const char* text, double seconds) {
+  g_notice.ShowText(text, seconds, NowSeconds());
+}
+
 void QueueStartupInfiniteTimeNotice(bool enabled) {
   g_notice.QueueStartup(enabled, kInfiniteTimeStartupNoticeSeconds);
 }

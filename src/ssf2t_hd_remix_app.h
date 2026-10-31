@@ -18,6 +18,7 @@
 #include <rex/system/kernel_state.h>
 #include <rex/system/user_module.h>
 #include <rex/ui/flags.h>
+#include <rex/ui/keybinds.h>
 #include <rex/ui/windowed_app_context.h>
 
 #include "achievement_ui.h"
@@ -26,11 +27,16 @@
 #include "aspect_ratio.h"
 #include "diagnostics.h"
 #include "frame_counter.h"
+#include "invite_ui.h"
+#include "message_box_ui.h"
 #include "game_files.h"
 #include "guest_functions.h"
 #include "guest_image.h"
 #include "infinite_time.h"
 #include "infinite_time_ui.h"
+#include "online_runtime.h"
+#include "online_setting.h"
+#include "ping_display.h"
 #include "input_summary.h"
 #include "internal_render_scale.h"
 #include "launcher.h"
@@ -152,6 +158,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
       show_launcher_ = true;
     }
     if (!show_launcher_) {
+      ConfigureOnline(defaults.user_data_root, guest_);
       ApplyMultisampling();
       ApplyAspectRatio();
       ApplyInternalRenderPath();
@@ -162,6 +169,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
       return defaults;
     }
     if (!imgui_drawer()) {
+      ConfigureOnline(defaults.user_data_root, guest_);
       game_settings_.Apply();
       return defaults;
     }
@@ -239,11 +247,21 @@ class SuperStreetFighterApp : public rex::ReXApp {
     SetInfiniteTimeXexSupported(InfiniteTimeXexSupported(game_data_root()));
     if (window()) {
       AttachInfiniteTimeKey(window(), [this] {
+        if (!InfiniteTimeToggleAllowed(REXCVAR_GET(ssf2t_online_enabled))) {
+          ShowInfiniteTimeMessage(kInfiniteTimeOnlineNotice, kInfiniteTimeToggleNoticeSeconds);
+          return;
+        }
         ShowInfiniteTimeNotice(ToggleInfiniteTime(game_settings_), kInfiniteTimeToggleNoticeSeconds);
       });
     }
-    QueueStartupInfiniteTimeNotice(REXCVAR_GET(ssf2t_infinite_time));
+    QueueStartupInfiniteTimeNotice(
+        InfiniteTimeActive(REXCVAR_GET(ssf2t_infinite_time), REXCVAR_GET(ssf2t_online_enabled)));
     ReXApp::LaunchModule();
+  }
+
+  // ReXGlue's debug (F3) and settings (F4) overlays are developer tools; F3 is the Ping display here.
+  void OnCreateDialogs(rex::ui::ImGuiDrawer*) override {
+    for (const char* bind : kRemovedSdkBinds) rex::ui::UnregisterBind(bind);
   }
 
   void OnPostSetup() override {
@@ -263,6 +281,11 @@ class SuperStreetFighterApp : public rex::ReXApp {
     }
     if (window() && imgui_drawer()) {
       CreateFrameCounter(imgui_drawer());
+      CreatePingDisplay(imgui_drawer());
+      CreateInviteUi(imgui_drawer(),
+                     [this](std::function<void()> work) { app_context().CallInUIThreadDeferred(std::move(work)); });
+      CreateMessageBoxUi(imgui_drawer(),
+                         [this](std::function<void()> work) { app_context().CallInUIThreadDeferred(std::move(work)); });
       CreateInfiniteTimeNotice(imgui_drawer());
       CreateCursorSync(imgui_drawer());
       ModalDialog::AttachEscapeKey(window());

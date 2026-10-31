@@ -1,11 +1,13 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "netplay/frame.h"
+#include "netplay/packet.h"
 
 namespace ssf2t::netplay {
 
@@ -40,6 +42,16 @@ DiffRuns FindRuns(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, 
 
 // "DEBUG_SAULO netplay frame=7 leak runs=2 83C19FC0+4 83E0A2D4+4", addresses from `base_address`.
 std::string FormatRuns(Frame frame, const char* label, uint32_t base_address, const DiffRuns& diff);
+
+// arena, globals, table, ring, rng, side, prev: the regions of a simulation blob.
+const char* StateRegionName(size_t region);
+
+// One hash per region of a simulation blob; all zero for a blob of the wrong size.
+std::array<uint32_t, kStateRegions> StateRegionHashes(const std::vector<uint8_t>& blob);
+
+// "arena=1A2B3C4D globals=... table=... ring=... rng=... side=...": one hash per region of a simulation blob, so two
+// peers' logs show which part of their frame-0 state differs.
+std::string DescribeStateHashes(const std::vector<uint8_t>& blob);
 
 // One validation result as a log line: "DEBUG_SAULO netplay frame=123 resim=match".
 std::string FormatCheck(Frame frame, const char* check, const BlobDiff& diff);

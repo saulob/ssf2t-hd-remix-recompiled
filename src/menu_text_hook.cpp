@@ -15,6 +15,9 @@ void SplitMenuText(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     while (span < length && data[span] != '\n') ++span;
     if (span < length) ++span;
     ssf2t::PatchMainMenuExitBuffer(data, span);
+    ssf2t::PatchOnlineMatchBuffer(data, span);
+    ssf2t::PatchFindMatchBuffer(data, span);
+    ssf2t::PatchGameLobbyHelpBuffer(data, span);
   }
   original(ctx, base);
 }

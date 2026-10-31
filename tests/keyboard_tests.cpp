@@ -169,7 +169,7 @@ void TestRejection() {
     CHECK(ssf2t::KeyboardBindingFor(key, false, false, false).empty());
   }
   // Reserved: the port and the SDK already use these while playing.
-  for (ImGuiKey key : {ImGuiKey_F2, ImGuiKey_F3, ImGuiKey_F4, ImGuiKey_F7, ImGuiKey_F11, ImGuiKey_F12,
+  for (ImGuiKey key : {ImGuiKey_F2, ImGuiKey_F3, ImGuiKey_F4, ImGuiKey_F7, ImGuiKey_F9, ImGuiKey_F11, ImGuiKey_F12,
                        ImGuiKey_Escape, ImGuiKey_GraveAccent}) {
     CHECK(ssf2t::KeyboardBindingIsReserved(key));
     CHECK(ssf2t::KeyboardBindingFor(key, false, false, false).empty());
@@ -368,7 +368,20 @@ void TestHotkeySeparation() {
   std::printf("port hotkeys do not depend on mnk_mode\n");
   // Port hotkeys use the UI keybind registry or window input listeners, never the gamepad
   // keyboard emulation, so they keep working with Keyboard Off.
-  CHECK(Has(ReadSource("frame_counter.cpp"), "rex::ui::RegisterBind(\"bind_ssf2t_frame_counter\", \"F2\""));
+  CHECK(Has(ReadSource("frame_counter.cpp"), "rex::ui::RegisterBind(\"bind_ssf2t_frame_counter\", kFrameCounterKey"));
+  CHECK(Has(ReadSource("frame_counter.h"), "inline constexpr char kFrameCounterKey[] = \"F2\";"));
+  CHECK(Has(ReadSource("ping_display.cpp"), "rex::ui::RegisterBind(\"bind_ssf2t_ping_display\", kPingDisplayKey"));
+  CHECK(Has(ReadSource("ping_display.h"), "inline constexpr char kPingDisplayKey[] = \"F3\";"));
+  // F3 and F4 no longer open ReXGlue's debug and settings overlays; nothing binds F4 or F9.
+  CHECK(Has(ReadSource("frame_counter.h"), "kRemovedSdkBinds[] = {\"bind_debug_overlay\", \"bind_settings\"}"));
+  CHECK(Has(ReadSource("ssf2t_hd_remix_app.h"), "for (const char* bind : kRemovedSdkBinds) rex::ui::UnregisterBind(bind);"));
+  CHECK(Has(ReadSource("ssf2t_hd_remix_app.h"), "void OnCreateDialogs(rex::ui::ImGuiDrawer*) override {"));
+  for (const char* file : {"frame_counter.cpp", "ping_display.cpp", "ping_display.h", "ssf2t_hd_remix_app.h",
+                           "window_host.cpp", "achievements_overlay.cpp"}) {
+    const std::string text = ReadSource(file);
+    CHECK(!Has(text, "\"F4\"") && !Has(text, "\"F9\"") && !Has(text, "kF4") && !Has(text, "kF9"));
+    CHECK(!Has(text, "DebugOverlay") && !Has(text, "SettingsDialog"));
+  }
   CHECK(Has(ReadSource("window_host.cpp"), "rex::ui::VirtualKey::kF11"));
   CHECK(Has(ReadSource("ssf2t_hd_remix_app.h"), "CreateAchievementsOverlay"));
   for (const char* file : {"frame_counter.cpp", "window_host.cpp", "achievements_overlay.cpp"}) {
