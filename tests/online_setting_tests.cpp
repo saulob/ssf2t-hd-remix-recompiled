@@ -269,7 +269,7 @@ void TestConnectionTestPageShowsTheReport() {
   CHECK(!Has(test, "localhost") && !Has(test, "127.0.0.1"));
   // STUN, UPnP and router details go to the log, not the page.
   CHECK(Has(ReadSource("online/online_service.cpp"),
-            "for (const std::string& detail : finished->details) Log(\"DEBUG_SAULO online connection test \" + detail);"));
+            "for (const std::string& detail : finished->details) Log(\"online connection test \" + detail);"));
   for (const char* logged : {"\"STUN \" + host", "upnp + status.detail", "double NAT or "}) CHECK(Has(test, logged));
   CHECK(Has(ReadSource("online/stun.h"), "stun.cloudflare.com:3478,stun.l.google.com:19302"));
   CHECK(Has(ReadSource("online/online_service.h"), "wss://ssf2t-lobby.saulobenigno.workers.dev/"));
@@ -371,7 +371,7 @@ void TestNetplayTestControlsAreDeveloperOnly() {
 void TestPlayerMatchAssignmentDrivesTheSessionNotTheDeveloperSetting() {
   const std::string hook = ReadSource("netplay_hook.cpp");
   CHECK(Has(hook, "(!online_driven_ || base[G::kGameMode] == kOnlineGameMode)"));
-  CHECK(Has(hook, "DEBUG_SAULO player_match rollback takeover guest={}"));
+  CHECK(Has(hook, "player_match rollback takeover guest={}"));
   const size_t online = hook.find("ssf2t::Online().Assignment()");
   const size_t legacy = hook.find("REXCVAR_GET(ssf2t_netplay_role)", online);
   CHECK(online != std::string::npos && legacy != std::string::npos && online < legacy);
@@ -387,7 +387,7 @@ void TestGameRuntimeReconnectsWithoutTheLauncher() {
   const size_t applied = app.find("ApplyMultisampling();", skipped);
   CHECK(skipped != std::string::npos && configured != std::string::npos && configured < applied);
   const std::string runtime = ReadSource("online_runtime.cpp");
-  CHECK(Has(runtime, "DEBUG_SAULO online runtime reconnect begin"));
+  CHECK(Has(runtime, "online runtime reconnect begin"));
   CHECK(Has(runtime, "kLockAttempts"));
   CHECK(Has(ReadSource("window_host.cpp"), "ssf2t::PumpNetplayNetwork(base);"));
 }

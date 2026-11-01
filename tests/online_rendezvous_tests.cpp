@@ -88,10 +88,10 @@ void TestStunLearnsTheMappedEndpointWithItsOwnPort() {
   CHECK(f.Feed(kStunA, StunAnswer(f.out.sent[0].data, kWilliam)));
   CHECK(f.rendezvous.stun_stage() == Rendezvous::Stage::kDone);
   CHECK(f.rendezvous.mapped() == kWilliam);  // 54114, not the local 7001
-  CHECK(f.Count("DEBUG_SAULO stun mapped endpoint=179.113.149.63:54114 local_port=7001") == 1);
+  CHECK(f.Count("stun mapped endpoint=179.113.149.63:54114 local_port=7001") == 1);
 
   CHECK(f.Feed(kStunB, StunAnswer(f.out.sent[1].data, kWilliam)));
-  CHECK(f.Count("DEBUG_SAULO stun second endpoint=179.113.149.63:54114 agrees=true") == 1);
+  CHECK(f.Count("stun second endpoint=179.113.149.63:54114 agrees=true") == 1);
   CHECK(f.rendezvous.mapped() == kWilliam);
 
   // A port the NAT keeps is reported as it is.
@@ -116,7 +116,7 @@ void TestStunRetriesThenGivesUp() {
   f.rendezvous.Tick(2600, f.out);
   CHECK(f.rendezvous.stun_stage() == Rendezvous::Stage::kFailed && !f.rendezvous.active());
   CHECK(f.rendezvous.mapped() == Endpoint{});
-  CHECK(f.Count("DEBUG_SAULO stun mapped endpoint=none reason=no_answer local_port=7001") == 1);
+  CHECK(f.Count("stun mapped endpoint=none reason=no_answer local_port=7001") == 1);
 
   Fixture none;
   none.rendezvous.StartStun({}, 7001, 0, none.out);
@@ -209,7 +209,7 @@ void TestOnlyAnAcknowledgementSelects() {
   CHECK(f.rendezvous.punch_stage() == Rendezvous::Stage::kRunning && f.SentTo(kWilliam) == 1);
   for (uint64_t t = 100; t <= 500; t += 100) f.rendezvous.Tick(t, f.out);
   CHECK(f.SentTo(kWilliam) == 6);
-  CHECK(f.Count("DEBUG_SAULO udp punch tx endpoint=179.113.149.63:54114 type=stun") == 1);
+  CHECK(f.Count("udp punch tx endpoint=179.113.149.63:54114 type=stun") == 1);
   CHECK(f.rendezvous.punch_stage() == Rendezvous::Stage::kRunning);
 
   // Its punch: answered, and no proof for this side.
@@ -235,7 +235,7 @@ void TestOnlyAnAcknowledgementSelects() {
   CHECK(f.Feed(kWilliam, EncodePunch({PunchKind::kAck, 2, key})));
   CHECK(f.rendezvous.punch_stage() == Rendezvous::Stage::kDone && !f.rendezvous.active());
   CHECK(f.rendezvous.selected().endpoint == kWilliam && f.rendezvous.selected().type == CandidateType::kStun);
-  CHECK(f.Count("DEBUG_SAULO udp candidate selected endpoint=179.113.149.63:54114 type=stun") == 1);
+  CHECK(f.Count("udp candidate selected endpoint=179.113.149.63:54114 type=stun") == 1);
 
   // Once selected it stops punching but keeps answering, so the peer can finish too.
   f.out.sent.clear();
@@ -251,7 +251,7 @@ void TestPeerReflexiveCandidate() {
   f.rendezvous.StartPunch(key, 2, {{CandidateType::kStun, kSaulo}}, 0, f.out);
   const Endpoint other_port{kSaulo.address, 61234};
   f.Feed(other_port, EncodePunch({PunchKind::kPunch, 1, key}));
-  CHECK(f.Count("DEBUG_SAULO peer candidate received type=peer endpoint=177.18.65.229:61234") == 1);
+  CHECK(f.Count("peer candidate received type=peer endpoint=177.18.65.229:61234") == 1);
   f.out.sent.clear();
   f.rendezvous.Tick(100, f.out);
   CHECK(f.SentTo(other_port) == 1 && f.SentTo(kSaulo) == 1);
@@ -267,7 +267,7 @@ void TestPunchTimesOutAndStopForgetsTheMatch() {
   CHECK(f.rendezvous.punch_stage() == Rendezvous::Stage::kRunning);
   f.rendezvous.Tick(10000, f.out);
   CHECK(f.rendezvous.punch_stage() == Rendezvous::Stage::kFailed);
-  CHECK(f.Count("DEBUG_SAULO udp rendezvous failed reason=punch_timeout candidates=1 peer_heard=false") == 1);
+  CHECK(f.Count("udp rendezvous failed reason=punch_timeout candidates=1 peer_heard=false") == 1);
   const size_t sent = f.out.sent.size();
   f.rendezvous.Tick(10100, f.out);
   CHECK(f.out.sent.size() == sent);  // bounded: nothing more after the timeout

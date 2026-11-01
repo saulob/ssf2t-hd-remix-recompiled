@@ -35,7 +35,7 @@
 #include "title_update_image.h"
 
 REXCVAR_DEFINE_BOOL(ssf2t_netplay_determinism_test, false, "SSF2T",
-                    "Developer: replays offline fight frames and logs DEBUG_SAULO determinism checks");
+                    "Developer: replays offline fight frames and logs determinism checks");
 REXCVAR_DEFINE_STRING(ssf2t_netplay_role, ssf2t::kDefaultNetplayRole, "SSF2T",
                       "Developer: off, host or join. Plays one Local Versus fight against another instance of "
                       "the game over UDP (see Peer Address)");
@@ -99,7 +99,7 @@ uint32_t BlobWordBE(const std::vector<uint8_t>& blob, size_t offset) {
 void LogInputState(np::Frame frame, const std::vector<uint8_t>& state) {
   for (uint32_t player = 0; player < np::kPlayers; ++player) {
     const size_t entry = np::kGuestStateSize + player * np::kInputEntryStride;
-    REXLOG_INFO("DEBUG_SAULO netplay frame={} table{} state={} cur={:04X} prev={:04X} pressed={:04X} released={:04X}",
+    REXLOG_INFO("netplay frame={} table{} state={} cur={:04X} prev={:04X} pressed={:04X} released={:04X}",
                 frame, player, BlobWordBE(state, entry), BlobWordBE(state, entry + np::kInputCurrentOffset),
                 BlobWordBE(state, entry + np::kInputPreviousOffset), BlobWordBE(state, entry + 16),
                 BlobWordBE(state, entry + 20));
@@ -143,7 +143,7 @@ void LogTrace(np::Frame frame, const char* pass, const PassTrace& trace) {
     std::snprintf(text, sizeof text, "%s%08X", i ? "," : "", trace.rand_callers[i]);
     callers += text;
   }
-  REXLOG_INFO("DEBUG_SAULO netplay frame={} pass={} rand={} side_setup={} gate={} lr={}", frame, pass,
+  REXLOG_INFO("netplay frame={} pass={} rand={} side_setup={} gate={} lr={}", frame, pass,
               trace.rand_calls, trace.side_setups, trace.gate_queries, callers);
 }
 
@@ -167,7 +167,7 @@ void RunDeterminismSample(PPCContext& ctx, uint8_t* base, const GuestCalls& call
   std::vector<uint8_t> a, a_again, speculative, normal, native;
   g_schedule.Taken(frame);
   if (!sim.Save(a)) {
-    Log("DEBUG_SAULO netplay determinism save failed");
+    Log("netplay determinism save failed");
     sim.Step(false);
     return;
   }
@@ -208,10 +208,10 @@ void RunDeterminismSample(PPCContext& ctx, uint8_t* base, const GuestCalls& call
   Log(np::FormatCheck(frame, "roundtrip", roundtrip));
   Log(np::FormatCheck(frame, "resim", resim));
   Log(np::FormatCheck(frame, "native", native_diff));
-  REXLOG_INFO("DEBUG_SAULO netplay frame={} checksum={:08X}/{:08X} inputs={:04X},{:04X}", frame, speculative_checksum,
+  REXLOG_INFO("netplay frame={} checksum={:08X}/{:08X} inputs={:04X},{:04X}", frame, speculative_checksum,
               normal_checksum, current[0], current[1]);
   if (!ok || !native_diff.equal || g_schedule.taken() == 1) {
-    REXLOG_INFO("DEBUG_SAULO netplay frame={} arena3F0 A={:02X} B1={:02X} A2={:02X} B2={:02X} B0={:02X}", frame,
+    REXLOG_INFO("netplay frame={} arena3F0 A={:02X} B1={:02X} A2={:02X} B2={:02X} B0={:02X}", frame,
                 a[kWatchedArenaByte], speculative[kWatchedArenaByte], a_again[kWatchedArenaByte],
                 normal[kWatchedArenaByte], native[kWatchedArenaByte]);
     LogInputState(frame, a);
@@ -222,7 +222,7 @@ void RunDeterminismSample(PPCContext& ctx, uint8_t* base, const GuestCalls& call
     LogLeak<G>(frame, "post", window_after_first, window_after_second);
   }
   if (g_schedule.taken() >= kMaxSamples) {
-    REXLOG_INFO("DEBUG_SAULO netplay determinism samples={} failures={}", g_schedule.taken(), g_failures);
+    REXLOG_INFO("netplay determinism samples={} failures={}", g_schedule.taken(), g_failures);
   }
 }
 
@@ -231,7 +231,7 @@ bool CodeMatches(const uint8_t* base) {
   static const bool matches = [base] {
     const bool ok = np::NetplayCodeMatches<G>(base);
     if (!ok) {
-      REXLOG_INFO("DEBUG_SAULO netplay determinism test off: {} code differs from the analysed image", G::kName);
+      REXLOG_INFO("netplay determinism test off: {} code differs from the analysed image", G::kName);
     }
     return ok;
   }();
@@ -320,13 +320,12 @@ class FightRuntime {
     return phase_ != FightPhase::kIdle || session_->state() == np::SessionState::kRunning;
   }
 
-  // DEBUG_SAULO: which frame tails the net-active answer covers, once per kind and fight.
   void LogFrameTail(bool owns, bool in_pump) {
     if (!owns) return;
     bool& logged = in_pump ? logged_pump_tail_ : logged_tail_override_;
     if (logged) return;
     logged = true;
-    REXLOG_INFO("DEBUG_SAULO netplay frame_tail net_active_override={} caller={} generation={} guest={}",
+    REXLOG_INFO("netplay frame_tail net_active_override={} caller={} generation={} guest={}",
                 in_pump ? "false" : "true", in_pump ? "frame_pump" : "fight_loop", generation_, G::kName);
   }
 
@@ -342,7 +341,7 @@ class FightRuntime {
     const bool fight_active = LocalFightActive(base);
     if (online_driven_ && fight_active && !takeover_logged_) {
       takeover_logged_ = true;
-      REXLOG_INFO("DEBUG_SAULO player_match rollback takeover reachable guest={}", G::kName);
+      REXLOG_INFO("player_match rollback takeover reachable guest={}", G::kName);
     }
     session_->SetLocalReady(fight_active, now_ms);
     LogTransitions();
@@ -360,13 +359,13 @@ class FightRuntime {
     if (session_->core()) {
       fight_stats_ = session_->core()->stats();
       if (fight_stats_.rollbacks != rollbacks_before) {
-        REXLOG_INFO("DEBUG_SAULO netplay rollback to={} depth={}", session_->core()->confirmed_frame(),
+        REXLOG_INFO("netplay rollback to={} depth={}", session_->core()->confirmed_frame(),
                     fight_stats_.max_depth);
       }
     }
     LogTransitions();
     if (status == np::TickStatus::kFault) {
-      REXLOG_INFO("DEBUG_SAULO netplay fault frame={}", session_->core() ? session_->core()->current_frame() : 0);
+      REXLOG_INFO("netplay fault frame={}", session_->core() ? session_->core()->current_frame() : 0);
       Shutdown(now_ms, "fault");
       return false;
     }
@@ -390,7 +389,7 @@ class FightRuntime {
 
   void EnterPhase(FightPhase phase) {
     if (phase == phase_) return;
-    REXLOG_INFO("DEBUG_SAULO netplay fight phase={} was={} generation={} fight={} guest={}", PhaseName(phase),
+    REXLOG_INFO("netplay fight phase={} was={} generation={} fight={} guest={}", PhaseName(phase),
                 PhaseName(phase_), generation_, session_ ? session_->fight_index() : 0, G::kName);
     phase_ = phase;
   }
@@ -453,7 +452,7 @@ class FightRuntime {
       if (online_driven_ && wanted && (state == np::SessionState::kTimedOut || state == np::SessionState::kClosed)) {
         // A peer that was connected and is gone ends the match; restarting would wait for it forever.
         if (peer_seen_) {
-          REXLOG_INFO("DEBUG_SAULO player_match disconnect cleanup reason={} rollback=stopped lobby_mux=closed "
+          REXLOG_INFO("player_match disconnect cleanup reason={} rollback=stopped lobby_mux=closed "
                       "socket=closed handoff=cleared guest={}",
                       state == np::SessionState::kTimedOut ? "timeout" : "closed", G::kName);
           ssf2t::Online().LeaveMatch();
@@ -466,7 +465,7 @@ class FightRuntime {
     }
     if (!wanted || now_ms < retry_at_ms_ || (faulted_ && !plan.online)) return false;
     if (plan.bad_address) {
-      REXLOG_INFO("DEBUG_SAULO netplay join failed reason=bad_peer_address raw_address={}", plan.raw_peer_address);
+      REXLOG_INFO("netplay join failed reason=bad_peer_address raw_address={}", plan.raw_peer_address);
       if (plan.online) {
         if (!bad_address_since_ms_ || plan.generation != bad_address_generation_) {
           bad_address_since_ms_ = now_ms;
@@ -474,7 +473,7 @@ class FightRuntime {
         }
         if (now_ms - bad_address_since_ms_ >= kBadAddressGiveUpMs) {
           // The match is stuck: leaving is what lets Invite Player work again instead of refusing with no_player_match.
-          REXLOG_INFO("DEBUG_SAULO netplay give up reason=bad_peer_address generation={} guest={}", plan.generation,
+          REXLOG_INFO("netplay give up reason=bad_peer_address generation={} guest={}", plan.generation,
                       G::kName);
           ssf2t::Online().LeaveMatch();
           bad_address_since_ms_ = 0;
@@ -490,16 +489,16 @@ class FightRuntime {
     // mapping, which the peer was never told about.
     if (plan.online || (shared.is_open() && shared.bound_port() == local_port)) {
       if (!shared.is_open()) {
-        REXLOG_INFO("DEBUG_SAULO netplay bind failed reason=online_socket_unbound");
+        REXLOG_INFO("netplay bind failed reason=online_socket_unbound");
         Fault(plan, now_ms);
         return false;
       }
       transport_ = &shared;
-      REXLOG_INFO("DEBUG_SAULO netplay socket shared port={}", shared.bound_port());
+      REXLOG_INFO("netplay socket shared port={}", shared.bound_port());
     } else {
       own_transport_ = std::make_unique<ssf2t::netplay::UdpTransport>();
       if (!own_transport_->Open(local_port, false)) {
-        REXLOG_INFO("DEBUG_SAULO netplay bind failed port={}", local_port);
+        REXLOG_INFO("netplay bind failed port={}", local_port);
         own_transport_.reset();
         Fault(plan, now_ms);
         return false;
@@ -519,7 +518,7 @@ class FightRuntime {
       if (const auto route = ssf2t::RouteFor(ssf2t::Online().Peer())) {
         mux_->SetRoute(route->tag, plan.peer);
         PublishLobby(mux_.get(), route->tag);
-        REXLOG_INFO("DEBUG_SAULO player_match lobby transport begin tag={:08X} peer_port={}", route->tag, plan.peer.port);
+        REXLOG_INFO("player_match lobby transport begin tag={:08X} peer_port={}", route->tag, plan.peer.port);
       }
     }
     session_->Start(now_ms);
@@ -528,10 +527,10 @@ class FightRuntime {
     // A relayed match has no NAT mapping to keep open.
     punch_peer_ = plan.online && plan.host && !plan.relay ? plan.peer : ssf2t::netplay::Endpoint{};
     if (plan.online) {
-      REXLOG_INFO("DEBUG_SAULO online session handoff role={} transport={} guest={}", plan.host ? "host" : "join",
+      REXLOG_INFO("online session handoff role={} transport={} guest={}", plan.host ? "host" : "join",
                   plan.relay ? "relay" : "direct", G::kName);
     }
-    REXLOG_INFO("DEBUG_SAULO netplay session started role={} generation={} guest={}", plan.host ? "host" : "join",
+    REXLOG_INFO("netplay session started role={} generation={} guest={}", plan.host ? "host" : "join",
                 generation_, G::kName);
     return true;
   }
@@ -570,23 +569,23 @@ class FightRuntime {
     const np::FrameZeroVerdict verdict = session_->frame_zero();
     if (verdict == np::FrameZeroVerdict::kMismatch && phase_ == FightPhase::kAgreement) {
       EnterPhase(FightPhase::kRefused);
-      REXLOG_INFO("DEBUG_SAULO netplay takeover refused reason={} generation={} fight={} guest={}",
+      REXLOG_INFO("netplay takeover refused reason={} generation={} fight={} guest={}",
                   np::RefusalName(session_->frame_zero_refusal()), generation_, session_->fight_index(), G::kName);
     }
     if (verdict != np::FrameZeroVerdict::kMatch || phase_ != FightPhase::kAgreement) return true;
     if (!session_->BeginFight(*live_sim_, now_ms)) {
       ResetFight();
-      REXLOG_INFO("DEBUG_SAULO netplay takeover stopped reason=begin_fight_failed");
+      REXLOG_INFO("netplay takeover stopped reason=begin_fight_failed");
       return false;
     }
     EnterPhase(FightPhase::kRollback);
     fight_stats_ = {};
     const ModeWords modes = ReadModes(base);
-    REXLOG_INFO("DEBUG_SAULO netplay takeover begin state={:X}/{:X}/{:X}/{:X} generation={} fight={} guest={}",
+    REXLOG_INFO("netplay takeover begin state={:X}/{:X}/{:X}/{:X} generation={} fight={} guest={}",
                 modes.mode[0], modes.mode[1], modes.mode[2], modes.mode[3], generation_, session_->fight_index(),
                 G::kName);
     if (online_driven_) {
-      REXLOG_INFO("DEBUG_SAULO player_match rollback takeover guest={}", G::kName);
+      REXLOG_INFO("player_match rollback takeover guest={}", G::kName);
       LogInputRoute(base);
     }
     return true;
@@ -600,7 +599,7 @@ class FightRuntime {
     live_sim_->Save(start);
     std::vector<uint8_t> view = np::FrameZeroView(start);
     std::vector<uint32_t> setup = ReadSetupWords(base);
-    REXLOG_INFO("DEBUG_SAULO netplay fight start frame=0 generation={} fight={} state {}", generation_,
+    REXLOG_INFO("netplay fight start frame=0 generation={} fight={} state {}", generation_,
                 session_->fight_index(), np::DescribeStateHashes(view));
     LogSetupWords(setup);
     session_->OfferFrameZero(std::move(view), G::kGlobalsSnapshot, std::move(setup));
@@ -615,7 +614,7 @@ class FightRuntime {
     std::vector<uint8_t> state;
     live_sim_->Save(state);
     std::vector<uint8_t> view = np::FrameZeroView(state);
-    REXLOG_INFO("DEBUG_SAULO netplay agree adopted=host blocks={} bytes={} generation={} fight={} state {}",
+    REXLOG_INFO("netplay agree adopted=host blocks={} bytes={} generation={} fight={} state {}",
                 adopted->blocks, adopted->bytes, generation_, session_->fight_index(), np::DescribeStateHashes(view));
     session_->ReofferFrameZero(std::move(view));
   }
@@ -633,7 +632,6 @@ class FightRuntime {
     return np::SetupWords(fields);
   }
 
-  // DEBUG_SAULO
   void LogSetupWords(const std::vector<uint32_t>& setup) const {
     std::string words;
     char word[48];
@@ -641,7 +639,7 @@ class FightRuntime {
       std::snprintf(word, sizeof word, " %s=%08X", np::kSetupWordNames[i], setup[i]);
       words += word;
     }
-    REXLOG_INFO("DEBUG_SAULO netplay setup local fight={} generation={} guest={}{}", session_->fight_index(),
+    REXLOG_INFO("netplay setup local fight={} generation={} guest={}{}", session_->fight_index(),
                 generation_, G::kName, words);
   }
 
@@ -649,18 +647,17 @@ class FightRuntime {
     for (const std::string& line : session_->TakeFrameZeroReport()) Log(line);
   }
 
-  // DEBUG_SAULO: the game's state function after a Player Match fight (results, quote, lobby), once per change.
   void LogGameState(const uint8_t* base) {
     if (!online_driven_) return;
     const uint32_t state = ssf2t::LoadBE32(base, G::kStateFunction);
     if (state == logged_game_state_) return;
     const char* name = state == G::kFightLoop ? "fight_loop" : state == 0 ? "frontend" : "other";
-    REXLOG_INFO("DEBUG_SAULO post_fight state={:08X} name={} was={:08X} generation={} guest={}", state, name,
+    REXLOG_INFO("post_fight state={:08X} name={} was={:08X} generation={} guest={}", state, name,
                 logged_game_state_, generation_, G::kName);
     logged_game_state_ = state;
   }
 
-  // The sim's phase (the mode words the game's phase tables index); DEBUG_SAULO: its phase timer and the presentation
+  // The sim's phase (the mode words the game's phase tables index); its phase timer and the presentation
   // request a waiting phase sets.
   struct ModeWords {
     uint16_t mode[4] = {};
@@ -687,12 +684,12 @@ class FightRuntime {
     const ModeWords modes = ReadModes(base);
     if (modes == logged_modes_) return;
     logged_modes_ = modes;
-    REXLOG_INFO("DEBUG_SAULO pre_fight state={:X}/{:X}/{:X}/{:X} timer={} request={} generation={} guest={}",
+    REXLOG_INFO("pre_fight state={:X}/{:X}/{:X}/{:X} timer={} request={} generation={} guest={}",
                 modes.mode[0], modes.mode[1], modes.mode[2], modes.mode[3], modes.timer, modes.request, generation_,
                 G::kName);
     if (modes.mode[1] == kFightMode && modes.mode[2] >= kRoundInitMode) {
       presentation_logged_ = true;
-      REXLOG_INFO("DEBUG_SAULO pre_fight presentation complete state={:X}/{:X}/{:X}/{:X} generation={} guest={}",
+      REXLOG_INFO("pre_fight presentation complete state={:X}/{:X}/{:X}/{:X} generation={} guest={}",
                   modes.mode[0], modes.mode[1], modes.mode[2], modes.mode[3], generation_, G::kName);
     }
   }
@@ -712,7 +709,7 @@ class FightRuntime {
     }
     if (++frames_outside_fight_ < kFightEndFrames) return;
     frames_outside_fight_ = 0;
-    REXLOG_INFO("DEBUG_SAULO netplay fight left generation={} frame={} guest={}", generation_,
+    REXLOG_INFO("netplay fight left generation={} frame={} guest={}", generation_,
                 session_->core() ? session_->core()->current_frame() : 0, G::kName);
     ResetFight();
     session_->SetLocalReady(false, now_ms);
@@ -730,7 +727,7 @@ class FightRuntime {
     if (input_frames_ < np::InputChangeLog::kFrames) {
       const np::PadSample pad = RawPad(user, word);
       if (input_log_.ShouldLog(input_frames_, pad)) {
-        REXLOG_INFO("DEBUG_SAULO netplay input frame={} user={} buttons={:04X} stick={},{} word={:04X} fight={}",
+        REXLOG_INFO("netplay input frame={} user={} buttons={:04X} stick={},{} word={:04X} fight={}",
                     input_frames_, user, pad.buttons, pad.stick_x, pad.stick_y, word, np::DescribeFightBits(word));
       }
       ++input_frames_;
@@ -743,7 +740,7 @@ class FightRuntime {
     const uint32_t ui = ssf2t::LoadBE32(base, G::kUiInputPointer);
     const int32_t mask =
         PointerUsable(ui) ? int32_t(ssf2t::LoadBE32(ssf2t::GuestHost(base, ui), ssf2t::kUiControllerMaskOffset)) : 0;
-    REXLOG_INFO("DEBUG_SAULO netplay input route active_user={} match_input_user={} live_user={} "
+    REXLOG_INFO("netplay input route active_user={} match_input_user={} live_user={} "
                 "controller_mask={:#x} local_input_slot={} rollback_player={} fighter_slot={} guest={}",
                 int32_t(active), ssf2t::MatchInputUser(), np::LocalInputUser(active), uint32_t(mask),
                 ssf2t::MatchFightUser(int32_t(active)), session_->local_player(), session_->local_player(), G::kName);
@@ -774,7 +771,7 @@ class FightRuntime {
       }
       if (const auto measured = session_->rtt_ms()) rtt = int(*measured);
     }
-    if (rtt && !rtt_logged_) REXLOG_INFO("DEBUG_SAULO netplay rtt measured={}ms", *rtt);
+    if (rtt && !rtt_logged_) REXLOG_INFO("netplay rtt measured={}ms", *rtt);
     rtt_logged_ = rtt.has_value();
     if (link == ssf2t::online::NetplayLink::kNone && !reported_) return;
     ssf2t::Online().SetNetplayLink(link, rtt);
@@ -783,7 +780,7 @@ class FightRuntime {
 
   void Shutdown(uint64_t now_ms, const char* reason) {
     if (session_) {
-      REXLOG_INFO("DEBUG_SAULO netplay match cleanup generation={} reason={} frame={} rollback=reset guest={}",
+      REXLOG_INFO("netplay match cleanup generation={} reason={} frame={} rollback=reset guest={}",
                   generation_, reason, session_->core() ? session_->core()->current_frame() : 0, G::kName);
     }
     online_driven_ = false;
@@ -813,16 +810,16 @@ class FightRuntime {
     if (state == np::SessionState::kConnected || state == np::SessionState::kRunning) peer_seen_ = true;
     if (state != logged_state_) {
       if (state == np::SessionState::kConnected && logged_state_ != np::SessionState::kRunning) {
-        REXLOG_INFO("DEBUG_SAULO netplay connected role={} guest={} player={}",
+        REXLOG_INFO("netplay connected role={} guest={} player={}",
                     session_->local_player() == 0 ? "host" : "join", G::kName, session_->local_player());
       } else if (state == np::SessionState::kRunning) {
-        REXLOG_INFO("DEBUG_SAULO netplay takeover started player={}", session_->local_player());
+        REXLOG_INFO("netplay takeover started player={}", session_->local_player());
       } else if (logged_state_ == np::SessionState::kRunning && state == np::SessionState::kConnected) {
-        REXLOG_INFO("DEBUG_SAULO netplay takeover stopped reason=fight_ended checksums={} mismatches={}",
+        REXLOG_INFO("netplay takeover stopped reason=fight_ended checksums={} mismatches={}",
                     fight_stats_.checksums, fight_stats_.mismatches);
       } else if (state == np::SessionState::kTimedOut || state == np::SessionState::kClosed ||
                 state == np::SessionState::kRejected) {
-        REXLOG_INFO("DEBUG_SAULO netplay disconnect reason={}",
+        REXLOG_INFO("netplay disconnect reason={}",
                     state == np::SessionState::kTimedOut ? "timeout"
                     : state == np::SessionState::kRejected ? "rejected"
                                                             : "closed");
@@ -831,21 +828,21 @@ class FightRuntime {
     }
     if (session_->local_ready() != logged_local_ready_) {
       logged_local_ready_ = session_->local_ready();
-      REXLOG_INFO("DEBUG_SAULO netplay local ready={}", logged_local_ready_);
+      REXLOG_INFO("netplay local ready={}", logged_local_ready_);
     }
     if (session_->remote_ready() != logged_remote_ready_) {
       logged_remote_ready_ = session_->remote_ready();
-      REXLOG_INFO("DEBUG_SAULO netplay remote ready={}", logged_remote_ready_);
+      REXLOG_INFO("netplay remote ready={}", logged_remote_ready_);
     }
     if (session_->core() && session_->core()->desync() && !desync_logged_) {
       const np::Desync& d = *session_->core()->desync();
-      REXLOG_INFO("DEBUG_SAULO netplay desync frame={} local={:08X} remote={:08X}", d.frame, d.local, d.remote);
+      REXLOG_INFO("netplay desync frame={} local={:08X} remote={:08X}", d.frame, d.local, d.remote);
       desync_logged_ = true;
     }
     if (session_->core()) {
       const np::Frame confirmed = session_->core()->confirmed_frame();
       if (confirmed / kConfirmedLogInterval != logged_confirmed_ / kConfirmedLogInterval) {
-        REXLOG_INFO("DEBUG_SAULO netplay confirmed frame={}", confirmed);
+        REXLOG_INFO("netplay confirmed frame={}", confirmed);
       }
       logged_confirmed_ = confirmed;
     } else {
@@ -861,7 +858,6 @@ class FightRuntime {
   static constexpr uint64_t kBadAddressGiveUpMs = 10000;
   static constexpr uint64_t kPunchIntervalMs = 500;
   static constexpr uint32_t kFightEndFrames = 30;
-  // DEBUG_SAULO: fight-work offsets and the mode values of the fight phase and of its round init.
   static constexpr uint32_t kPhaseTimerOffset = 14;
   static constexpr uint32_t kPresentationRequestOffset = 1639;
   static constexpr uint16_t kFightMode = 4;
@@ -928,7 +924,7 @@ template <typename G>
 void NetSyncStart(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (FightRuntime<G>::Instance().PlayerMatchFight(base)) {
     FightRuntime<G>::Instance().FightInitReached();
-    REXLOG_INFO("DEBUG_SAULO player_match original netsync suppressed guest={}", G::kName);
+    REXLOG_INFO("player_match original netsync suppressed guest={}", G::kName);
     return;
   }
   original(ctx, base);

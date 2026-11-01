@@ -58,12 +58,12 @@ void TestWriteThenReadIsExact() {
   CHECK(fake_clipboard::Get().frees == 0);  // the clipboard owns the memory after SetClipboardData
   CHECK(fake_clipboard::Get().closes == 1 && !fake_clipboard::Get().opened);
   const std::vector<std::string> expected = {
-      "DEBUG_SAULO online clipboard copy begin code=CEQN-Z7SE backend=win32",
-      "DEBUG_SAULO online clipboard open ok attempt=1 owner=window",
-      "DEBUG_SAULO online clipboard empty ok",
-      "DEBUG_SAULO online clipboard alloc bytes=20",
-      "DEBUG_SAULO online clipboard set ok format=CF_UNICODETEXT",
-      "DEBUG_SAULO online clipboard close ok",
+      "online clipboard copy begin code=CEQN-Z7SE backend=win32",
+      "online clipboard open ok attempt=1 owner=window",
+      "online clipboard empty ok",
+      "online clipboard alloc bytes=20",
+      "online clipboard set ok format=CF_UNICODETEXT",
+      "online clipboard close ok",
   };
   CHECK(write.lines == expected);
 
@@ -71,14 +71,14 @@ void TestWriteThenReadIsExact() {
   const ClipboardText text = Read(read);
   CHECK(text.kind == ClipboardText::Kind::kText && text.text == "CEQN-Z7SE");
   const std::vector<std::string> read_expected = {
-      "DEBUG_SAULO online clipboard read begin backend=win32",
-      "DEBUG_SAULO online clipboard open ok attempt=1 owner=window",
-      "DEBUG_SAULO online clipboard format CF_UNICODETEXT available=1",
-      "DEBUG_SAULO online clipboard handle ok",
-      "DEBUG_SAULO online clipboard lock ok",
-      "DEBUG_SAULO online clipboard read chars=9",
-      "DEBUG_SAULO online clipboard utf8 len=9",
-      "DEBUG_SAULO online clipboard close ok",
+      "online clipboard read begin backend=win32",
+      "online clipboard open ok attempt=1 owner=window",
+      "online clipboard format CF_UNICODETEXT available=1",
+      "online clipboard handle ok",
+      "online clipboard lock ok",
+      "online clipboard read chars=9",
+      "online clipboard utf8 len=9",
+      "online clipboard close ok",
   };
   CHECK(read.lines == read_expected);
   CHECK(fake_clipboard::Get().closes == 2);
@@ -109,9 +109,9 @@ void TestEmptyClipboard() {
   Logs logs;
   const ClipboardText text = Read(logs);
   CHECK(text.kind == ClipboardText::Kind::kEmpty);
-  CHECK(logs.Has("DEBUG_SAULO online clipboard format CF_UNICODETEXT available=0"));
-  CHECK(logs.Has("DEBUG_SAULO online clipboard format CF_TEXT available=0"));
-  CHECK(logs.Has("DEBUG_SAULO online clipboard close ok"));
+  CHECK(logs.Has("online clipboard format CF_UNICODETEXT available=0"));
+  CHECK(logs.Has("online clipboard format CF_TEXT available=0"));
+  CHECK(logs.Has("online clipboard close ok"));
 }
 
 void TestOpenFailures() {
@@ -121,15 +121,15 @@ void TestOpenFailures() {
   const ClipboardText text = Read(logs);
   CHECK(text.kind == ClipboardText::Kind::kError && text.text == "open");
   CHECK(fake_clipboard::Get().opens == 3 && fake_clipboard::Get().sleeps == 2 && fake_clipboard::Get().closes == 0);
-  CHECK(logs.Count("DEBUG_SAULO online clipboard open failed attempt=") == 3);
-  CHECK(logs.Has("DEBUG_SAULO online clipboard open failed attempt=3 error=5"));
+  CHECK(logs.Count("online clipboard open failed attempt=") == 3);
+  CHECK(logs.Has("online clipboard open failed attempt=3 error=5"));
 
   fake_clipboard::Reset();
   fake_clipboard::Get().open_failures = 1;
   fake_clipboard::Put(L"CEQN-Z7SE");
   Logs retried;
   CHECK(Read(retried).text == "CEQN-Z7SE");
-  CHECK(retried.Has("DEBUG_SAULO online clipboard open ok attempt=2 owner=window"));
+  CHECK(retried.Has("online clipboard open ok attempt=2 owner=window"));
 
   fake_clipboard::Reset();
   fake_clipboard::Get().open_failures = 3;
@@ -143,14 +143,14 @@ void TestReadStepFailures() {
   fake_clipboard::Put(L"CEQN-Z7SE");
   fake_clipboard::Get().fail_get = true;
   Logs get;
-  CHECK(Read(get).text == "handle" && get.Has("DEBUG_SAULO online clipboard handle failed error=6"));
+  CHECK(Read(get).text == "handle" && get.Has("online clipboard handle failed error=6"));
   CHECK(fake_clipboard::Get().closes == 1);
 
   fake_clipboard::Reset();
   fake_clipboard::Put(L"CEQN-Z7SE");
   fake_clipboard::Get().fail_lock = true;
   Logs lock;
-  CHECK(Read(lock).text == "lock" && lock.Has("DEBUG_SAULO online clipboard lock failed error=6"));
+  CHECK(Read(lock).text == "lock" && lock.Has("online clipboard lock failed error=6"));
   CHECK(fake_clipboard::Get().closes == 1);
 
   fake_clipboard::Reset();
@@ -158,7 +158,7 @@ void TestReadStepFailures() {
   Logs utf;
   const ClipboardText bad = Read(utf);
   CHECK(bad.kind == ClipboardText::Kind::kError && bad.text == "utf8");
-  CHECK(utf.Has("DEBUG_SAULO online clipboard utf8 conversion failed"));
+  CHECK(utf.Has("online clipboard utf8 conversion failed"));
 }
 
 void TestWriteStepFailures() {
@@ -166,38 +166,38 @@ void TestWriteStepFailures() {
   fake_clipboard::Get().fail_empty = true;
   Logs empty;
   CHECK(!WriteClipboardText(fake_clipboard::Api(), kWindow, "CEQN-Z7SE", empty.sink()));
-  CHECK(empty.Has("DEBUG_SAULO online clipboard empty failed error=1418") && fake_clipboard::Get().closes == 1);
+  CHECK(empty.Has("online clipboard empty failed error=1418") && fake_clipboard::Get().closes == 1);
 
   fake_clipboard::Reset();
   fake_clipboard::Get().fail_alloc = true;
   Logs alloc;
   CHECK(!WriteClipboardText(fake_clipboard::Api(), kWindow, "CEQN-Z7SE", alloc.sink()));
-  CHECK(alloc.Has("DEBUG_SAULO online clipboard alloc failed error=8"));
+  CHECK(alloc.Has("online clipboard alloc failed error=8"));
 
   fake_clipboard::Reset();
   fake_clipboard::Get().fail_lock = true;
   Logs lock;
   CHECK(!WriteClipboardText(fake_clipboard::Api(), kWindow, "CEQN-Z7SE", lock.sink()));
-  CHECK(lock.Has("DEBUG_SAULO online clipboard lock failed error=6") && fake_clipboard::Get().frees == 1);
+  CHECK(lock.Has("online clipboard lock failed error=6") && fake_clipboard::Get().frees == 1);
 
   fake_clipboard::Reset();
   fake_clipboard::Get().fail_set = true;
   Logs set;
   CHECK(!WriteClipboardText(fake_clipboard::Api(), kWindow, "CEQN-Z7SE", set.sink()));
-  CHECK(set.Has("DEBUG_SAULO online clipboard set failed error=1418"));
+  CHECK(set.Has("online clipboard set failed error=1418"));
   CHECK(fake_clipboard::Get().frees == 1 && fake_clipboard::Get().closes == 1);
 
   fake_clipboard::Reset();
   Logs utf;
   CHECK(!WriteClipboardText(fake_clipboard::Api(), kWindow, "\xFF\xFE", utf.sink()));
-  CHECK(utf.Has("DEBUG_SAULO online clipboard utf16 conversion failed") && fake_clipboard::Get().opens == 0);
+  CHECK(utf.Has("online clipboard utf16 conversion failed") && fake_clipboard::Get().opens == 0);
 }
 
 void TestNoOwnerWindow() {
   fake_clipboard::Reset();
   Logs logs;
   CHECK(WriteClipboardText(fake_clipboard::Api(), nullptr, "CEQN-Z7SE", logs.sink()));
-  CHECK(logs.Has("DEBUG_SAULO online clipboard open ok attempt=1 owner=none"));
+  CHECK(logs.Has("online clipboard open ok attempt=1 owner=none"));
 }
 
 }  // namespace

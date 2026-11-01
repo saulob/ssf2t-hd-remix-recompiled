@@ -135,7 +135,7 @@ DiffRuns FindRuns(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, 
 }
 
 std::string FormatRuns(Frame frame, const char* label, uint32_t base_address, const DiffRuns& diff) {
-  std::string text = "DEBUG_SAULO netplay frame=" + std::to_string(frame) + " " + label + " runs=" +
+  std::string text = "netplay frame=" + std::to_string(frame) + " " + label + " runs=" +
                      std::to_string(diff.total);
   char run[40];
   for (const DiffRun& r : diff.runs) {
@@ -149,10 +149,10 @@ std::string FormatRuns(Frame frame, const char* label, uint32_t base_address, co
 std::string FormatCheck(Frame frame, const char* check, const BlobDiff& diff) {
   char text[200];
   if (diff.equal) {
-    std::snprintf(text, sizeof text, "DEBUG_SAULO netplay frame=%u %s=%s", frame, check, "match");
+    std::snprintf(text, sizeof text, "netplay frame=%u %s=%s", frame, check, "match");
   } else {
     std::snprintf(text, sizeof text,
-                  "DEBUG_SAULO netplay frame=%u %s=MISMATCH first=%s bytes=%zu hashA=%016" PRIx64 " hashB=%016" PRIx64,
+                  "netplay frame=%u %s=MISMATCH first=%s bytes=%zu hashA=%016" PRIx64 " hashB=%016" PRIx64,
                   frame, check, DescribeOffset(diff.first_offset).c_str(), diff.differing_bytes, diff.hash_a,
                   diff.hash_b);
   }

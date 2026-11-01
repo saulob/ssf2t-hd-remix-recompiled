@@ -157,7 +157,7 @@ void OnlineService::Update(double now) {
   if (now >= next_refresh_) Refresh();
   PumpPlayerMatch();
   if (SessionName() != greeted_name_ && !match_ && now - name_since_ >= kNameSettleSeconds) {
-    Log("DEBUG_SAULO online name changed, signing in again");
+    Log("online name changed, signing in again");
     if (channel_) channel_->Close();
     channel_.reset();
     step_ = Step::kIdle;
@@ -190,7 +190,7 @@ void OnlineService::PumpChannel(double now) {
 void OnlineService::OnEvent(const ChannelEvent& event, double now) {
   switch (event.kind) {
     case ChannelEvent::Kind::kOpen:
-      Log("DEBUG_SAULO online worker connected");
+      Log("online worker connected");
       step_ = Step::kGreeting;
       step_deadline_ = now + kStepTimeoutSeconds;
       Send(Purpose::kHello, [this](int seq) {
@@ -215,7 +215,7 @@ void OnlineService::OnEvent(const ChannelEvent& event, double now) {
 void OnlineService::OnText(const std::string& text, double now) {
   const std::optional<ServerMessage> message = DecodeServerMessage(text);
   if (!message) {
-    Log("DEBUG_SAULO online error malformed server message");
+    Log("online error malformed server message");
     return;
   }
   if (message->kind == ServerMessage::Kind::kResponse) OnResponse(*message, now);
@@ -232,7 +232,7 @@ void OnlineService::OnResponse(const ServerMessage& message, double now) {
   switch (pending.purpose) {
     case Purpose::kHello:
       if (!ok) {
-        Log("DEBUG_SAULO online sign-in refused code=" + message.code);
+        Log("online sign-in refused code=" + message.code);
         connection_ = Fatal(message.code) ? Connection::kError : Connection::kOffline;
         connection_text_ = DescribeServiceError(message.code);
         if (channel_) channel_->Close();
@@ -247,7 +247,7 @@ void OnlineService::OnResponse(const ServerMessage& message, double now) {
       if (ok && message.friends) {
         friends_ = *message.friends;
         fetched_ = true;
-        Log("DEBUG_SAULO online friends count=" + std::to_string(friends_.size()));
+        Log("online friends count=" + std::to_string(friends_.size()));
       }
       break;
     case Purpose::kRequests:
@@ -259,10 +259,10 @@ void OnlineService::OnResponse(const ServerMessage& message, double now) {
     case Purpose::kAdd:
       if (!ok) {
         Notice(DescribeServiceError(message.code));
-        Log("DEBUG_SAULO online friend request failed code=" + pending.player + " reason=" + message.code);
+        Log("online friend request failed code=" + pending.player + " reason=" + message.code);
       } else {
         Notice(message.state == "friends" ? Tr("You are now friends.") : Tr("Friend request sent."));
-        Log("DEBUG_SAULO online friend request accepted by service code=" + pending.player + " state=" + message.state);
+        Log("online friend request accepted by service code=" + pending.player + " state=" + message.state);
         Refresh();
       }
       break;
@@ -275,28 +275,28 @@ void OnlineService::OnResponse(const ServerMessage& message, double now) {
     case Purpose::kPlayerMatchHost:
       if (!hosting_) break;
       if (!ok) {
-        Log("DEBUG_SAULO player_match advertise failed code=" + message.code);
+        Log("player_match advertise failed code=" + message.code);
         break;
       }
       if (message.session != hosting_session_) {
         hosting_session_ = message.session;
-        Log("DEBUG_SAULO player_match create session_id=" + hosting_session_);
-        Log("DEBUG_SAULO player_match advertise");
+        Log("player_match create session_id=" + hosting_session_);
+        Log("player_match advertise");
       }
       break;
     case Purpose::kPlayerMatchSearch:
       if (!searching_ || pending.search_epoch != search_epoch_) {
-        Log("DEBUG_SAULO player_match search ignored stale");
+        Log("player_match search ignored stale");
         break;
       }
       if (!ok || !message.sessions) {
-        Log("DEBUG_SAULO player_match search failed code=" + message.code);
+        Log("player_match search failed code=" + message.code);
         break;
       }
       if (message.sessions->size() != results_.size() || search_generation_ == 0) {
-        Log("DEBUG_SAULO player_match search results=" + std::to_string(message.sessions->size()));
+        Log("player_match search results=" + std::to_string(message.sessions->size()));
         for (const PlayerMatchAd& ad : *message.sessions) {
-          Log("DEBUG_SAULO player_match search result friend=" + ad.player + " session=" + ad.session);
+          Log("player_match search result friend=" + ad.player + " session=" + ad.session);
         }
       }
       results_ = *message.sessions;
@@ -307,46 +307,46 @@ void OnlineService::OnResponse(const ServerMessage& message, double now) {
       joining_ = false;
       if (!ok || !message.match) {
         Notice(DescribeServiceError(ok ? "bad_request" : message.code));
-        Log("DEBUG_SAULO player_match join failed code=" + message.code);
+        Log("player_match join failed code=" + message.code);
         if (accepted_invite_ && accepted_invite_->session == pending.player) {
           DropAcceptedInvite("join_rejected_" + message.code);
         }
       } else {
-        Log("DEBUG_SAULO player_match join service complete session=" + message.match->session);
+        Log("player_match join service complete session=" + message.match->session);
         OnMatchStarted(*message.match);
       }
       break;
     case Purpose::kInviteSend:
       if (!ok) {
         Notice(DescribeServiceError(message.code));
-        Log("DEBUG_SAULO player_match invite failed friend=" + pending.player + " code=" + message.code);
+        Log("player_match invite failed friend=" + pending.player + " code=" + message.code);
       } else {
         Notice(Tr("Invite sent to ") + NameOf(pending.player) + ".");
-        Log("DEBUG_SAULO player_match invite sent session=" + message.session + " friend=" + pending.player);
+        Log("player_match invite sent session=" + message.session + " friend=" + pending.player);
       }
       break;
     case Purpose::kTransportRelay:
       if (!match_ || pending.player != match_->match || !relay_requested_ || udp_setup_ == UdpSetup::kSelected) break;
       if (!ok) {
-        Log("DEBUG_SAULO relay fallback refused code=" + message.code);
+        Log("relay fallback refused code=" + message.code);
         FailUdpSetup("relay_unavailable");
         break;
       }
       SelectRelay();
       break;
     case Purpose::kTransportDirect:
-      if (!ok) Log("DEBUG_SAULO transport choice failed code=" + message.code);
+      if (!ok) Log("transport choice failed code=" + message.code);
       break;
     case Purpose::kInviteDecline:
     case Purpose::kPlayerMatchCancel:
     case Purpose::kEndpoint:
     case Purpose::kReady:
     case Purpose::kLeave:
-      if (!ok) Log("DEBUG_SAULO online request failed code=" + message.code);
+      if (!ok) Log("online request failed code=" + message.code);
       break;
     case Purpose::kResume:
       if (!ok) {
-        Log("DEBUG_SAULO online match resume failed code=" + message.code);
+        Log("online match resume failed code=" + message.code);
         if (link_ == NetplayLink::kNone || link_ == NetplayLink::kConnecting) {
           MarkMatchFailed("resume_failed");
           ClearMatch();
@@ -354,7 +354,7 @@ void OnlineService::OnResponse(const ServerMessage& message, double now) {
         }
       } else {
         peer_lost_ = message.match ? false : peer_lost_;
-        Log("DEBUG_SAULO online match resumed");
+        Log("online match resumed");
         if (match_ && link_ >= NetplayLink::kConnected) {
           Send(Purpose::kReady, [this](int seq) { return EncodeMatchReady(seq, match_->match, true); });
         }
@@ -372,19 +372,19 @@ void OnlineService::OnGreeted(const ServerMessage& message, double now) {
   retry_delay_ = 1.0;
   friend_code_ = message.friend_code.empty() ? identity_.player_id : message.friend_code;
   greeted_name_ = SessionName();
-  Log(std::string("DEBUG_SAULO online signed in") + (was_reconnecting ? " (reconnected)" : "") + " name=" + greeted_name_ +
+  Log(std::string("online signed in") + (was_reconnecting ? " (reconnected)" : "") + " name=" + greeted_name_ +
       " code=" + friend_code_);
   capabilities_ = message.capabilities.value_or(ServiceCapabilities{});
   if (capabilities_.announced) {
-    Log("DEBUG_SAULO online service capabilities protocol=" + std::to_string(capabilities_.protocol_version) +
+    Log("online service capabilities protocol=" + std::to_string(capabilities_.protocol_version) +
         " worker_build=" + (capabilities_.worker_build.empty() ? std::string("-") : capabilities_.worker_build) +
         " public_endpoints=" + Flag(capabilities_.public_endpoints) +
         " relay_supported=" + Flag(capabilities_.relay_supported));
   } else {
-    Log("DEBUG_SAULO online service capabilities protocol=legacy worker_build=legacy public_endpoints=unknown "
+    Log("online service capabilities protocol=legacy worker_build=legacy public_endpoints=unknown "
         "relay_supported=false");
   }
-  Log(std::string("DEBUG_SAULO relay capability available=") + Flag(capabilities_.relay_supported));
+  Log(std::string("relay capability available=") + Flag(capabilities_.relay_supported));
   Refresh();
   if (match_) {
     const std::string id = match_->match;
@@ -401,7 +401,7 @@ void OnlineService::OnServerEvent(const ServerMessage& message, double now) {
   switch (message.kind) {
     case Kind::kFriendRequest:
       Notice(message.request.name + Tr(" wants to be your friend."));
-      Log("DEBUG_SAULO online friend request received from=" + message.request.player);
+      Log("online friend request received from=" + message.request.player);
       Refresh();
       break;
     case Kind::kFriendAdded:
@@ -442,7 +442,7 @@ void OnlineService::OnServerEvent(const ServerMessage& message, double now) {
       if (match_ && match_->match == message.match_id) peer_lost_ = false;
       break;
     case Kind::kMatchReady:
-      Log(std::string("DEBUG_SAULO online peer ready=") + (message.ready ? "true" : "false"));
+      Log(std::string("online peer ready=") + (message.ready ? "true" : "false"));
       break;
     case Kind::kMatchTransport:
       OnMatchTransport(message);
@@ -457,7 +457,7 @@ void OnlineService::OnServerEvent(const ServerMessage& message, double now) {
                      invites_.end());
       invites_.push_back(invite);
       Notice(invite.ad.name + Tr(" invited you to an Online Match."));
-      Log("DEBUG_SAULO player_match invite received session=" + invite.ad.session + " from=" + invite.ad.player);
+      Log("player_match invite received session=" + invite.ad.session + " from=" + invite.ad.player);
       break;
     }
     case Kind::kInviteEnded:
@@ -467,7 +467,7 @@ void OnlineService::OnServerEvent(const ServerMessage& message, double now) {
       if (accepted_invite_ && accepted_invite_->session == message.session && message.reason != "started") {
         DropAcceptedInvite("invite_ended_" + message.reason);
       }
-      Log("DEBUG_SAULO player_match invite ended session=" + message.session + " reason=" + message.reason);
+      Log("player_match invite ended session=" + message.session + " reason=" + message.reason);
       break;
     case Kind::kResponse:
       break;
@@ -499,7 +499,7 @@ void OnlineService::HostPlayerMatch(const PlayerMatchRules& rules) {
   if (match_) return;
   const bool fresh = !hosting_;
   hosting_ = rules;
-  if (fresh) Log("DEBUG_SAULO player_match create begin");
+  if (fresh) Log("player_match create begin");
   if (Connected()) SendPlayerMatchHost();
 }
 
@@ -509,7 +509,7 @@ void OnlineService::CancelPlayerMatch() {
   hosting_.reset();
   hosting_session_.clear();
   hosting_qos_.clear();
-  Log("DEBUG_SAULO player_match advertisement removed");
+  Log("player_match advertisement removed");
   if (Connected()) Send(Purpose::kPlayerMatchCancel, [](int seq) { return EncodePlayerMatchCancel(seq); });
 }
 
@@ -518,7 +518,7 @@ void OnlineService::SetPlayerMatchQos(const std::vector<uint8_t>& data) {
   const std::string hex = HexOf(data);
   if (hex == hosting_qos_) return;
   hosting_qos_ = hex;
-  Log("DEBUG_SAULO player_match qos listen bytes=" + std::to_string(data.size()));
+  Log("player_match qos listen bytes=" + std::to_string(data.size()));
   if (hosting_ && Connected()) SendPlayerMatchHost();
 }
 
@@ -536,7 +536,7 @@ void OnlineService::BeginPlayerMatchSearch() {
   results_.clear();
   search_generation_ = 0;
   search_answered_at_ = -1e9;
-  Log("DEBUG_SAULO player_match search begin");
+  Log("player_match search begin");
 }
 
 void OnlineService::StopPlayerMatchSearch() {
@@ -566,12 +566,12 @@ OnlineService::PlayerMatchSearchWait OnlineService::AskPlayerMatchSearch() {
   const bool fresh = now_ - search_answered_at_ < kSearchFreshSeconds;
   if (!fresh && !PlayerMatchSearchInFlight(&sent_at)) {
     SendPlayerMatchSearch();
-    Log("DEBUG_SAULO player_match search requested for guest");
+    Log("player_match search requested for guest");
     sent_at = now_;
   }
   const bool nothing_to_show = results_.empty() && !accepted_invite_;
   wait.pending = nothing_to_show && !fresh && now_ - sent_at < kSearchTimeoutSeconds;
-  if (wait.pending) Log("DEBUG_SAULO player_match search pending");
+  if (wait.pending) Log("player_match search pending");
   return wait;
 }
 
@@ -604,12 +604,12 @@ bool OnlineService::JoinPlayerMatch(const std::string& session) {
                                  [&](const PlayerMatchAd& ad) { return ad.session == session; }) ||
                      (accepted_invite_ && accepted_invite_->session == session);
   if (!Connected() || !known || match_ || joining_) {
-    Log("DEBUG_SAULO player_match join refused session=" + session);
+    Log("player_match join refused session=" + session);
     return false;
   }
   joining_ = true;
   StopPlayerMatchSearch();
-  Log("DEBUG_SAULO player_match join begin session=" + session);
+  Log("player_match join begin session=" + session);
   Send(Purpose::kPlayerMatchJoin, [&session](int seq) { return EncodePlayerMatchJoin(seq, session); }, session);
   return true;
 }
@@ -617,11 +617,11 @@ bool OnlineService::JoinPlayerMatch(const std::string& session) {
 bool OnlineService::SendInvite(const std::string& player) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!Connected() || !hosting_ || hosting_session_.empty() || match_) {
-    Log("DEBUG_SAULO player_match invite refused friend=" + player + " reason=no_player_match");
+    Log("player_match invite refused friend=" + player + " reason=no_player_match");
     Notice(Tr("Create an Online Match first."));
     return false;
   }
-  Log("DEBUG_SAULO player_match invite friend=" + player + " session=" + hosting_session_);
+  Log("player_match invite friend=" + player + " session=" + hosting_session_);
   Send(Purpose::kInviteSend, [&player](int seq) { return EncodeInviteSend(seq, player); }, player);
   return true;
 }
@@ -634,7 +634,7 @@ std::optional<PlayerMatchAd> OnlineService::AcceptInvite(const std::string& id) 
   accepted_invite_ = found->ad;
   ++accepted_generation_;
   invites_.erase(found);
-  Log("DEBUG_SAULO player_match invite accepted session=" + accepted_invite_->session);
+  Log("player_match invite accepted session=" + accepted_invite_->session);
   return accepted_invite_;
 }
 
@@ -645,7 +645,7 @@ uint32_t OnlineService::AcceptedInviteGeneration() const {
 
 void OnlineService::DropAcceptedInvite(const std::string& reason) {
   if (!accepted_invite_) return;
-  Log("DEBUG_SAULO invite transition failed generation=" + std::to_string(accepted_generation_) + " reason=" + reason);
+  Log("invite transition failed generation=" + std::to_string(accepted_generation_) + " reason=" + reason);
   accepted_invite_.reset();
 }
 
@@ -658,7 +658,7 @@ void OnlineService::DeclineInvite(const std::string& id) {
   std::lock_guard<std::mutex> lock(mutex_);
   const auto found = std::find_if(invites_.begin(), invites_.end(), [&](const Invite& i) { return i.id == id; });
   if (found == invites_.end()) return;
-  Log("DEBUG_SAULO player_match invite declined session=" + found->ad.session);
+  Log("player_match invite declined session=" + found->ad.session);
   invites_.erase(found);
   if (Connected()) Send(Purpose::kInviteDecline, [&id](int seq) { return EncodeInviteDecline(seq, id); });
 }
@@ -696,7 +696,7 @@ OnlineProfile OnlineService::Profile() const {
 
 void OnlineService::OnMatchStarted(const MatchInfo& info) {
   if (!GuestsCompatible(info.guest, info.build, config_.guest, config_.build)) {
-    Log("DEBUG_SAULO online match refused: game versions differ");
+    Log("online match refused: game versions differ");
     DropAcceptedInvite("game_versions_differ");
     Send(Purpose::kLeave, [&info](int seq) { return EncodeMatchLeave(seq, info.match); });
     Notice(Tr("Game versions do not match."));
@@ -719,17 +719,17 @@ void OnlineService::OnMatchStarted(const MatchInfo& info) {
       const std::shared_ptr<LobbyChannel> channel = link.lock();
       return channel && channel->SendBinary(std::move(frame));
     });
-    Log("DEBUG_SAULO relay available match=" + info.match + " role=" + RoleName(info.role == "host") +
+    Log("relay available match=" + info.match + " role=" + RoleName(info.role == "host") +
         " relay_available=true");
   } else if (capabilities_.relay_supported && config_.game_socket) {
-    Log("DEBUG_SAULO relay available=false match=" + info.match + " reason=peer_without_relay");
+    Log("relay available=false match=" + info.match + " reason=peer_without_relay");
   }
   hosting_.reset();
   hosting_session_.clear();
   StopPlayerMatchSearch();
   joining_ = false;
   if (accepted_invite_ && accepted_invite_->session == info.session) {
-    Log("DEBUG_SAULO invite transition consumed generation=" + std::to_string(accepted_generation_));
+    Log("invite transition consumed generation=" + std::to_string(accepted_generation_));
     accepted_invite_.reset();
   } else {
     DropAcceptedInvite("superseded");
@@ -738,13 +738,13 @@ void OnlineService::OnMatchStarted(const MatchInfo& info) {
   guest_wait_logged_ = false;
   if (config_.game_socket) {
     establishment_.Begin(now_);
-    Log("DEBUG_SAULO network establishment begin match=" + info.match + " role=" + RoleName(info.role == "host") +
+    Log("network establishment begin match=" + info.match + " role=" + RoleName(info.role == "host") +
         " deadline_ms=" + std::to_string(int(kEstablishmentBudgetSeconds * 1000)));
   } else {
     establishment_.Reset();
   }
-  Log(std::string("DEBUG_SAULO online match created role=") + RoleName(info.role == "host") + " guest=" + info.guest);
-  Log(std::string("DEBUG_SAULO player_match ") + (info.role == "host" ? "host" : "join") + " ready peer=" +
+  Log(std::string("online match created role=") + RoleName(info.role == "host") + " guest=" + info.guest);
+  Log(std::string("player_match ") + (info.role == "host" ? "host" : "join") + " ready peer=" +
       info.peer_player);
   Notice(Tr("Connecting to ") + info.peer_name + "...");
   BeginUdpSetup();
@@ -757,11 +757,11 @@ void OnlineService::OnPeer(const PeerInfo& peer) {
                            peer_->ip == peer.ip && peer_->port == peer.port && peer_->lan == peer.lan;
     peer_ = peer;
     if (unchanged) return;
-    Log(std::string("DEBUG_SAULO online signaling complete role=") + RoleName(match_->role == "host") +
+    Log(std::string("online signaling complete role=") + RoleName(match_->role == "host") +
         " same_network=" + (peer.same_network ? "true" : "false") + " peer_port=" + std::to_string(peer.port));
-    Log("DEBUG_SAULO signaling peer raw_address=" + peer.ip + " raw_port=" + std::to_string(peer.port) +
+    Log("signaling peer raw_address=" + peer.ip + " raw_port=" + std::to_string(peer.port) +
         " public=" + (peer.public_port ? peer.public_ip + ":" + std::to_string(peer.public_port) : "none"));
-    Log("DEBUG_SAULO peer endpoint update raw=" + peer.ip + ":" + std::to_string(peer.port) + " public=" +
+    Log("peer endpoint update raw=" + peer.ip + ":" + std::to_string(peer.port) + " public=" +
         (peer.public_port ? peer.public_ip + ":" + std::to_string(peer.public_port) : "none") +
         " service_forwards_public=" + (peer.service_forwards_public ? "true" : "false"));
     if (FailIfServiceCannotForwardPublic()) return;
@@ -779,19 +779,19 @@ void OnlineService::OnPeer(const PeerInfo& peer) {
   peer_ = peer;
   assignment_ = assignment;
   if (!changed) return;
-  Log(std::string("DEBUG_SAULO online signaling complete role=") + RoleName(assignment.host) +
+  Log(std::string("online signaling complete role=") + RoleName(assignment.host) +
       " same_network=" + (peer.same_network ? "true" : "false") + " peer_port=" + std::to_string(peer.port));
-  Log("DEBUG_SAULO signaling peer raw_address=" + peer.ip + " raw_port=" + std::to_string(peer.port));
+  Log("signaling peer raw_address=" + peer.ip + " raw_port=" + std::to_string(peer.port));
   uint32_t parsed_address = 0;
   const netplay::PeerAddressKind kind = netplay::ParsePeerAddress(assignment.peer_ip, parsed_address);
-  Log(std::string("DEBUG_SAULO signaling peer parsed family=") + netplay::PeerAddressKindName(kind));
-  Log("DEBUG_SAULO signaling peer endpoint=" +
+  Log(std::string("signaling peer parsed family=") + netplay::PeerAddressKindName(kind));
+  Log("signaling peer endpoint=" +
       (netplay::UsableAddress(kind) ? net::IpText(parsed_address) + ":" + std::to_string(assignment.peer_port) : "none"));
   Notice(Tr("Connected with ") + peer.name + ".");
 }
 
 void OnlineService::OnMatchEnded(const std::string& reason) {
-  Log("DEBUG_SAULO online match ended reason=" + reason);
+  Log("online match ended reason=" + reason);
   if (link_ == NetplayLink::kConnected || link_ == NetplayLink::kFighting) {
     signaling_ended_ = true;
     return;
@@ -845,13 +845,13 @@ void OnlineService::Refresh() {
 }
 
 void OnlineService::OnLinkLost(const std::string& why, double now) {
-  Log("DEBUG_SAULO online worker disconnected reason=" + why);
+  Log("online worker disconnected reason=" + why);
   if (channel_) channel_->Close();
   channel_.reset();
   pending_.clear();
   // The relay lives on this connection: a match carried by it, or still choosing with it as the fallback, cannot go on.
   if (match_ && (transport_ == MatchTransport::kRelay || (Coordinated() && transport_ == MatchTransport::kDirectProbing))) {
-    Log("DEBUG_SAULO relay closed reason=service_disconnected match=" + match_->match);
+    Log("relay closed reason=service_disconnected match=" + match_->match);
     MarkMatchFailed("service_disconnected");
     const std::string name = match_->peer_name;
     ClearMatch();
@@ -878,7 +878,7 @@ FriendRequestResult OnlineService::AddFriend(const std::string& text) {
   std::lock_guard<std::mutex> lock(mutex_);
   const std::string code = NormalizeFriendCode(text);
   const auto refuse = [&](FriendRequestResult result, const char* reason, const std::string& notice) {
-    Log("DEBUG_SAULO online friend request failed code=" + (code.empty() ? std::string("-") : code) + " reason=" + reason);
+    Log("online friend request failed code=" + (code.empty() ? std::string("-") : code) + " reason=" + reason);
     Notice(notice);
     return result;
   };
@@ -892,7 +892,7 @@ FriendRequestResult OnlineService::AddFriend(const std::string& text) {
   if (std::any_of(outgoing_.begin(), outgoing_.end(), is_code)) {
     return refuse(FriendRequestResult::kAlreadyPending, "already_pending", Tr("Friend request already pending."));
   }
-  Log("DEBUG_SAULO online friend request sent code=" + code);
+  Log("online friend request sent code=" + code);
   Send(Purpose::kAdd, [&code](int seq) { return EncodeFriendsAdd(seq, code); }, code);
   return FriendRequestResult::kSent;
 }
@@ -1008,13 +1008,13 @@ void OnlineService::CollectTest() {
   test_probe_.reset();
   testing_ = false;
   if (!finished) {
-    Log("DEBUG_SAULO online connection test stopped without a report: " + stopped);
+    Log("online connection test stopped without a report: " + stopped);
     return;
   }
   test_ = finished;
   ++tests_finished_;
-  for (const std::string& detail : finished->details) Log("DEBUG_SAULO online connection test " + detail);
-  Log("DEBUG_SAULO online connection test " + finished->verdict);
+  for (const std::string& detail : finished->details) Log("online connection test " + detail);
+  Log("online connection test " + finished->verdict);
 }
 
 void OnlineService::SendEndpoint() {
@@ -1029,7 +1029,7 @@ void OnlineService::SendEndpoint() {
   const bool mapped = mapped_.port && net::Classify(mapped_.address) == net::AddressKind::kPublic;
   const std::string public_ip = mapped ? net::IpText(mapped_.address) : std::string();
   const uint16_t public_port = mapped ? mapped_.port : 0;
-  Log("DEBUG_SAULO match endpoint advertised=" + (mapped ? EndpointText(mapped_) : std::string("none")) +
+  Log("match endpoint advertised=" + (mapped ? EndpointText(mapped_) : std::string("none")) +
       " local=0.0.0.0:" + std::to_string(port));
   Send(Purpose::kEndpoint, [this, port, public_ip, public_port](int seq) {
     return EncodeMatchEndpoint(seq, match_->match, port, config_.lan, public_ip, public_port);
@@ -1112,7 +1112,7 @@ void OnlineService::PumpUdpSetup(double now) {
     peer_deadline_ = now + kPeerEndpointWaitSeconds;
     BeginDirectProbe(now);
     SendEndpoint();
-    Log("DEBUG_SAULO peer endpoint pending match=" + match_->match + " peer=" + match_->peer_player);
+    Log("peer endpoint pending match=" + match_->match + " peer=" + match_->peer_player);
     ConsiderPeer();
     return;
   }
@@ -1122,8 +1122,8 @@ void OnlineService::PumpUdpSetup(double now) {
   }
   if (udp_setup_ == UdpSetup::kWaitingPeer) {
     if (now < peer_deadline_) return;
-    Log("DEBUG_SAULO peer endpoint wait timeout");
-    Log(std::string("DEBUG_SAULO udp rendezvous failed reason=peer_endpoint_timeout peer_signaled=") +
+    Log("peer endpoint wait timeout");
+    Log(std::string("udp rendezvous failed reason=peer_endpoint_timeout peer_signaled=") +
         (peer_ ? "true" : "false") +
         " service_forwards_public=" + (peer_ && peer_->service_forwards_public ? "true" : "false"));
     FailUdpSetup("no_direct_path",
@@ -1144,10 +1144,10 @@ bool OnlineService::Coordinated() const { return match_ && match_->relay_token &
 void OnlineService::BeginDirectProbe(double now) {
   probe_started_ = now;
   direct_deadline_ = now + kDirectProbeWindowSeconds;
-  Log("DEBUG_SAULO direct probe begin match=" + match_->match + " budget_ms=" +
+  Log("direct probe begin match=" + match_->match + " budget_ms=" +
       std::to_string(int(kDirectProbeWindowSeconds * 1000)) + " relay_available=" + Flag(Coordinated()));
   if (Coordinated() && match_->role == "host" && capabilities_.announced && !capabilities_.public_endpoints) {
-    Log("DEBUG_SAULO direct unavailable reason=service_public_endpoints_unsupported");
+    Log("direct unavailable reason=service_public_endpoints_unsupported");
     RequestRelay("service_public_endpoints_unsupported");
   }
 }
@@ -1175,9 +1175,9 @@ void OnlineService::RequestRelay(const std::string& why) {
   const std::string elapsed = std::to_string(direct_elapsed_ms_);
   const std::string id = match_->match;
   if (why != "service_public_endpoints_unsupported") {
-    Log("DEBUG_SAULO direct path not established elapsed_ms=" + elapsed + " reason=" + why);
+    Log("direct path not established elapsed_ms=" + elapsed + " reason=" + why);
   }
-  Log("DEBUG_SAULO relay fallback begin match=" + id + " direct_elapsed_ms=" + elapsed);
+  Log("relay fallback begin match=" + id + " direct_elapsed_ms=" + elapsed);
   Send(Purpose::kTransportRelay, [&id](int seq) { return EncodeMatchTransport(seq, id, "relay"); }, id);
 }
 
@@ -1188,7 +1188,7 @@ void OnlineService::SelectDirect(const Candidate& selected) {
   direct_elapsed_ms_ = DirectElapsedMs();
   config_.game_socket->CloseRelay();
   const std::string id = match_->match;
-  Log("DEBUG_SAULO transport selected=direct match=" + id + " endpoint=" + EndpointText(selected.endpoint) +
+  Log("transport selected=direct match=" + id + " endpoint=" + EndpointText(selected.endpoint) +
       " type=" + CandidateTypeName(selected.type) + " elapsed_ms=" + std::to_string(direct_elapsed_ms_));
   if (tell_joiner) Send(Purpose::kTransportDirect, [&id](int seq) { return EncodeMatchTransport(seq, id, "direct"); }, id);
   Assign(selected.endpoint, false);
@@ -1196,7 +1196,7 @@ void OnlineService::SelectDirect(const Candidate& selected) {
 
 void OnlineService::SelectRelay() {
   const double absolute = establishment_.AbsoluteRemaining(now_);
-  Log("DEBUG_SAULO relay establishment begin match=" + match_->match +
+  Log("relay establishment begin match=" + match_->match +
       " elapsed_ms=" + std::to_string(int(establishment_.Elapsed(now_) * 1000)) +
       " relay_budget_remaining_ms=" + std::to_string(int(std::min(kHandshakeBudgetSeconds, absolute) * 1000)) +
       " absolute_remaining_ms=" + std::to_string(int(absolute * 1000)));
@@ -1207,8 +1207,8 @@ void OnlineService::SelectRelay() {
   config_.game_socket->Use([this](netplay::Transport&) { rendezvous_.Stop(); });
   config_.game_socket->SelectRelay();
   next_relay_stats_ = now_ + kRelayStatsSeconds;
-  Log("DEBUG_SAULO relay ready match=" + match_->match + " role=" + RoleName(match_->role == "host"));
-  Log("DEBUG_SAULO transport selected=relay match=" + match_->match);
+  Log("relay ready match=" + match_->match + " role=" + RoleName(match_->role == "host"));
+  Log("transport selected=relay match=" + match_->match);
   Assign(netplay::kRelayPeer, true);
 }
 
@@ -1222,7 +1222,7 @@ void OnlineService::Assign(const netplay::Endpoint& peer, bool relay) {
   assignment.relay = relay;
   assignment_ = assignment;
   if (establishment_.Select(now_)) {
-    Log("DEBUG_SAULO network establishment ready match=" + match_->match + " transport=" + (relay ? "relay" : "direct") +
+    Log("network establishment ready match=" + match_->match + " transport=" + (relay ? "relay" : "direct") +
         " elapsed_ms=" + std::to_string(int(establishment_.Elapsed(now_) * 1000)));
   }
   Notice(Tr("Connected with ") + (peer_ ? peer_->name : match_->peer_name) + ".");
@@ -1231,14 +1231,14 @@ void OnlineService::Assign(const netplay::Endpoint& peer, bool relay) {
 void OnlineService::OnMatchTransport(const ServerMessage& message) {
   if (!match_ || message.match_id != match_->match || match_->role == "host") return;
   if (!Coordinated() || udp_setup_ == UdpSetup::kNone || udp_setup_ == UdpSetup::kSelected) {
-    Log("DEBUG_SAULO transport choice ignored transport=" + message.transport);
+    Log("transport choice ignored transport=" + message.transport);
     return;
   }
-  Log("DEBUG_SAULO transport choice from host transport=" + message.transport);
+  Log("transport choice from host transport=" + message.transport);
   if (message.transport == "relay") {
     const std::string elapsed = std::to_string(DirectElapsedMs());
-    Log("DEBUG_SAULO direct path not established elapsed_ms=" + elapsed + " reason=host_chose_relay");
-    Log("DEBUG_SAULO relay fallback begin match=" + match_->match + " direct_elapsed_ms=" + elapsed);
+    Log("direct path not established elapsed_ms=" + elapsed + " reason=host_chose_relay");
+    Log("relay fallback begin match=" + match_->match + " direct_elapsed_ms=" + elapsed);
     SelectRelay();
     return;
   }
@@ -1264,7 +1264,7 @@ void OnlineService::OnMatchTransport(const ServerMessage& message) {
 
 void OnlineService::OnRelayClosed(const ServerMessage& message) {
   if (!match_ || message.match_id != match_->match) return;
-  Log("DEBUG_SAULO relay closed reason=" + message.reason + " match=" + match_->match);
+  Log("relay closed reason=" + message.reason + " match=" + match_->match);
   if (transport_ == MatchTransport::kRelay) {
     FailUdpSetup("relay_closed", Tr("The connection to ") + match_->peer_name + Tr(" was lost."));
     return;
@@ -1283,22 +1283,22 @@ void OnlineService::PumpRelay(double now) {
   if (!match_ || transport_ != MatchTransport::kRelay || !config_.game_socket) return;
   const std::string failure = config_.game_socket->relay_failure();
   if (!failure.empty()) {
-    Log("DEBUG_SAULO relay closed reason=" + failure + " match=" + match_->match);
+    Log("relay closed reason=" + failure + " match=" + match_->match);
     FailUdpSetup("relay_" + failure, Tr("The connection to ") + match_->peer_name + Tr(" was lost."));
     return;
   }
   const netplay::MatchTraffic traffic = config_.game_socket->traffic();
   for (; relay_logged_tx_ < traffic.relay_tx_sizes.size(); ++relay_logged_tx_) {
-    Log("DEBUG_SAULO relay tx n=" + std::to_string(relay_logged_tx_ + 1) +
+    Log("relay tx n=" + std::to_string(relay_logged_tx_ + 1) +
         " bytes=" + std::to_string(traffic.relay_tx_sizes[relay_logged_tx_]));
   }
   for (; relay_logged_rx_ < traffic.relay_rx_sizes.size(); ++relay_logged_rx_) {
-    Log("DEBUG_SAULO relay rx n=" + std::to_string(relay_logged_rx_ + 1) +
+    Log("relay rx n=" + std::to_string(relay_logged_rx_ + 1) +
         " bytes=" + std::to_string(traffic.relay_rx_sizes[relay_logged_rx_]));
   }
   if (now < next_relay_stats_) return;
   next_relay_stats_ = now + kRelayStatsSeconds;
-  Log("DEBUG_SAULO relay stats tx_packets=" + std::to_string(traffic.relay_tx_packets) +
+  Log("relay stats tx_packets=" + std::to_string(traffic.relay_tx_packets) +
       " tx_bytes=" + std::to_string(traffic.relay_tx_bytes) + " rx_packets=" + std::to_string(traffic.relay_rx_packets) +
       " rx_bytes=" + std::to_string(traffic.relay_rx_bytes) + " rejected=" + std::to_string(traffic.relay_rejected));
 }
@@ -1307,7 +1307,7 @@ void OnlineService::LogTransportSummary() {
   const netplay::MatchTraffic traffic = config_.game_socket ? config_.game_socket->traffic() : netplay::MatchTraffic{};
   const bool relayed = transport_ == MatchTransport::kRelay;
   if (relay_used_) {
-    Log("DEBUG_SAULO relay stats tx_packets=" + std::to_string(traffic.relay_tx_packets) +
+    Log("relay stats tx_packets=" + std::to_string(traffic.relay_tx_packets) +
         " tx_bytes=" + std::to_string(traffic.relay_tx_bytes) +
         " rx_packets=" + std::to_string(traffic.relay_rx_packets) +
         " rx_bytes=" + std::to_string(traffic.relay_rx_bytes) + " rejected=" + std::to_string(traffic.relay_rejected));
@@ -1316,7 +1316,7 @@ void OnlineService::LogTransportSummary() {
                          : relayed                             ? "relay"
                          : transport_ == MatchTransport::kFailed ? "failed"
                                                                  : "none";
-  Log("DEBUG_SAULO match transport summary match=" + match_->match + " selected=" + selected +
+  Log("match transport summary match=" + match_->match + " selected=" + selected +
       " direct_attempted=" + Flag(probe_started_ >= 0) +
       " direct_elapsed_ms=" + std::to_string(direct_elapsed_ms_ >= 0 ? direct_elapsed_ms_ : DirectElapsedMs()) +
       " relay_available=" + Flag(relay_available_ || relay_used_) + " relay_used=" + Flag(relay_used_) +
@@ -1343,12 +1343,12 @@ bool OnlineService::FailIfServiceCannotForwardPublic() {
   }
   if (Coordinated()) {
     if (relay_requested_) return true;
-    Log("DEBUG_SAULO direct unavailable reason=service_public_endpoints_unsupported");
+    Log("direct unavailable reason=service_public_endpoints_unsupported");
     if (match_->role == "host") RequestRelay("service_public_endpoints_unsupported");
     return true;
   }
-  Log("DEBUG_SAULO join network capability service_forwards_public=false action=fail_fast");
-  Log("DEBUG_SAULO udp rendezvous failed reason=service_capability_mismatch worker_public_endpoints_unsupported=true");
+  Log("join network capability service_forwards_public=false action=fail_fast");
+  Log("udp rendezvous failed reason=service_capability_mismatch worker_public_endpoints_unsupported=true");
   FailUdpSetup("no_direct_path",
                Tr("Could not connect to ") + match_->peer_name + Tr(": the online service is out of date."));
   return true;
@@ -1357,7 +1357,7 @@ bool OnlineService::FailIfServiceCannotForwardPublic() {
 void OnlineService::ConsiderPeer() {
   if (!match_ || !peer_ || !PeerEndpointReady(*peer_) || relay_requested_ || udp_setup_ == UdpSetup::kSelected) return;
   if (udp_setup_ == UdpSetup::kWaitingPeer) {
-    Log("DEBUG_SAULO peer endpoint ready public=" +
+    Log("peer endpoint ready public=" +
         (peer_->public_port ? peer_->public_ip + ":" + std::to_string(peer_->public_port) : std::string("none")) +
         " same_network=" + (peer_->same_network ? "true" : "false"));
   }
@@ -1368,7 +1368,7 @@ void OnlineService::StartPunch() {
   if (!match_ || !peer_) return;
   const std::vector<Candidate> candidates = PeerCandidates(*peer_, config_.lan, mapped_);
   for (const Candidate& candidate : candidates) {
-    Log(std::string("DEBUG_SAULO peer candidate received type=") + CandidateTypeName(candidate.type) +
+    Log(std::string("peer candidate received type=") + CandidateTypeName(candidate.type) +
         " endpoint=" + EndpointText(candidate.endpoint));
   }
   if (candidates.empty()) {
@@ -1379,7 +1379,7 @@ void OnlineService::StartPunch() {
     direct_deadline_ = std::max(direct_deadline_, now_ + kMinPunchSeconds);
   }
   udp_setup_ = UdpSetup::kPunching;
-  Log("DEBUG_SAULO udp rendezvous begin candidates=" + std::to_string(candidates.size()));
+  Log("udp rendezvous begin candidates=" + std::to_string(candidates.size()));
   const uint64_t key = PunchKey(match_->match);
   const uint8_t side = match_->role == "host" ? 1 : 2;
   const uint64_t now_ms = Milliseconds(now_);
@@ -1391,12 +1391,12 @@ void OnlineService::StartPunch() {
 // Invite Player) in it.
 void OnlineService::FailUdpSetup(const std::string& reason, const std::string& notice) {
   const bool established = transport_ == MatchTransport::kDirect || transport_ == MatchTransport::kRelay;
-  Log(std::string(established ? "DEBUG_SAULO transport lost reason=" : "DEBUG_SAULO udp rendezvous failed reason=") +
+  Log(std::string(established ? "transport lost reason=" : "udp rendezvous failed reason=") +
       reason);
   if (!match_) return;
   if (!established) {
     transport_ = MatchTransport::kFailed;
-    Log("DEBUG_SAULO transport selected=failed match=" + match_->match + " cause=" + reason +
+    Log("transport selected=failed match=" + match_->match + " cause=" + reason +
         " relay_available=" + Flag(Coordinated()));
   }
   MarkMatchFailed(reason);
@@ -1415,7 +1415,7 @@ void OnlineService::MarkMatchFailed(const std::string& reason) {
   if (establishment_.Fail(now_, reason)) {
     failed_reason_ = reason;
     failed_elapsed_ms_ = int(establishment_.Elapsed(now_) * 1000);
-    Log("DEBUG_SAULO network establishment failed match=" + match_->match + " reason=" + reason +
+    Log("network establishment failed match=" + match_->match + " reason=" + reason +
         " elapsed_ms=" + std::to_string(failed_elapsed_ms_) + " terminal=true");
   }
 }
@@ -1426,7 +1426,7 @@ void OnlineService::LogEstablishmentTimeout() {
                        : udp_setup_ == UdpSetup::kPunching    ? "punching"
                                                               : "idle";
   const char* relay = !relay_available_ ? "unavailable" : relay_requested_ ? "requested" : "available";
-  Log("DEBUG_SAULO network establishment timeout match=" + match_->match +
+  Log("network establishment timeout match=" + match_->match +
       " elapsed_ms=" + std::to_string(int(establishment_.Elapsed(now_) * 1000)) +
       " transport_state=" + MatchTransportName(transport_) + " direct_state=" + direct + " relay_state=" + relay);
 }
@@ -1447,7 +1447,7 @@ void OnlineService::NoteGuestWaitComplete(bool connected) {
   if (!config_.game_socket || guest_wait_logged_ || (!match_ && !failed_peer_)) return;
   guest_wait_logged_ = true;
   if (connected) {
-    Log("DEBUG_SAULO guest wait complete result=connected elapsed_ms=" +
+    Log("guest wait complete result=connected elapsed_ms=" +
         std::to_string(int(establishment_.Elapsed(now_) * 1000)));
     return;
   }
@@ -1459,7 +1459,7 @@ void OnlineService::NoteGuestWaitComplete(bool connected) {
              : establishment_.phase() == Establishment::Phase::kSelected ? "handshake_timeout"
                                                                          : "establishment_timeout";
   }
-  Log("DEBUG_SAULO guest wait complete result=failed reason=" + (reason.empty() ? std::string("unknown") : reason) +
+  Log("guest wait complete result=failed reason=" + (reason.empty() ? std::string("unknown") : reason) +
       " elapsed_ms=" + std::to_string(elapsed_ms));
 }
 
@@ -1467,7 +1467,7 @@ bool OnlineService::EnsureIdentity() {
   if (!identity_loaded_) {
     identity_loaded_ = true;
     identity_ = config_.identity ? config_.identity() : Identity{};
-    if (!identity_.ok()) Log("DEBUG_SAULO online identity unavailable " + identity_.error);
+    if (!identity_.ok()) Log("online identity unavailable " + identity_.error);
   }
   return identity_.ok();
 }

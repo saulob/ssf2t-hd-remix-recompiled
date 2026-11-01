@@ -2,7 +2,7 @@
 
 # Super Street Fighter II Turbo HD Remix - PC Port
 
-### Super Street Fighter II Turbo HD Remix for Xbox Live Arcade, running natively on Windows, and experimentally on Linux and Steam Deck, through static recompilation, with the TRG launcher and modern PC options
+### Super Street Fighter II Turbo HD Remix for Xbox Live Arcade, running natively on Windows, and experimentally on Linux and Steam Deck, through static recompilation, with online play, the TRG launcher and modern PC options
 
 [![Latest release](https://img.shields.io/github/v/release/saulob/ssf2t-hd-remix-recompiled?style=for-the-badge&label=release&color=FF8514&labelColor=07101f&include_prereleases)](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/saulob/ssf2t-hd-remix-recompiled/total?style=for-the-badge&color=FF8514&labelColor=07101f)](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases)
@@ -16,8 +16,10 @@
 
 ## Features
 
+- **Online play**: Online Match with friends over the internet, with rollback netplay, direct UDP connections and an automatic relay fallback. Friend codes, presence, Find Match, Create Match, Invite Player, a Connection test and a Ping display. See [Online play](#online-play).
 - **Native static recompilation**: the game's own code, not an emulator. Windows, plus an experimental Linux AppImage.
-- **TRG launcher** with a game package installer, an optional Title Update installer, display and graphics options, and an Achievements page.
+- **TRG launcher** with a game package installer, an optional Title Update installer, an Online page, display and graphics options, and an Achievements page.
+- **Base game or Title Update**: both game versions (`0.0.1.3` and `0.0.2.3`) are built into the program with the same features, and the Title Update can be added or removed at any time.
 - **Launcher updates**: the launcher checks GitHub releases once per start and installs a newer release only when you choose UPDATE NOW. Game files, saves, settings and logs are kept.
 - **Display**: Windowed or Borderless Fullscreen (**F11**), window size, monitor and VSync. Per-monitor high-DPI support, and the game window opens where and how large you chose.
 - **Presentation**: Letterbox keeps the picture's proportions, Stretch fills the window. Aspect ratios 16:9, 16:10, 21:9, 32:9, 4:3 and 5:4.
@@ -25,17 +27,19 @@
 - **Render resolution and Internal render resolution**: Render resolution (1x to 4x) sets the target resolution of the picture. Internal render resolution (100% Native, 75% Performance, 50% Low-end) lowers the resolution the GPU draws at before the picture is scaled up, trading sharpness for performance. Both are separate from the Window size.
 - **Graphics card selection**: choose which compatible GPU renders the game.
 - **Anti-aliasing, multisampling and texture filtering** choices.
-- **Language**: English, French, German, Italian, Spanish or Português Brasil (see [docs/localization-pt-br.md](docs/localization-pt-br.md)).
+- **Language**: English, French, German, Italian, Spanish or **Português Brasil**. Português Brasil is a localization added by this port; the original game has no Portuguese option (see [docs/localization-pt-br.md](docs/localization-pt-br.md)).
 - **Local saves**: the game saves and loads as on the console.
-- **Offline achievements**: the game's 12 achievements (200G) are kept on this PC, listed with **F7**, in the game's own Achievements menu item and in the launcher. There is no Xbox Live connection, and the four achievements that need online ranked matches cannot be earned.
+- **Offline achievements**: the game's 12 achievements (200G) are kept on this PC, listed with **F7**, in the game's own Achievements menu item and in the launcher. There is no Xbox Live connection, and Ranked Match is not offered, so the four achievements that need online ranked matches cannot be earned.
 - **Xbox controller support** with no setup, and keyboard play as an Xbox 360 controller.
 - **In-game frame counter** (**F2**), online **Ping display** (**F3**), and optional frame rate or render resolution in
   the window title.
 - **Portable user data**: saves, settings and achievements are in a `user_data` folder beside the program.
 
-The game runs at its original speed of 60 updates per second. Online play is not supported.
+The game runs at its original speed of 60 updates per second.
 
 ## What you need
+
+**Supported builds:** Base013 (`default.xex` 0.0.1.3, CRC32 `B734F075`) and TU023 (Base013 plus the official Title Update #1, `default.xexp` CRC32 `38DE2310`, game version 0.0.2.3). Both are supported and play online against the same build only.
 
 - **Windows:** Windows 10 or 11, 64-bit, and a DirectX 12 graphics card, with the latest Microsoft Visual C++ 2015-2022 Redistributable (x64). Most PCs have it.
 - **Linux / Steam Deck (experimental):** 64-bit x86 with glibc 2.31 or newer and a Vulkan driver. Steam Deck support is experimental and has not yet been validated on hardware. See [docs/linux.md](docs/linux.md).
@@ -48,14 +52,14 @@ The game runs at its original speed of 60 updates per second. Online play is not
 | Media ID | `37B7D7D3` | `37B7D7D3` |
 | Content type | `000D0000` (Xbox Live Arcade), STFS `LIVE` | `000B0000` (Title Update), STFS `LIVE` |
 | On an Xbox 360 drive | `Content\0000000000000000\584108A4\000D0000\` | `Content\0000000000000000\584108A4\000B0000\` |
-| Version | `0.0.1.3` | updates `0.0.1.3` to `0.0.2.3` |
+| Version | `0.0.1.3` (Base013) | updates `0.0.1.3` to `0.0.2.3` (TU023) |
 | File the port uses | `default.xex`: 3,932,160 bytes, CRC32 `B734F075`, SHA-256 `6E1C2F9ED7D1102A311A5F5626563527EDA5F85B2FBE8DB8405B866DED3F31EE` | `default.xexp`: 2,166,784 bytes, CRC32 `38DE2310`, SHA-256 `A2E8E66B482C5D3A0D3A5D3F67A3CECB7A12CE1F6189196694FD3E765910606C` |
 
 The launcher tells the two packages apart by their content type, checks the Title ID, and checks `default.xex` and `default.xexp` after extracting them. Any other version is refused with the version that was found, because the port supports exactly these two versions of the game code.
 
 ## Installing
 
-1. Download **SSF2THDRemix-v0.2.2-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
+1. Download **SSF2THDRemix-v0.3.0-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
 2. Run **ssf2t_hd_remix.exe**. The launcher opens.
 3. On the **Play** page click **Install Game** and pick your game package. It is one file with a long hexadecimal name and no extension. On an Xbox 360 drive it is in `Content\0000000000000000\584108A4\000D0000\`.
 4. Optional: click **Install Title Update** and pick the Title Update #1 package (`Content\0000000000000000\584108A4\000B0000\` on an Xbox 360 drive). The two packages are installed separately and either can go first. Installing one does not install the other, and each button refuses the other kind of package.
@@ -66,7 +70,7 @@ The launcher tells the two packages apart by their content type, checks the Titl
 
 ### Linux AppImage (experimental)
 
-Download **SSF2THDRemix-v0.2.2-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
+Download **SSF2THDRemix-v0.3.0-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
 
 ### Windows SmartScreen
 
@@ -77,14 +81,29 @@ Windows may warn the first time you run the program, because the release is not 
 Your choices are saved to `settings.toml` in the `user_data` folder next to the program. To turn the launcher off, set **Show this launcher** to **Off** on the Play page. Hold **Shift** while starting to bring it back.
 
 - **Play**: status, Install Game or Reinstall Game, Install Title Update or Remove Title Update
+- **Online**: Online play, Online name, Friend code, friends, Connection test
 - **Display**: Display mode, Window size, Monitor, Aspect Ratio, VSync, Presentation (Letterbox or Stretch) and Fight Area (Original or Fill 16:9)
 - **Graphics**: Graphics card, Render resolution, Internal render resolution, Anti-aliasing, Multisampling, Texture filtering
 - **Gameplay**: Language, frame rate and render resolution in the title, frame counter
 - **Achievements**: unlocked achievements and gamerscore
 - **Controls**: keyboard on or off, every key remappable, and **Keyboard defaults** to restore the standard layout
-- **About**: versions, folders (game, saves and settings, logs), **Show settings file**, **Detailed logging**, **Open logs folder** and **Reset all settings**
+- **About**: GitHub Sponsors link, versions, folders (game, saves and settings, logs), **Show settings file**, **Detailed logging**, **Open logs folder** and **Reset all settings**
 
 During gameplay the mouse cursor follows the last input device: mouse activity shows it, keyboard or controller activity hides it, and mouse-driven overlays always show it.
+
+## Online play
+
+Online Match plays one friend at a time. The online service handles sign-in, friends, presence, finding a match, signalling and the relay fallback. The fight itself runs directly between the two PCs over UDP whenever possible, so you never type an IP address. Full details are in [docs/online.md](docs/online.md).
+
+1. Launcher, **Online** page: set **Online play** to On and choose an **Online name**.
+2. Run the **Connection test**. With Online play on, **PLAY** waits until one test has finished, whatever its result (Ready, Limited or Failed).
+3. Share your **Friend code**, paste a friend's code and **Send request**; they **Accept**.
+4. Both press **PLAY**, then choose **Multiplayer > Online Match** in the game.
+5. One player picks **Create Match** (and may use **Invite Player**), the other picks **Find Match** or accepts the invite.
+
+Friends and compatible versions are what matches are found through: you and your friend must run the same game build (Base013 with Base013, TU023 with TU023). Online play is off by default, and with it off the program never connects to the service. **F3** shows the Ping display; Infinite Time is disabled while Online play is on.
+
+Direct UDP is always tried first (STUN and UDP hole punching). If it cannot be established, the match uses the relay automatically. Direct play between two PCs on different internet connections has been tested; the relay fallback is implemented and tested by script, and was not yet tried between real players. If your network behaves unusually, run the Connection test and send the log.
 
 ## Screenshots
 
@@ -92,7 +111,7 @@ During gameplay the mouse cursor follows the last input device: mouse activity s
 
 ## Reporting problems
 
-If the game does not start or crashes, please open an [issue](https://github.com/saulob/ssf2t-hd-remix-recompiled/issues). Attach the newest `ssf2t_hd_remix_*.log` file from the `logs` folder next to the program, and say what you were doing when the problem happened. The launcher and the game write to the same log for one application session. After a crash on Windows the log ends with a `CRASH REPORT` section; no separate crash file or minidump is written. For a non-crash problem, turn Detailed logging on in the launcher's About page, reproduce it, and send the newest log.
+If the game does not start or crashes, please open an [issue](https://github.com/saulob/ssf2t-hd-remix-recompiled/issues). Attach the newest `ssf2t_hd_remix_*.log` file from the `logs` folder next to the program, and say what you were doing when the problem happened. The launcher and the game write to the same log for one application session. For an online problem, also say whether you were using Direct or Relay (the log lists `transport selected=`), and run the Connection test first. After a crash on Windows the log ends with a `CRASH REPORT` section; no separate crash file or minidump is written. For a non-crash problem, turn Detailed logging on in the launcher's About page, reproduce it, and send the newest log.
 
 ## Building it yourself
 

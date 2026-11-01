@@ -417,13 +417,13 @@ void TestHookRunsWholeGameFrames() {
   CHECK(SourceHas(hook, "config.verify_frame_zero = true;"));
   CHECK(SourceHas(hook, "live_sim_->NeutralInputs();"));
   CHECK(SourceHas(hook, "np::FrameZeroView(start)"));
-  CHECK(SourceHas(hook, "DEBUG_SAULO netplay takeover refused reason={} generation={} fight={}"));
+  CHECK(SourceHas(hook, "netplay takeover refused reason={} generation={} fight={}"));
   CHECK(SourceHas(hook, "session_->OfferFrameZero(std::move(view), G::kGlobalsSnapshot, std::move(setup));"));
   CHECK(SourceHas(hook, "if (!adopted || !live_sim_->Load(blob)) return;"));
   CHECK(SourceHas(hook, "session_->ReofferFrameZero(std::move(view));"));
   CHECK(SourceHas(hook, "config.session_id = ssf2t::netplay::MatchSessionId(plan.generation, now_ms);"));
-  CHECK(SourceHas(hook, "DEBUG_SAULO netplay setup local fight={} generation={}"));
-  CHECK(SourceHas(hook, "DEBUG_SAULO post_fight state="));
+  CHECK(SourceHas(hook, "netplay setup local fight={} generation={}"));
+  CHECK(SourceHas(hook, "post_fight state="));
   const size_t tu_guard = hook.find("#if SSF2T_TITLE_UPDATE_IMAGE\nREX_HOOK_RAW(tu023_");
   CHECK(tu_guard != std::string::npos && hook.find("REX_HOOK_RAW(tu023_sub_8241D2E0)") > tu_guard);
   CHECK(SourceHas(hook, "REX_HOOK_RAW(base013_sub_82252B90)") && SourceHas(hook, "REX_EXTERN(__imp__base013_sub_82252B90)"));
@@ -431,9 +431,9 @@ void TestHookRunsWholeGameFrames() {
         hook.find("REX_HOOK_RAW(tu023_sub_82252BD8)") > tu_guard);
   CHECK(SourceHas(hook, "np::AnswerFrameTailNetActive<G>(uint32_t(ctx.lr), np::InFramePump(), owns)"));
   CHECK(SourceHas(hook, "++np::g_frame_pump_depth;\n  original(ctx, base);\n  --np::g_frame_pump_depth;"));
-  CHECK(SourceHas(hook, "DEBUG_SAULO pre_fight presentation complete state="));
-  CHECK(SourceHas(hook, "DEBUG_SAULO netplay takeover begin state="));
-  CHECK(SourceHas(hook, "DEBUG_SAULO netplay frame_tail net_active_override="));
+  CHECK(SourceHas(hook, "pre_fight presentation complete state="));
+  CHECK(SourceHas(hook, "netplay takeover begin state="));
+  CHECK(SourceHas(hook, "netplay frame_tail net_active_override="));
 }
 
 void TestWordsMatchOnAFakeGuest() {
@@ -502,7 +502,7 @@ void TestOffsetNamesAndLogLines() {
   CHECK(kInputTableStateBytes == 624 && kInputRingBytes == 64);
   CHECK(kSimBlobSize == kSimStateSize + 4 && kSimStateSize == kGuestStateSize + 624 + 64 + 0x84 + 16);
   BlobDiff ok;
-  CHECK(FormatCheck(123, "resim", ok) == "DEBUG_SAULO netplay frame=123 resim=match");
+  CHECK(FormatCheck(123, "resim", ok) == "netplay frame=123 resim=match");
   BlobDiff bad;
   bad.equal = false;
   bad.first_offset = kArenaSaveSize + 0x10;
@@ -510,7 +510,7 @@ void TestOffsetNamesAndLogLines() {
   bad.hash_a = 0x1234;
   bad.hash_b = 0xABCDEF;
   CHECK(FormatCheck(7, "roundtrip", bad) ==
-        "DEBUG_SAULO netplay frame=7 roundtrip=MISMATCH first=globals+0x10 bytes=2 hashA=0000000000001234 "
+        "netplay frame=7 roundtrip=MISMATCH first=globals+0x10 bytes=2 hashA=0000000000001234 "
         "hashB=0000000000abcdef");
 }
 
@@ -530,9 +530,9 @@ void TestRuns() {
   const DiffRuns capped = FindRuns(a, b, 16, 2);
   CHECK(capped.total == 3 && capped.runs.size() == 2);
   CHECK(FormatRuns(9, "leak", 0x83C19FC0, d) ==
-        "DEBUG_SAULO netplay frame=9 leak runs=3 83C19FC4+7 83C1A024+1 83C1A087+1");
-  CHECK(FormatRuns(9, "post", 0x1000, capped) == "DEBUG_SAULO netplay frame=9 post runs=3 00001004+7 00001064+1 ...");
-  CHECK(FormatRuns(9, "post", 0x1000, FindRuns(a, a, 16, 8)) == "DEBUG_SAULO netplay frame=9 post runs=0");
+        "netplay frame=9 leak runs=3 83C19FC4+7 83C1A024+1 83C1A087+1");
+  CHECK(FormatRuns(9, "post", 0x1000, capped) == "netplay frame=9 post runs=3 00001004+7 00001064+1 ...");
+  CHECK(FormatRuns(9, "post", 0x1000, FindRuns(a, a, 16, 8)) == "netplay frame=9 post runs=0");
 }
 
 void TestSampleSchedule() {

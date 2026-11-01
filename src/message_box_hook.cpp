@@ -42,7 +42,7 @@ void ShowMessageBox(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     request.buttons.push_back(GuestText(base, ssf2t::LoadBE32(ssf2t::GuestHost(base, ctx.r7.u32), i * 4)));
   }
   request.focused = ssf2t::FocusedButton(ctx.r8.u32, count);
-  REXLOG_INFO("DEBUG_SAULO message box shown title=\"{}\" buttons={} focused={} caller={:08X}", request.title, count,
+  REXLOG_INFO("message box shown title=\"{}\" buttons={} focused={} caller={:08X}", request.title, count,
               request.focused, uint32_t(ctx.lr));
 
   auto run = [request = std::move(request), result_ptr, base]() mutable -> rex::X_RESULT {
@@ -51,7 +51,7 @@ void ShowMessageBox(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     g_open(std::move(request), [promise](ssf2t::MessageBoxResult result) { promise->set_value(result); });
     const ssf2t::MessageBoxResult result = answer.get();
     if (result.button) ssf2t::StoreBE32(const_cast<uint8_t*>(ssf2t::GuestHost(base, result_ptr)), 0, *result.button);
-    REXLOG_INFO("DEBUG_SAULO message box closed status={} button={}", result.status,
+    REXLOG_INFO("message box closed status={} button={}", result.status,
                 result.button ? int32_t(*result.button) : -1);
     return result.status;
   };

@@ -8,10 +8,11 @@ The launcher only handles friends and presence. A match starts from the game its
 The Multiplayer menu lists only Local Match and Online Match. Online Match is the game's own Player Match, one against
 one with an online friend; Ranked Match, Tournament Match and the larger lobbies (Quarter Match) are not offered.
 
-Status: the friend and Player Match service flow (advertise, friend-only search, join, host = Player 1) is verified
-headlessly (Node tests, and the C++ client against the local service). The game side (title-local LIVE profile, menu
-gates, XSession bridge) is checked statically only. The original game's Player Match lobby also needs its own peer
-connection (XNet addresses, QoS, VDP sockets), which is not bridged yet; see "What is not covered".
+Status (v0.3.0): the friend and Player Match flow, the XNet / QoS / VDP bridge and rollback netplay work on the original
+Base013 and Title Update 1 (TU023) game images. Direct UDP between two PCs on different internet connections has been
+tested with real players: Online Match, Invite, several fights in one session and agreeing frame-zero state, with no
+gameplay desync observed. The relay fallback is implemented, tested by script (Node and C++ wire tests) and selected
+automatically; it has not been tried between real players over the internet.
 
 ## Playing
 
@@ -21,7 +22,7 @@ connection (XNet addresses, QoS, VDP sockets), which is not bridged yet; see "Wh
    under **Friends**; the field shows it as `XXXX-XXXX` whatever case, spacing or hyphen it came with. **Send request**
    is enabled once it is a valid code (letters except I and O, digits 2 to 9). They **Accept** or **Decline** the card
    that appears on their page.
-3. A friend row shows `Online · Windows · v0.2.2`, `Online Match · ...` while they host one, or `In game · ...`.
+3. A friend row shows `Online · Windows · v0.3.0`, `Online Match · ...` while they host one, or `In game · ...`.
    There are no match buttons in the launcher.
 4. Both press **Play**. The game signs in to the online service again by itself; nothing has to stay open.
 5. In the game: **Multiplayer > Online Match** lists **Find Match** and **Create Match**. One player creates a match
@@ -65,7 +66,7 @@ connections also failed. It is a check of this PC's network, not of a friend. Wh
 (see Relay below) a **Relay: Available** line is added and the verdict is `Ready for online play` even when direct
 connections are blocked or uncertain; those lines then become notes instead of problems. The relay still needs the
 gameplay UDP port to open, so a closed port stays `Limited`. Addresses and errors go to the log as
-`DEBUG_SAULO online connection test ...`.
+`online connection test ...`.
 
 The test opens the gameplay UDP port the game itself would (7001, or 7002 when another instance holds 7001) and runs
 STUN and UPnP from it; if neither can be opened it says so. When Online play is turned on, PLAY waits until one
@@ -173,7 +174,7 @@ punched (strict or carrier-grade NAT, firewall software). There is no setting fo
 - All relays share the one global Durable Object, so it carries every relayed match's traffic: watch its CPU time and
   request count after deploying.
 
-Logs (`DEBUG_SAULO`): `online service capabilities protocol= worker_build= public_endpoints= relay_supported=`,
+Logs: `online service capabilities protocol= worker_build= public_endpoints= relay_supported=`,
 `network establishment begin|ready|failed|timeout`, `relay available match= role=`, `direct probe begin match=
 budget_ms=2500`, `relay establishment begin ... relay_budget_remaining_ms= absolute_remaining_ms=`,
 `guest wait complete result=`, `udp punch tx/rx`,
@@ -202,16 +203,15 @@ of each log shows `name=` and the public `code=`.
 
 Manual two-instance check: Online play On in both, **Copy** the friend code in `a`, paste it into **Add a friend** in `b`
 (Ctrl+V; lower case, a missing hyphen, spaces and a trailing newline are all fine), **Send request**, **Accept** in `a`,
-then Play in both and Multiplayer > Online Match in the game. Log lines: `DEBUG_SAULO online friend request sent
-code=...`, `DEBUG_SAULO player_match ...`, `DEBUG_SAULO XSession...`.
+then Play in both and Multiplayer > Online Match in the game. Log lines: `online friend request sent
+code=...`, `player_match ...`, `XSession...`.
 
 ## What is not covered
 
 - A match learns its gameplay socket's public endpoint from STUN and punches the peer's candidates from that socket;
-  no UPnP mapping is kept while playing. Two symmetric NATs cannot be punched; such a match is relayed. Play between
-  different internet connections, direct or relayed, has not been confirmed.
+  no UPnP mapping is kept while playing. Two symmetric NATs cannot be punched; such a match is relayed. Direct play
+  between two real internet connections is tested (see Status); every NAT combination is not, and a relayed match
+  has not been tried with real players.
 - A relayed match does not survive a lost service connection: it ends instead of moving to a new connection.
-- Friend Player Matches only: no public matchmaking, Ranked Match, Tournament Match or Quarter Match.
-- The original Player Match lobby talks to the other console through XNet addresses, QoS probes and VDP sockets.
-  ReXGlue 0.10.0 stubs these (`XNetXnAddrToInAddr` fails, QoS returns nothing), and this port does not bridge them
-  yet, so the in-game lobby cannot show the remote player and the original flow cannot reach character select.
+- Friend Player Matches only: no public matchmaking, Ranked Match, Tournament Match or Quarter Match. Because Ranked
+  Match is not offered, the four achievements that need online ranked matches cannot be earned.

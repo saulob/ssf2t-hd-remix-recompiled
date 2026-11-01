@@ -130,7 +130,7 @@ void FrameZeroCheck::OnDigest(const StateDigest& digest) {
   const char* round = digest_.round != 0 || remote_->round != 0 ? " round=1" : "";
   char line[192];
   if (remote_->regions == digest_.regions) {
-    std::snprintf(line, sizeof line, "DEBUG_SAULO netplay frame0 state match fight=%u%s", fight_, round);
+    std::snprintf(line, sizeof line, "netplay frame0 state match fight=%u%s", fight_, round);
     report_.push_back(line);
     return;
   }
@@ -140,12 +140,12 @@ void FrameZeroCheck::OnDigest(const StateDigest& digest) {
     regions += regions.empty() ? "" : ",";
     regions += StateRegionName(i);
   }
-  std::snprintf(line, sizeof line, "DEBUG_SAULO netplay frame0 state MISMATCH fight=%u%s regions=%s", fight_, round,
+  std::snprintf(line, sizeof line, "netplay frame0 state MISMATCH fight=%u%s regions=%s", fight_, round,
                 regions.c_str());
   report_.push_back(line);
   for (size_t i = 0; i < kStateRegions; ++i) {
     if (digest_.regions[i] == remote_->regions[i]) continue;
-    std::snprintf(line, sizeof line, "DEBUG_SAULO netplay frame0 region=%s local=%08X remote=%08X", StateRegionName(i),
+    std::snprintf(line, sizeof line, "netplay frame0 region=%s local=%08X remote=%08X", StateRegionName(i),
                   digest_.regions[i], remote_->regions[i]);
     report_.push_back(line);
   }
@@ -153,7 +153,7 @@ void FrameZeroCheck::OnDigest(const StateDigest& digest) {
 
 void FrameZeroCheck::ReportSetup() {
   char line[112];
-  std::snprintf(line, sizeof line, "DEBUG_SAULO netplay setup remote fight=%u round=%u words=", fight_,
+  std::snprintf(line, sizeof line, "netplay setup remote fight=%u round=%u words=", fight_,
                 unsigned(remote_->round));
   report_.push_back(line + DescribeSetupWords(remote_->setup));
   if (SetupMatches()) return;
@@ -161,7 +161,7 @@ void FrameZeroCheck::ReportSetup() {
   for (size_t i = 0; i < count; ++i) {
     const bool both = i < digest_.setup.size() && i < remote_->setup.size();
     if (both && digest_.setup[i] == remote_->setup[i]) continue;
-    std::snprintf(line, sizeof line, "DEBUG_SAULO netplay setup MISMATCH fight=%u word=%zu local=%08X remote=%08X",
+    std::snprintf(line, sizeof line, "netplay setup MISMATCH fight=%u word=%zu local=%08X remote=%08X",
                   fight_, i, i < digest_.setup.size() ? digest_.setup[i] : 0,
                   i < remote_->setup.size() ? remote_->setup[i] : 0);
     report_.push_back(line);
@@ -263,7 +263,7 @@ void FrameZeroCheck::FindDifferingBlocks() {
   }
   if (differing_->size() > kMaxListedBlocks) list += ",..";
   char line[96];
-  std::snprintf(line, sizeof line, "DEBUG_SAULO netplay frame0 blocks block_bytes=%zu differing=%zu", kStateBlockBytes,
+  std::snprintf(line, sizeof line, "netplay frame0 blocks block_bytes=%zu differing=%zu", kStateBlockBytes,
                 differing_->size());
   report_.push_back(std::string(line) + " list=" + list);
 }
@@ -284,12 +284,12 @@ void FrameZeroCheck::ReportBlock(size_t block) {
   const DiffRuns runs = FindRuns(local, remote, 4, kMaxRunsPerBlock);
   for (const DiffRun& run : runs.runs) {
     const size_t at = begin + run.offset;
-    report_.push_back("DEBUG_SAULO netplay frame0 diff at=" + DescribeStateOffset(at, globals_address_) +
+    report_.push_back("netplay frame0 diff at=" + DescribeStateOffset(at, globals_address_) +
                       " size=" + std::to_string(run.length) + " local=" + Hex(local.data() + run.offset, run.length) +
                       " remote=" + Hex(remote.data() + run.offset, run.length));
   }
   if (runs.total > runs.runs.size()) {
-    report_.push_back("DEBUG_SAULO netplay frame0 diff block=" + DescribeOffset(begin) +
+    report_.push_back("netplay frame0 diff block=" + DescribeOffset(begin) +
                       " more_runs=" + std::to_string(runs.total - runs.runs.size()));
   }
 }

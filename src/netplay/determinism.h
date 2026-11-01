@@ -40,7 +40,7 @@ struct DiffRuns {
 // Differing byte ranges of two equal-sized buffers, merged when closer than `merge_gap`, at most `max_runs` kept.
 DiffRuns FindRuns(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, size_t merge_gap, size_t max_runs);
 
-// "DEBUG_SAULO netplay frame=7 leak runs=2 83C19FC0+4 83E0A2D4+4", addresses from `base_address`.
+// "netplay frame=7 leak runs=2 83C19FC0+4 83E0A2D4+4", addresses from `base_address`.
 std::string FormatRuns(Frame frame, const char* label, uint32_t base_address, const DiffRuns& diff);
 
 // arena, globals, table, ring, rng, side, prev: the regions of a simulation blob.
@@ -53,7 +53,7 @@ std::array<uint32_t, kStateRegions> StateRegionHashes(const std::vector<uint8_t>
 // peers' logs show which part of their frame-0 state differs.
 std::string DescribeStateHashes(const std::vector<uint8_t>& blob);
 
-// One validation result as a log line: "DEBUG_SAULO netplay frame=123 resim=match".
+// One validation result as a log line: "netplay frame=123 resim=match".
 std::string FormatCheck(Frame frame, const char* check, const BlobDiff& diff);
 
 // Picks the fight frames the determinism test runs on: spaced apart, and only a few per session.

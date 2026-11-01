@@ -500,18 +500,18 @@ void TestGateHookUsesTheProvenConvention() {
 void TestTelemetryNamesTheGate() {
   const std::string hook = ReadSource("player_match_hook.cpp");
   const std::string menu = ReadSource("online_menu_hook.cpp");
-  for (const char* line : {"DEBUG_SAULO online_match selected", "DEBUG_SAULO online_match gate begin",
-                           "DEBUG_SAULO online sign-in request begin argument=",
-                           "DEBUG_SAULO online sign-in request original_result=",
-                           "DEBUG_SAULO online sign-in request override_result=",
-                           "DEBUG_SAULO online sign-in request caller=", "DEBUG_SAULO online sign-in request branch=",
-                           "DEBUG_SAULO online sign-in request popup=", "DEBUG_SAULO connection_required popup source=",
-                           "DEBUG_SAULO online_match enter player_match_fsm"}) {
+  for (const char* line : {"online_match selected", "online_match gate begin",
+                           "online sign-in request begin argument=",
+                           "online sign-in request original_result=",
+                           "online sign-in request override_result=",
+                           "online sign-in request caller=", "online sign-in request branch=",
+                           "online sign-in request popup=", "connection_required popup source=",
+                           "online_match enter player_match_fsm"}) {
     CHECK(Has(hook, line));
   }
-  CHECK(Has(menu, "DEBUG_SAULO multiplayer menu enter"));
-  CHECK(Has(menu, "DEBUG_SAULO online_match menu items find=1 custom={} create=1"));
-  CHECK(Has(menu, "DEBUG_SAULO multiplayer menu items local=1 online=1 ranked={} tournament={}"));
+  CHECK(Has(menu, "multiplayer menu enter"));
+  CHECK(Has(menu, "online_match menu items find=1 custom={} create=1"));
+  CHECK(Has(menu, "multiplayer menu items local=1 online=1 ranked={} tournament={}"));
   CHECK(Has(menu, "if (in_multiplayer && !g_in_multiplayer)"));
 }
 
@@ -592,8 +592,8 @@ void TestGameLobbyEditsApplyOnlyToTheShippedLayout() {
 void TestGameLobbyScriptsHookAndTelemetry() {
   const std::string menu = ReadSource("online_menu_hook.cpp");
   CHECK(Has(menu, "StartsLikeScripts(guest_text)") && Has(menu, "ssf2t::PatchLobbyScripts(guest_text)"));
-  CHECK(Has(menu, "DEBUG_SAULO game_lobby actions removed gamer_card={} players_list={} slot_help={}"));
-  CHECK(Has(menu, "DEBUG_SAULO post_fight game_lobby {}"));
+  CHECK(Has(menu, "game_lobby actions removed gamer_card={} players_list={} slot_help={}"));
+  CHECK(Has(menu, "post_fight game_lobby {}"));
   CHECK(Has(menu, "ssf2t::kGameLobbyScreen"));
   CHECK(ScreenNameHash(kGameLobbyScreen) == ScreenNameHash("GAMELOBBY"));
 }

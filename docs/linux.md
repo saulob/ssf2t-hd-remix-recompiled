@@ -36,9 +36,9 @@ is older than GCC 13.
    copied into a `game` folder next to the AppImage.
 5. Optional: click **Install Title Update** and pick the Title Update #1 package. The two are installed separately, in either
    order, and only `default.xexp` is taken from the update.
-6. Wait for **Ready to play**, then press **PLAY**. It stays disabled until both are installed.
+6. Wait for **Ready to play**, then press **PLAY**. It is enabled as soon as the game package is installed (game version 0.0.1.3), or plays 0.0.2.3 when the Title Update is installed too.
 
-Steam Deck is not a tested target for v0.2.2. Adding the AppImage as a non-Steam game should work, but nobody has tried it.
+Steam Deck is not a tested target for v0.3.0. Adding the AppImage as a non-Steam game should work, but nobody has tried it.
 
 ### If the AppImage does not start
 
@@ -88,7 +88,7 @@ checks that the generated code matches `config/guest`:
 ```sh
 tools/package-linux.sh            # incremental Release build, then package
 tools/package-linux.sh --clean    # clean Release build first
-tools/package-linux.sh --verify-only dist/SSF2THDRemix-v0.2.2-x86_64.AppImage
+tools/package-linux.sh --verify-only dist/SSF2THDRemix-v0.3.0-x86_64.AppImage
 tools/test.sh                     # the headless Linux parity gate (tools/test.ps1 runs it in WSL)
 ```
 
@@ -100,7 +100,7 @@ The script copies the sources to `~/ssf2t-linux-build` (`SSF2T_WORK` changes it)
 appimagetool with SHA-256 checks, builds the patched ReXGlue runtime and Vulkan GPU plugin when the patches changed
 (`tools/build-patched-rexruntime.sh`, fingerprinted like the Windows runtime; stock or stale libraries are refused),
 builds the `linux-amd64-release` preset, checks that the AppDir holds exactly the allow-listed files and no game files,
-saves, logs, local paths (ASCII and UTF-16) or `DEBUG_SAULO`, checks RPATH, unresolved libraries and glibc symbols, builds
+saves, logs, local paths (ASCII and UTF-16), checks RPATH, unresolved libraries and glibc symbols, builds
 the AppImage, extracts it again and runs the same checks on the result. It writes
 `dist/SSF2THDRemix-v<version>-x86_64.AppImage` and its `.sha256`, and publishes nothing. The packaged program is built
 without its debug sections; they go to `dist/SSF2THDRemix-v<version>-x86_64-symbols/ssf2t_hd_remix.debug`, outside the

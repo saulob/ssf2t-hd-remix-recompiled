@@ -50,7 +50,6 @@ std::string HexHead(const uint8_t* data, size_t size) {
   return text;
 }
 
-// DEBUG_SAULO: the first datagrams each way, then one line per 256.
 bool ShouldLogPacket(uint32_t count) { return count <= 8 || count % 256 == 0; }
 
 class MuxLink final : public ssf2t::LobbyLink {
@@ -82,7 +81,7 @@ void LogChange(const char* what, int64_t value) {
     if (s.what == what && s.value == value) return;
     if (s.what == what || !s.what) {
       s = {what, value};
-      REXLOG_INFO("DEBUG_SAULO player_match {} value={}", what, value);
+      REXLOG_INFO("player_match {} value={}", what, value);
       return;
     }
   }
@@ -96,7 +95,7 @@ struct NetHooks {
     const auto xuid = xnaddr && out && LiveNow() ? ssf2t::XnAddrXuid(GuestPtr(base, xnaddr)) : std::nullopt;
     if (!xuid) {
       original(ctx, base);
-      REXLOG_INFO("DEBUG_SAULO XNetXnAddrToInAddr original result={}", ctx.r3.u32);
+      REXLOG_INFO("XNetXnAddrToInAddr original result={}", ctx.r3.u32);
       return;
     }
     const uint32_t address = ssf2t::SyntheticAddress(*xuid);
@@ -104,7 +103,7 @@ struct NetHooks {
     ctx.r3.u64 = 0;
     if (address != g_mapped_address) {
       g_mapped_address = address;
-      REXLOG_INFO("DEBUG_SAULO player_match xnet map created xuid={:016X} address={}", *xuid, Dotted(address));
+      REXLOG_INFO("player_match xnet map created xuid={:016X} address={}", *xuid, Dotted(address));
     }
   }
 
@@ -162,7 +161,7 @@ struct NetHooks {
       original(ctx, base);
       return;
     }
-    REXLOG_INFO("DEBUG_SAULO player_match qos begin targets={}", count);
+    REXLOG_INFO("player_match qos begin targets={}", count);
     const std::vector<ssf2t::online::PlayerMatchAd> ads = ssf2t::Online().PlayerMatchResults();
     std::vector<ssf2t::QosTarget> targets;
     bool ours = false;
@@ -175,8 +174,8 @@ struct NetHooks {
       ours = ours || ssf2t::XnAddrXuid(GuestPtr(base, xnaddr)).has_value();
       targets.push_back(ssf2t::QosTargetFor(GuestPtr(base, xnaddr), ads));
       const auto xuid = ssf2t::XnAddrXuid(GuestPtr(base, xnaddr));
-      REXLOG_INFO("DEBUG_SAULO player_match qos lookup peer={:016X}", xuid.value_or(0));
-      REXLOG_INFO("DEBUG_SAULO player_match qos result reachable={} rtt={} data={}", targets.back().reachable,
+      REXLOG_INFO("player_match qos lookup peer={:016X}", xuid.value_or(0));
+      REXLOG_INFO("player_match qos result reachable={} rtt={} data={}", targets.back().reachable,
                   targets.back().rtt_ms, targets.back().data.size());
     }
     if (!ours) {
@@ -195,7 +194,7 @@ struct NetHooks {
       if (auto ev = REX_KERNEL_OBJECTS()->LookupObject<rex::system::XEvent>(event)) ev->Set(0, false);
     }
     ctx.r3.u64 = 0;
-    REXLOG_INFO("DEBUG_SAULO player_match qos complete targets={}", count);
+    REXLOG_INFO("player_match qos complete targets={}", count);
   }
 
   static void Socket(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
@@ -207,7 +206,7 @@ struct NetHooks {
     }
     std::lock_guard<std::mutex> lock(g_shim_mutex);
     ctx.r3.u64 = g_shim.Create();
-    REXLOG_INFO("DEBUG_SAULO player_match socket create handle={:08X} type={} protocol={}", ctx.r3.u32, type,
+    REXLOG_INFO("player_match socket create handle={:08X} type={} protocol={}", ctx.r3.u32, type,
                 protocol);
   }
 
@@ -221,7 +220,7 @@ struct NetHooks {
     std::lock_guard<std::mutex> lock(g_shim_mutex);
     g_shim.Bind(handle, port);
     ctx.r3.u64 = 0;
-    REXLOG_INFO("DEBUG_SAULO player_match socket bind handle={:08X} port={}", handle, port);
+    REXLOG_INFO("player_match socket bind handle={:08X} port={}", handle, port);
   }
 
   static void Connect(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
@@ -231,7 +230,7 @@ struct NetHooks {
       return;
     }
     const uint32_t to = ctx.r4.u32;
-    REXLOG_INFO("DEBUG_SAULO player_match socket connect handle={:08X} address={}", handle,
+    REXLOG_INFO("player_match socket connect handle={:08X} address={}", handle,
                 to ? Dotted(LoadBE32(GuestPtr(base, to), 4)) : std::string("-"));
     ctx.r3.u64 = 0;
   }
@@ -253,7 +252,7 @@ struct NetHooks {
     std::lock_guard<std::mutex> lock(g_shim_mutex);
     g_shim.Close(handle);
     ctx.r3.u64 = 0;
-    REXLOG_INFO("DEBUG_SAULO player_match socket close handle={:08X}", handle);
+    REXLOG_INFO("player_match socket close handle={:08X}", handle);
   }
 
   static void SendTo(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
@@ -274,7 +273,7 @@ struct NetHooks {
       routed = g_shim.SendTo(handle, address, port, data, size, route, g_link);
     }
     if (ShouldLogPacket(++g_sent)) {
-      REXLOG_INFO("DEBUG_SAULO player_match lobby packet tx n={} handle={:08X} to={}:{} bytes={} routed={} head={}",
+      REXLOG_INFO("player_match lobby packet tx n={} handle={:08X} to={}:{} bytes={} routed={} head={}",
                   g_sent, handle, Dotted(address), port, size, routed, HexHead(data, size));
     }
     ctx.r3.u64 = size;
@@ -312,7 +311,7 @@ struct NetHooks {
     }
     if (from_size) StoreBE32(GuestPtr(base, from_size), 0, 16);
     if (ShouldLogPacket(++g_received)) {
-      REXLOG_INFO("DEBUG_SAULO player_match lobby packet rx n={} handle={:08X} from={}:{} bytes={} head={}",
+      REXLOG_INFO("player_match lobby packet rx n={} handle={:08X} from={}:{} bytes={} head={}",
                   g_received, handle, Dotted(received->from_address), received->from_port, size,
                   HexHead(received->data.data(), size));
     }
@@ -369,7 +368,7 @@ struct NetHooks {
   static void SetGameStarted(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     const uint32_t started = ctx.r3.u32;
     original(ctx, base);
-    if (started && LiveNow()) REXLOG_INFO("DEBUG_SAULO player_match game start guest={}", G::kName);
+    if (started && LiveNow()) REXLOG_INFO("player_match game start guest={}", G::kName);
   }
 };
 

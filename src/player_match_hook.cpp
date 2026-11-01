@@ -57,7 +57,7 @@ LiveProfile CurrentLive() {
   if (!logged || logged_xuid != live.xuid) {
     logged = true;
     logged_xuid = live.xuid;
-    REXLOG_INFO("DEBUG_SAULO online runtime LIVE state active xuid={:016X}", live.xuid);
+    REXLOG_INFO("online runtime LIVE state active xuid={:016X}", live.xuid);
   }
   return live;
 }
@@ -79,12 +79,12 @@ void LogOnChange(const char* what, uint32_t value) {
     if (s.what == what) {
       if (s.value == value) return;
       s.value = value;
-      REXLOG_INFO("DEBUG_SAULO {} value={}", what, value);
+      REXLOG_INFO("{} value={}", what, value);
       return;
     }
     if (!s.what) {
       s = {what, value};
-      REXLOG_INFO("DEBUG_SAULO {} value={}", what, value);
+      REXLOG_INFO("{} value={}", what, value);
       return;
     }
   }
@@ -128,7 +128,7 @@ void ForcePlayerMatchSlots(uint8_t* base) {
   if (players == ssf2t::kPlayerMatchSlots && private_slots == 0) return;
   StoreBE32(base, players_at, ssf2t::kPlayerMatchSlots);
   StoreBE32(base, private_at, 0);
-  REXLOG_INFO("DEBUG_SAULO online_match slots forced players={} private=0 was players={} private={}",
+  REXLOG_INFO("online_match slots forced players={} private=0 was players={} private={}",
               ssf2t::kPlayerMatchSlots, players, private_slots);
 }
 
@@ -154,7 +154,7 @@ void SetMatchInputOwner(ssf2t::OwnerChoice choice) {
     std::lock_guard<std::mutex> lock(g_owner_mutex);
     g_owner.Set(choice);
   }
-  REXLOG_INFO("DEBUG_SAULO player_match input owner set user={} source={}", choice.user, choice.source);
+  REXLOG_INFO("player_match input owner set user={} source={}", choice.user, choice.source);
 }
 
 // The guest's own way out of its lobby ends the online match, so nothing restarts a session for that peer.
@@ -162,7 +162,7 @@ void EndOnlineMatch(const char* reason) {
   const bool had_match = ssf2t::Online().Assignment().has_value();
   ssf2t::Online().LeaveMatch();
   ssf2t::EndMatchInput(reason);
-  if (had_match) REXLOG_INFO("DEBUG_SAULO player_match match left reason={}", reason);
+  if (had_match) REXLOG_INFO("player_match match left reason={}", reason);
 }
 
 void NoteInviteTeardown(const char* cause) {
@@ -173,7 +173,7 @@ void NoteInviteTeardown(const char* cause) {
     begun = g_invite.BeginTeardown();
     generation = g_invite.generation();
   }
-  if (begun) REXLOG_INFO("DEBUG_SAULO invite transition teardown begin generation={} cause={}", generation, cause);
+  if (begun) REXLOG_INFO("invite transition teardown begin generation={} cause={}", generation, cause);
 }
 
 void NoteInviteTeardownComplete() {
@@ -184,7 +184,7 @@ void NoteInviteTeardownComplete() {
     completed = g_invite.CompleteTeardown();
     generation = g_invite.generation();
   }
-  if (completed) REXLOG_INFO("DEBUG_SAULO invite transition teardown complete generation={}", generation);
+  if (completed) REXLOG_INFO("invite transition teardown complete generation={}", generation);
 }
 
 bool OnlineErrorPopup(uint32_t code) {
@@ -277,12 +277,12 @@ struct PlayerMatchHooks {
     const bool online = REXCVAR_GET(ssf2t_online_enabled);
     const bool live = CurrentLive().available;
     if (argument == 1 && !confirm) {
-      REXLOG_INFO("DEBUG_SAULO online_match selected guest={}", G::kName);
-      REXLOG_INFO("DEBUG_SAULO online_match gate begin online={} live={} user={} live_user={}", online, live,
+      REXLOG_INFO("online_match selected guest={}", G::kName);
+      REXLOG_INFO("online_match gate begin online={} live={} user={} live_user={}", online, live,
                   int32_t(LoadBE32(base, G::kUserIndex)), LiveUser<G>(base));
     }
-    REXLOG_INFO("DEBUG_SAULO online sign-in request begin argument={} live={}", argument, int(live));
-    REXLOG_INFO("DEBUG_SAULO online sign-in request caller={:08X}", caller);
+    REXLOG_INFO("online sign-in request begin argument={} live={}", argument, int(live));
+    REXLOG_INFO("online sign-in request caller={:08X}", caller);
     std::string original_result = "not_called";
     std::string popup;
     const ssf2t::OnlineGate gate = ssf2t::DecideOnlineGate(argument, online, live);
@@ -291,7 +291,7 @@ struct PlayerMatchHooks {
       // may only now be the LIVE user, and a stale guest XUID makes both players look like the same person.
       refresh_local_users(ctx, base);
       ctx.r3.u64 = uint64_t(int64_t(argument));
-      REXLOG_INFO("DEBUG_SAULO player_match local users refreshed live_user={} xuid={:016X} guest={}",
+      REXLOG_INFO("player_match local users refreshed live_user={} xuid={:016X} guest={}",
                   LiveUser<G>(base), CurrentLive().xuid, G::kName);
     }
     if (gate == ssf2t::OnlineGate::kServiceUnavailable) {
@@ -309,10 +309,10 @@ struct PlayerMatchHooks {
     if (argument == 1 && !confirm && gate == ssf2t::OnlineGate::kLive && ssf2t::SignInAllowed(ctx.r3.u32)) {
       TakeMenuOwner(base);
     }
-    REXLOG_INFO("DEBUG_SAULO online sign-in request original_result={}", original_result);
-    REXLOG_INFO("DEBUG_SAULO online sign-in request override_result={}", ctx.r3.u32);
-    REXLOG_INFO("DEBUG_SAULO online sign-in request branch={}", ssf2t::SignInAllowed(ctx.r3.u32) ? "allow" : "deny");
-    REXLOG_INFO("DEBUG_SAULO online sign-in request popup={}", popup);
+    REXLOG_INFO("online sign-in request original_result={}", original_result);
+    REXLOG_INFO("online sign-in request override_result={}", ctx.r3.u32);
+    REXLOG_INFO("online sign-in request branch={}", ssf2t::SignInAllowed(ctx.r3.u32) ? "allow" : "deny");
+    REXLOG_INFO("online sign-in request popup={}", popup);
   }
 
   // Only the first of the accept box's per-frame gates reaches the game; the box ignores the result.
@@ -328,7 +328,7 @@ struct PlayerMatchHooks {
       ctx.r3.u64 = g_confirm_result;
       return true;
     }
-    REXLOG_INFO("DEBUG_SAULO player_match invite confirm gate generation={} pending={} accepted_flag={} online_zone={} "
+    REXLOG_INFO("player_match invite confirm gate generation={} pending={} accepted_flag={} online_zone={} "
                 "active_match={} guest={}",
                 generation, gate == ssf2t::InviteLifecycle::Gate::kFirst, AcceptedInviteFlag<G>(base),
                 g_in_online_zone.load(), ssf2t::Online().Assignment().has_value(), G::kName);
@@ -358,7 +358,7 @@ struct PlayerMatchHooks {
       generation = g_invite.generation();
       repeats = g_invite.repeats();
     }
-    REXLOG_INFO("DEBUG_SAULO player_match invite {} generation={} consumed={} accepted_flag={}->{} "
+    REXLOG_INFO("player_match invite {} generation={} consumed={} accepted_flag={}->{} "
                 "confirm_repeats_skipped={} online_zone={} guest={}",
                 how, generation, consumed, flag_before, AcceptedInviteFlag<G>(base), repeats,
                 g_in_online_zone.load(), G::kName);
@@ -398,7 +398,7 @@ struct PlayerMatchHooks {
       original(ctx, base);
       return;
     }
-    REXLOG_INFO("DEBUG_SAULO player_match invite open user={} guest={}", ctx.r3.u32, G::kName);
+    REXLOG_INFO("player_match invite open user={} guest={}", ctx.r3.u32, G::kName);
     std::function<void()> open;
     {
       std::lock_guard<std::mutex> lock(g_invite_mutex);
@@ -425,7 +425,7 @@ struct PlayerMatchHooks {
     }
     ssf2t::WriteInviteInfo(GuestPtr(base, out), live.xuid, ssf2t::VirtualXuid(invite->player), invite->session);
     ctx.r3.u64 = 0;
-    REXLOG_INFO("DEBUG_SAULO player_match invite delivered to game session={} host={} generation={}", invite->session,
+    REXLOG_INFO("player_match invite delivered to game session={} host={} generation={}", invite->session,
                 invite->player, generation);
   }
 
@@ -441,12 +441,12 @@ struct PlayerMatchHooks {
       if (OnlineErrorPopup(code) && ssf2t::ValidUser(owner)) GiveMenusTo(base, owner);
       const uint32_t ui = LoadBE32(base, G::kUiInputPointer);
       const int32_t mask = ui ? int32_t(LoadBE32(GuestPtr(base, ui), ssf2t::kUiControllerMaskOffset)) : 0;
-      REXLOG_INFO("DEBUG_SAULO player_match error popup code={} level={} match_input_user={} active_user={} "
+      REXLOG_INFO("player_match error popup code={} level={} match_input_user={} active_user={} "
                   "controller_mask={:#x} caller={:08X} guest={}",
                   code, level, owner, int32_t(LoadBE32(base, G::kUserIndex)), uint32_t(mask), caller, G::kName);
     }
     if (code == ssf2t::kConnectionRequiredError) {
-      REXLOG_INFO("DEBUG_SAULO connection_required popup source={:08X} level={} shown={} guest={}", caller, level,
+      REXLOG_INFO("connection_required popup source={:08X} level={} shown={} guest={}", caller, level,
                   shown, G::kName);
     }
   }
@@ -468,9 +468,9 @@ struct PlayerMatchHooks {
     if (entering) NoteInviteTeardownComplete();
     else if (CurrentLive().available) NoteInviteTeardown("zone_left");
     const bool active_match = ssf2t::Online().Assignment().has_value();
-    REXLOG_INFO("DEBUG_SAULO player_match online zone={} active_match={} teardown=false", entering, active_match);
+    REXLOG_INFO("player_match online zone={} active_match={} teardown=false", entering, active_match);
     if (entering) {
-      REXLOG_INFO("DEBUG_SAULO online_match enter player_match_fsm guest={}", G::kName);
+      REXLOG_INFO("online_match enter player_match_fsm guest={}", G::kName);
       return;
     }
     if (active_match) return;
@@ -498,7 +498,7 @@ struct PlayerMatchHooks {
   static void SessionCreate(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     const uint32_t flags = ctx.r3.u32;
     const uint32_t info = ctx.r8.u32;
-    REXLOG_INFO("DEBUG_SAULO XSessionCreate flags={:08X} user={} public={} private={}", flags, ctx.r4.u32,
+    REXLOG_INFO("XSessionCreate flags={:08X} user={} public={} private={}", flags, ctx.r4.u32,
                 ctx.r5.u32, ctx.r6.u32);
     const bool live = CurrentLive().available;
     if (live) ssf2t::ResetLobbyTelemetry();
@@ -520,10 +520,10 @@ struct PlayerMatchHooks {
       generation = g_invite.generation();
     }
     if (invite_join) {
-      REXLOG_INFO("DEBUG_SAULO invite transition joining generation={} session={}", generation, join_session);
+      REXLOG_INFO("invite transition joining generation={} session={}", generation, join_session);
     }
     if (!ssf2t::Online().JoinPlayerMatch(join_session) && invite_join) {
-      REXLOG_INFO("DEBUG_SAULO invite transition failed generation={} reason=join_refused", generation);
+      REXLOG_INFO("invite transition failed generation={} reason=join_refused", generation);
     }
   }
 
@@ -538,7 +538,7 @@ struct PlayerMatchHooks {
       const uint32_t capacity = LoadBE32(GuestPtr(base, size_ptr), 0);
       const uint32_t written = ssf2t::WriteSearchResults(GuestPtr(base, header), header, capacity, max_results,
                                                          ssf2t::Online().PlayerMatchResults(epoch));
-      REXLOG_INFO("DEBUG_SAULO player_match search results={} written_to_guest={} deferred=true", written, written);
+      REXLOG_INFO("player_match search results={} written_to_guest={} deferred=true", written, written);
       return 0;
     };
     REX_KERNEL_STATE()->CompleteOverlappedDeferred(std::function<rex::X_RESULT()>(std::move(run)), overlapped);
@@ -567,14 +567,14 @@ struct PlayerMatchHooks {
     // The game polls the search several times a second; log changes and a summary at most once a second.
     static ssf2t::SearchLogGate gate;
     if (!gate.ShouldLog(written, NowSeconds())) return;
-    REXLOG_INFO("DEBUG_SAULO XSessionSearchEx procedure={} user={} max={} properties={} contexts={} calls={}",
+    REXLOG_INFO("XSessionSearchEx procedure={} user={} max={} properties={} contexts={} calls={}",
                 ctx.r3.u32, ctx.r4.u32, max_results, ctx.r7.u32 & 0xFFFF, ctx.r8.u32 & 0xFFFF,
                 gate.calls_since_log());
-    REXLOG_INFO("DEBUG_SAULO player_match search results={} written_to_guest={}", written, written);
+    REXLOG_INFO("player_match search results={} written_to_guest={}", written, written);
   }
 
   static void SessionCall(PPCContext& ctx, uint8_t* base, PPCFunc* original, const char* name) {
-    REXLOG_INFO("DEBUG_SAULO {} handle={:08X} arg={:08X}", name, ctx.r3.u32, ctx.r4.u32);
+    REXLOG_INFO("{} handle={:08X} arg={:08X}", name, ctx.r3.u32, ctx.r4.u32);
     original(ctx, base);
   }
 
@@ -583,7 +583,7 @@ struct PlayerMatchHooks {
   // the leave only has to complete.
   static void SessionLeave(PPCContext& ctx, uint8_t* base, PPCFunc* original, const char* name, bool local) {
     const uint32_t overlapped = ctx.r6.u32;
-    REXLOG_INFO("DEBUG_SAULO {} handle={:08X} users={} overlapped={:08X}", name, ctx.r3.u32, ctx.r4.u32, overlapped);
+    REXLOG_INFO("{} handle={:08X} users={} overlapped={:08X}", name, ctx.r3.u32, ctx.r4.u32, overlapped);
     if (!CurrentLive().available) {
       original(ctx, base);
       return;
@@ -595,13 +595,13 @@ struct PlayerMatchHooks {
     } else {
       ctx.r3.u64 = 0;
     }
-    REXLOG_INFO("DEBUG_SAULO {} completed xgi={:08X} result={}", name, ssf2t::kXgiSessionLeave, ctx.r3.u32);
+    REXLOG_INFO("{} completed xgi={:08X} result={}", name, ssf2t::kXgiSessionLeave, ctx.r3.u32);
     if (local) EndOnlineMatch("lobby_left");
   }
 
   static void SessionStart(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     SessionCall(ctx, base, original, "XSessionStart");
-    if (CurrentLive().available) REXLOG_INFO("DEBUG_SAULO player_match start");
+    if (CurrentLive().available) REXLOG_INFO("player_match start");
   }
 
   static void SessionDelete(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
@@ -615,7 +615,7 @@ struct PlayerMatchHooks {
 
   // Ranked and Tournament are not in the menu; these only prove nothing reached them.
   static void RankedOnly(PPCContext& ctx, uint8_t* base, PPCFunc* original, const char* name) {
-    REXLOG_INFO("DEBUG_SAULO {} reached game_mode={}", name, base[G::kGameMode]);
+    REXLOG_INFO("{} reached game_mode={}", name, base[G::kGameMode]);
     original(ctx, base);
   }
 };
@@ -637,14 +637,14 @@ void DeliverAcceptedInvite(const online::PlayerMatchAd& ad, InputSource accepted
   {
     std::lock_guard<std::mutex> lock(g_invite_mutex);
     if (!g_invite.Deliver(ad.session, Online().AcceptedInviteGeneration())) {
-      REXLOG_INFO("DEBUG_SAULO player_match invite ignored session={} reason=already_delivered generation={}",
+      REXLOG_INFO("player_match invite ignored session={} reason=already_delivered generation={}",
                   ad.session, g_invite.generation());
       return;
     }
     generation = g_invite.generation();
     g_delivered_invite = ad;
   }
-  REXLOG_INFO("DEBUG_SAULO invite state accepted generation={} session={}", generation, ad.session);
+  REXLOG_INFO("invite state accepted generation={} session={}", generation, ad.session);
   OwnerChoice choice;
   int32_t last_input = -1;
   int32_t last_pad = -1;
@@ -656,7 +656,7 @@ void DeliverAcceptedInvite(const online::PlayerMatchAd& ad, InputSource accepted
     g_invite_owner_at = NowSeconds();
   }
   SetMatchInputOwner(choice);
-  REXLOG_INFO("DEBUG_SAULO player_match invite accepted session={} generation={} user={} source={} last_input_user={} "
+  REXLOG_INFO("player_match invite accepted session={} generation={} user={} source={} last_input_user={} "
               "last_pad_user={} live_user={}",
               ad.session, generation, choice.user, choice.source, last_input, last_pad, g_live_user.load());
   REX_KERNEL_STATE()->BroadcastNotification(kInviteAcceptedNotification, uint32_t(choice.user));
@@ -681,7 +681,7 @@ void EndMatchInput(const char* reason) {
     g_invite_owner_at = -1.0;
     user = g_owner.user();
   }
-  REXLOG_INFO("DEBUG_SAULO player_match input owner released user={} reason={}", user, reason);
+  REXLOG_INFO("player_match input owner released user={} reason={}", user, reason);
 }
 
 }  // namespace ssf2t

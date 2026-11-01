@@ -351,17 +351,17 @@ void TestFriendRequestReachesTheServiceAndIsLogged() {
   Rig rig;
   rig.SignInWithFriends();
   CHECK(rig.service->AddFriend(" jklm-3456\r\n") == FriendRequestResult::kSent);
-  CHECK(rig.CountLogs("DEBUG_SAULO online friend request sent code=JKLM-3456") == 1);
+  CHECK(rig.CountLogs("online friend request sent code=JKLM-3456") == 1);
   CHECK(rig.Count("friends.add") == 1);
   rig.Reply("friends.add", "\"player\":\"JKLM-3456\",\"name\":\"Kim\",\"state\":\"pending\"");
   CHECK(rig.CountLogs("friend request accepted by service code=JKLM-3456 state=pending") == 1);
 
   CHECK(rig.service->AddFriend("NPQR-7892") == FriendRequestResult::kSent);
   rig.Reply("friends.add", "", "not_found");
-  CHECK(rig.CountLogs("DEBUG_SAULO online friend request failed code=NPQR-7892 reason=not_found") == 1);
+  CHECK(rig.CountLogs("online friend request failed code=NPQR-7892 reason=not_found") == 1);
 
   CHECK(rig.service->AddFriend("nonsense") == FriendRequestResult::kInvalid);
-  CHECK(rig.CountLogs("DEBUG_SAULO online friend request failed code=- reason=invalid") == 1);
+  CHECK(rig.CountLogs("online friend request failed code=- reason=invalid") == 1);
   CHECK(rig.service->AddFriend(rig.me) == FriendRequestResult::kOwnCode);
   CHECK(rig.CountLogs("failed code=" + rig.me + " reason=own_code") == 1);
   for (const std::string& line : rig.logs) CHECK(!Contains(line, kToken));
@@ -439,8 +439,8 @@ void TestHostedPlayerMatchBecomesPlayerOne() {
   CHECK(Contains(host, "\"slots\":2") && Contains(host, "\"rules\":{\"rounds\":3,\"timer\":1}"));
   rig.Reply("pm.host", std::string("\"session\":\"") + kSession + "\"");
   CHECK(rig.service->snapshot().player_match.hosting && rig.service->snapshot().player_match.session == kSession);
-  CHECK(rig.CountLogs(std::string("DEBUG_SAULO player_match create session_id=") + kSession) == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO player_match advertise") == 1);
+  CHECK(rig.CountLogs(std::string("player_match create session_id=") + kSession) == 1);
+  CHECK(rig.CountLogs("player_match advertise") == 1);
   rig.Tick(30.0);
   CHECK(rig.Count("pm.host") == 1);
   rig.Tick(31.0);
@@ -451,7 +451,7 @@ void TestHostedPlayerMatchBecomesPlayerOne() {
   const Snapshot s = rig.service->snapshot();
   CHECK(s.match && s.match->host && !s.player_match.hosting);
   CHECK(Contains(rig.LastRequest("match.endpoint"), "\"port\":7001"));
-  CHECK(rig.CountLogs("DEBUG_SAULO player_match host ready") == 1);
+  CHECK(rig.CountLogs("player_match host ready") == 1);
   CHECK(!rig.service->Assignment());
   rig.Tick(61.0);
   CHECK(rig.Count("pm.host") == 2);
@@ -476,8 +476,8 @@ void TestJoinedPlayerMatchBecomesPlayerTwoOnTheSamePc() {
   const std::vector<PlayerMatchAd> results = rig.service->PlayerMatchResults();
   CHECK(results.size() == 1 && results[0].session == kSession && results[0].player == kFriendA);
   CHECK(results.size() == 1 && results[0].rules == (PlayerMatchRules{{"rounds", 2}}));
-  CHECK(rig.CountLogs("DEBUG_SAULO player_match search results=1") == 1);
-  CHECK(rig.CountLogs(std::string("DEBUG_SAULO player_match search result friend=") + kFriendA) == 1);
+  CHECK(rig.CountLogs("player_match search results=1") == 1);
+  CHECK(rig.CountLogs(std::string("player_match search result friend=") + kFriendA) == 1);
   rig.Tick(1.0);
   CHECK(rig.Count("pm.search") == 1);
   rig.Tick(2.5);
@@ -490,7 +490,7 @@ void TestJoinedPlayerMatchBecomesPlayerTwoOnTheSamePc() {
   CHECK(!rig.service->JoinPlayerMatch(kSession));
   rig.Reply("pm.join", std::string("\"session\":\"") + kSession + "\"," +
                            MatchBody("m2", "join", "tu023", kFriendA, "SauloB"));
-  CHECK(rig.CountLogs("DEBUG_SAULO player_match join service complete") == 1);
+  CHECK(rig.CountLogs("player_match join service complete") == 1);
   CHECK(rig.service->snapshot().match && !rig.service->snapshot().match->host);
   CHECK(!rig.service->snapshot().player_match.searching);
   CHECK(Contains(rig.LastRequest("match.endpoint"), "\"port\":7002"));
@@ -518,9 +518,9 @@ void TestSignalingPeerAddressIsLoggedForDiagnosis() {
   rig.Feed(std::string("{\"ev\":\"match.peer\",\"match\":\"m2\",\"player\":\"") + kFriendA +
            "\",\"name\":\"SauloB\",\"role\":\"host\",\"ip\":\"179.113.149.63\",\"port\":54114,\"lan\":[],"
            "\"same_network\":false}");
-  CHECK(rig.CountLogs("DEBUG_SAULO signaling peer raw_address=179.113.149.63 raw_port=54114") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO signaling peer parsed family=ipv4") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO signaling peer endpoint=179.113.149.63:54114") == 1);
+  CHECK(rig.CountLogs("signaling peer raw_address=179.113.149.63 raw_port=54114") == 1);
+  CHECK(rig.CountLogs("signaling peer parsed family=ipv4") == 1);
+  CHECK(rig.CountLogs("signaling peer endpoint=179.113.149.63:54114") == 1);
   const auto assignment = rig.service->Assignment();
   CHECK(assignment && assignment->peer_ip == "179.113.149.63");
 }
@@ -537,9 +537,9 @@ void TestIpv6PeerAddressIsLoggedNotSilentlyAccepted() {
   rig.Reply("pm.join", std::string("\"session\":\"") + kSession + "\"," + MatchBody("m2", "join", "base013", kFriendA, "SauloB"));
   rig.Feed(std::string("{\"ev\":\"match.peer\",\"match\":\"m2\",\"player\":\"") + kFriendA +
            "\",\"name\":\"SauloB\",\"role\":\"host\",\"ip\":\"2804:14d::1\",\"port\":7001,\"lan\":[],\"same_network\":false}");
-  CHECK(rig.CountLogs("DEBUG_SAULO signaling peer raw_address=2804:14d::1 raw_port=7001") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO signaling peer parsed family=ipv6") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO signaling peer endpoint=none") == 1);
+  CHECK(rig.CountLogs("signaling peer raw_address=2804:14d::1 raw_port=7001") == 1);
+  CHECK(rig.CountLogs("signaling peer parsed family=ipv6") == 1);
+  CHECK(rig.CountLogs("signaling peer endpoint=none") == 1);
   const auto assignment = rig.service->Assignment();
   CHECK(assignment && assignment->peer_ip == "2804:14d::1");
 }
@@ -576,8 +576,8 @@ void TestMatchAdvertisesTheGameSocketsMappedEndpoint() {
   const std::string endpoint = rig.LastRequest("match.endpoint");
   CHECK(Contains(endpoint, "\"port\":58141"));
   CHECK(Contains(endpoint, "\"public_ip\":\"179.113.149.63\",\"public_port\":54114"));
-  CHECK(rig.CountLogs("DEBUG_SAULO stun mapped endpoint=179.113.149.63:54114 local_port=58141") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO match endpoint advertised=179.113.149.63:54114 local=0.0.0.0:58141") == 1);
+  CHECK(rig.CountLogs("stun mapped endpoint=179.113.149.63:54114 local_port=58141") == 1);
+  CHECK(rig.CountLogs("match endpoint advertised=179.113.149.63:54114 local=0.0.0.0:58141") == 1);
   CHECK(udp.socket.bound_port() == 58141);
   CHECK(!rig.service->Assignment());
 }
@@ -590,7 +590,7 @@ void TestPeerIsHandedToTheFightOnlyAfterItsPunchAnswers() {
   // Its WebSocket came over IPv6: only the STUN endpoint is a UDP candidate.
   rig.Feed(PeerJson("m1", "join", "\"ip\":\"2804:14d::1\",\"port\":7002,\"lan\":[],\"same_network\":false,"
                                   "\"public_ip\":\"127.0.0.1\",\"public_port\":58148"));
-  CHECK(rig.CountLogs("DEBUG_SAULO peer candidate received type=stun endpoint=127.0.0.1:58148") == 1);
+  CHECK(rig.CountLogs("peer candidate received type=stun endpoint=127.0.0.1:58148") == 1);
   CHECK(rig.CountLogs("type=observed") == 0);
   for (int i = 0; i < 5; ++i) {
     rig.Tick(0.15);
@@ -599,7 +599,7 @@ void TestPeerIsHandedToTheFightOnlyAfterItsPunchAnswers() {
   const std::vector<PunchPacket> heard = udp.PeerHeard();
   CHECK(heard.size() >= 3);
   CHECK(!heard.empty() && heard[0].kind == PunchKind::kPunch && heard[0].side == 1 && heard[0].key == PunchKey("m1"));
-  CHECK(rig.CountLogs("DEBUG_SAULO udp punch tx endpoint=127.0.0.1:58148") == 1);  // once, not per packet
+  CHECK(rig.CountLogs("udp punch tx endpoint=127.0.0.1:58148") == 1);  // once, not per packet
   CHECK(!rig.service->Assignment());  // punches out are no proof
 
   // Not this match's, or this side's own: no proof either.
@@ -617,7 +617,7 @@ void TestPeerIsHandedToTheFightOnlyAfterItsPunchAnswers() {
   bool acked = false;
   for (const PunchPacket& packet : udp.PeerHeard()) acked |= packet.kind == PunchKind::kAck && packet.side == 1;
   CHECK(acked);
-  CHECK(rig.CountLogs("DEBUG_SAULO udp punch rx endpoint=127.0.0.1:58148") == 1);
+  CHECK(rig.CountLogs("udp punch rx endpoint=127.0.0.1:58148") == 1);
   CHECK(!rig.service->Assignment());
 
   udp.PeerSends(PunchKind::kAck, 2, PunchKey("m1"));
@@ -625,7 +625,7 @@ void TestPeerIsHandedToTheFightOnlyAfterItsPunchAnswers() {
   rig.Tick(0.05);
   const auto assignment = rig.service->Assignment();
   CHECK(assignment && assignment->host && assignment->peer_ip == "127.0.0.1" && assignment->peer_port == 58148);
-  CHECK(rig.CountLogs("DEBUG_SAULO udp candidate selected endpoint=127.0.0.1:58148 type=stun") == 1);
+  CHECK(rig.CountLogs("udp candidate selected endpoint=127.0.0.1:58148 type=stun") == 1);
   CHECK(udp.socket.bound_port() == 58141);
 }
 
@@ -665,12 +665,12 @@ void TestNoStunAnswerAdvertisesNoMapping() {
   }
   CHECK(rig.Count("match.endpoint") == 1);
   CHECK(!Contains(rig.LastRequest("match.endpoint"), "public_ip"));
-  CHECK(rig.CountLogs("DEBUG_SAULO stun mapped endpoint=none reason=no_answer") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO match endpoint advertised=none local=0.0.0.0:58141") == 1);
+  CHECK(rig.CountLogs("stun mapped endpoint=none reason=no_answer") == 1);
+  CHECK(rig.CountLogs("match endpoint advertised=none local=0.0.0.0:58141") == 1);
   rig.Feed(PeerJson("m1", "join", "\"ip\":\"::ffff:127.0.0.1\",\"port\":58148,\"lan\":[],\"same_network\":false,"
                                   "\"public_ip\":\"127.0.0.1\",\"public_port\":58147"));
-  CHECK(rig.CountLogs("DEBUG_SAULO peer candidate received type=stun endpoint=127.0.0.1:58147") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO peer candidate received type=observed endpoint=127.0.0.1:58148") == 1);
+  CHECK(rig.CountLogs("peer candidate received type=stun endpoint=127.0.0.1:58147") == 1);
+  CHECK(rig.CountLogs("peer candidate received type=observed endpoint=127.0.0.1:58148") == 1);
 }
 
 // A mapping the service would refuse (not a public address) is not advertised, so the endpoint still goes through.
@@ -681,8 +681,8 @@ void TestNonPublicMappingIsNotAdvertised() {
   rig.StartPlayerMatchAsHost();
   Discover(rig, udp);
   CHECK(rig.Count("match.endpoint") == 1 && !Contains(rig.LastRequest("match.endpoint"), "public_ip"));
-  CHECK(rig.CountLogs("DEBUG_SAULO stun mapped endpoint=100.64.1.2:40000") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO match endpoint advertised=none local=0.0.0.0:58141") == 1);
+  CHECK(rig.CountLogs("stun mapped endpoint=100.64.1.2:40000") == 1);
+  CHECK(rig.CountLogs("match endpoint advertised=none local=0.0.0.0:58141") == 1);
 }
 
 const char kNoPublic[] = "\"ip\":\"108.202.118.218\",\"port\":7001,\"lan\":[],\"same_network\":false,\"public_endpoints\":true";
@@ -708,10 +708,10 @@ void TestInternetPeerEndpointIsWaitedFor() {
     if (host) rig.StartPlayerMatchAsHost();
     else JoinAsPlayerTwo(rig, match);
     Discover(rig, udp);
-    CHECK(rig.CountLogs(std::string("DEBUG_SAULO peer endpoint pending match=") + match + " peer=" + kFriendA) == 1);
+    CHECK(rig.CountLogs(std::string("peer endpoint pending match=") + match + " peer=" + kFriendA) == 1);
     const char* peer_role = host ? "join" : "host";
     rig.Feed(PeerJson(match, peer_role, kNoPublic));
-    CHECK(rig.CountLogs("DEBUG_SAULO peer endpoint update raw=108.202.118.218:7001 public=none "
+    CHECK(rig.CountLogs("peer endpoint update raw=108.202.118.218:7001 public=none "
                         "service_forwards_public=true") == 1);
     for (int i = 0; i < 5; ++i) rig.Tick(1.0);
     CHECK(rig.CountLogs("udp rendezvous begin") == 0 && rig.CountLogs("udp punch tx") == 0);
@@ -719,11 +719,11 @@ void TestInternetPeerEndpointIsWaitedFor() {
     CHECK(rig.service->snapshot().match && rig.Count("match.leave") == 0);
 
     rig.Feed(PeerJson(match, peer_role, kWithPublic));
-    CHECK(rig.CountLogs("DEBUG_SAULO peer endpoint update raw=108.202.118.218:7001 public=127.0.0.1:58148") == 1);
-    CHECK(rig.CountLogs("DEBUG_SAULO peer endpoint ready public=127.0.0.1:58148 same_network=false") == 1);
-    CHECK(rig.CountLogs("DEBUG_SAULO udp rendezvous begin candidates=2") == 1);
-    CHECK(rig.CountLogs("DEBUG_SAULO peer candidate received type=stun endpoint=127.0.0.1:58148") == 1);
-    CHECK(rig.CountLogs("DEBUG_SAULO peer candidate received type=observed endpoint=108.202.118.218:7001") == 1);
+    CHECK(rig.CountLogs("peer endpoint update raw=108.202.118.218:7001 public=127.0.0.1:58148") == 1);
+    CHECK(rig.CountLogs("peer endpoint ready public=127.0.0.1:58148 same_network=false") == 1);
+    CHECK(rig.CountLogs("udp rendezvous begin candidates=2") == 1);
+    CHECK(rig.CountLogs("peer candidate received type=stun endpoint=127.0.0.1:58148") == 1);
+    CHECK(rig.CountLogs("peer candidate received type=observed endpoint=108.202.118.218:7001") == 1);
 
     // The same update again changes nothing: no second punch, no candidates added twice.
     rig.Feed(PeerJson(match, peer_role, kWithPublic));
@@ -747,8 +747,8 @@ void TestReadyPeerEndpointPunchesAtOnce() {
   rig.StartPlayerMatchAsHost();
   Discover(rig, udp);
   rig.Feed(PeerJson("m1", "join", kWithPublic));
-  CHECK(rig.CountLogs("DEBUG_SAULO peer endpoint ready public=127.0.0.1:58148") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO udp rendezvous begin candidates=2") == 1);
+  CHECK(rig.CountLogs("peer endpoint ready public=127.0.0.1:58148") == 1);
+  CHECK(rig.CountLogs("udp rendezvous begin candidates=2") == 1);
 }
 
 // The same network needs no Internet endpoint: its LAN candidates go at once.
@@ -758,8 +758,8 @@ void TestSameNetworkPeerDoesNotWait() {
   rig.StartPlayerMatchAsHost();
   Discover(rig, udp);
   rig.Feed(PeerJson("m1", "join", "\"ip\":\"203.0.113.9\",\"port\":58148,\"lan\":[\"127.0.0.1\"],\"same_network\":true"));
-  CHECK(rig.CountLogs("DEBUG_SAULO peer endpoint ready public=none same_network=true") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO peer candidate received type=lan endpoint=127.0.0.1:58148") == 1);
+  CHECK(rig.CountLogs("peer endpoint ready public=none same_network=true") == 1);
+  CHECK(rig.CountLogs("peer candidate received type=lan endpoint=127.0.0.1:58148") == 1);
   CHECK(rig.CountLogs("udp rendezvous begin") == 1);
 }
 
@@ -774,8 +774,8 @@ void TestMissingPeerEndpointTimesOutAndFreesThePlayerMatch() {
   for (int i = 0; i < 9; ++i) rig.Tick(1.0);
   CHECK(rig.service->snapshot().match && rig.Count("match.leave") == 0);
   for (int i = 0; i < 2; ++i) rig.Tick(1.0);
-  CHECK(rig.CountLogs("DEBUG_SAULO peer endpoint wait timeout") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO udp rendezvous failed reason=peer_endpoint_timeout peer_signaled=true "
+  CHECK(rig.CountLogs("peer endpoint wait timeout") == 1);
+  CHECK(rig.CountLogs("udp rendezvous failed reason=peer_endpoint_timeout peer_signaled=true "
                       "service_forwards_public=true") == 1);
   CHECK(rig.CountLogs("udp rendezvous failed reason=no_direct_path") == 1 && rig.CountLogs("punch_timeout") == 0);
   CHECK(rig.CountLogs("udp punch tx") == 0);
@@ -801,7 +801,7 @@ void TestNoPeerSignalingTimesOut() {
   rig.StartPlayerMatchAsHost();
   Discover(rig, udp);
   for (int i = 0; i < 11; ++i) rig.Tick(1.0);
-  CHECK(rig.CountLogs("DEBUG_SAULO udp rendezvous failed reason=peer_endpoint_timeout peer_signaled=false "
+  CHECK(rig.CountLogs("udp rendezvous failed reason=peer_endpoint_timeout peer_signaled=false "
                       "service_forwards_public=false") == 1);
   CHECK(!rig.service->snapshot().match);
 }
@@ -832,8 +832,8 @@ void TestUnansweredPunchLeavesTheMatch() {
   for (int i = 0; i < 9; ++i) rig.Tick(1.0);
   CHECK(rig.service->snapshot().match && rig.Count("match.leave") == 0);
   for (int i = 0; i < 3; ++i) rig.Tick(1.0);
-  CHECK(rig.CountLogs("DEBUG_SAULO udp rendezvous failed reason=punch_timeout candidates=2 peer_heard=false") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO udp rendezvous failed reason=no_direct_path") == 1);
+  CHECK(rig.CountLogs("udp rendezvous failed reason=punch_timeout candidates=2 peer_heard=false") == 1);
+  CHECK(rig.CountLogs("udp rendezvous failed reason=no_direct_path") == 1);
   CHECK(rig.Count("match.leave") == 1 && !rig.service->snapshot().match && !rig.service->Assignment());
   CHECK(Contains(rig.service->snapshot().notice, "no direct connection"));
   CHECK(udp.socket.is_open() && udp.socket.bound_port() == 58141);  // kept for the next match
@@ -878,7 +878,7 @@ void TestUnboundSocketLeavesTheMatch() {
   ssf2t::netplay::OnlineGameSocket unbound;
   Rig rig(kGuestBase013, false, kToken, &udp, &unbound);
   rig.StartPlayerMatchAsHost();
-  CHECK(rig.CountLogs("DEBUG_SAULO udp rendezvous failed reason=socket_unbound") == 1);
+  CHECK(rig.CountLogs("udp rendezvous failed reason=socket_unbound") == 1);
   CHECK(rig.Count("match.leave") == 1 && !rig.service->snapshot().match);
 }
 
@@ -900,7 +900,7 @@ void TestCancelSearchStopAndRefusedJoin() {
   rig.Reply("pm.join", "", "offline");
   CHECK(!rig.service->snapshot().match);
   CHECK(rig.service->snapshot().notice == "Your friend is not online.");
-  CHECK(rig.CountLogs("DEBUG_SAULO player_match join failed code=offline") == 1);
+  CHECK(rig.CountLogs("player_match join failed code=offline") == 1);
   rig.service->SetPlayerMatchSearch(false);
   const int searches = rig.Count("pm.search");
   rig.Tick(10.0);
@@ -1150,7 +1150,7 @@ void TestEveryConnectionReportCountsAsFinished() {
   rig.Tick();
   const Snapshot stopped = rig.service->snapshot();
   CHECK(!stopped.testing && stopped.tests_finished == 3);
-  CHECK(rig.CountLogs("DEBUG_SAULO online connection test stopped without a report: test broke") == 1);
+  CHECK(rig.CountLogs("online connection test stopped without a report: test broke") == 1);
 
   // Online play off drops a test that is still running.
   Rig off;
@@ -1179,8 +1179,8 @@ void TestConnectionTestRunsOnlyWhenEnabled() {
         rig.test_request.guest == "base013" && rig.test_request.upnp &&
         rig.test_request.game_ports == (std::vector<uint16_t>{7001, 7002}));
   CHECK(rig.test_request.identity.player_id == rig.me && rig.test_request.stun == net::kDefaultStunServers);
-  CHECK(rig.CountLogs("DEBUG_SAULO online connection test service: ok") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO online connection test Ready for online play") == 1);
+  CHECK(rig.CountLogs("online connection test service: ok") == 1);
+  CHECK(rig.CountLogs("online connection test Ready for online play") == 1);
   for (const std::string& line : rig.logs) CHECK(!Contains(line, kToken));
 }
 
@@ -1297,17 +1297,17 @@ void TestServiceCapabilitiesAreLoggedAndRelayIsOffered() {
     Rig rig(kGuestBase013, false, kToken, &udp);
     SignInRelay(rig);
     CHECK(Contains(rig.LastRequest("hello"), "\"relay\":true"));
-    CHECK(rig.CountLogs("DEBUG_SAULO online service capabilities protocol=3 worker_build=test-build "
+    CHECK(rig.CountLogs("online service capabilities protocol=3 worker_build=test-build "
                         "public_endpoints=true relay_supported=true") == 1);
-    CHECK(rig.CountLogs("DEBUG_SAULO relay capability available=true") == 1);
+    CHECK(rig.CountLogs("relay capability available=true") == 1);
     CHECK(rig.service->Capabilities().relay_supported);
   }
 
   Rig legacy(kGuestBase013, false, kToken, &udp);
   SignInRelay(legacy, "");
-  CHECK(legacy.CountLogs("DEBUG_SAULO online service capabilities protocol=legacy worker_build=legacy "
+  CHECK(legacy.CountLogs("online service capabilities protocol=legacy worker_build=legacy "
                          "public_endpoints=unknown relay_supported=false") == 1);
-  CHECK(legacy.CountLogs("DEBUG_SAULO relay capability available=false") == 1);
+  CHECK(legacy.CountLogs("relay capability available=false") == 1);
   CHECK(!legacy.service->Capabilities().relay_supported);
 
   Rig signaling_only;  // no gameplay socket: nothing to relay with
@@ -1320,9 +1320,9 @@ void TestDirectWinsWhenThePunchAnswersInTime() {
   UdpRig udp;
   Rig rig(kGuestBase013, false, kToken, &udp);
   HostRelayMatch(rig);
-  CHECK(rig.CountLogs("DEBUG_SAULO relay available match=m1 role=host relay_available=true") == 1);
+  CHECK(rig.CountLogs("relay available match=m1 role=host relay_available=true") == 1);
   Discover(rig, udp);
-  CHECK(rig.CountLogs("DEBUG_SAULO direct probe begin match=m1 budget_ms=2500 relay_available=true") == 1);
+  CHECK(rig.CountLogs("direct probe begin match=m1 budget_ms=2500 relay_available=true") == 1);
   CHECK(rig.service->snapshot().match->transport == MatchTransport::kDirectProbing);
   rig.Feed(PeerJson("m1", "join", kWithPublic));
   rig.Tick(0.15);
@@ -1332,7 +1332,7 @@ void TestDirectWinsWhenThePunchAnswersInTime() {
   rig.Tick(0.05);
   const auto assignment = rig.service->Assignment();
   CHECK(assignment && assignment->host && !assignment->relay && assignment->peer_port == 58148);
-  CHECK(rig.CountLogs("DEBUG_SAULO transport selected=direct match=m1 endpoint=127.0.0.1:58148 type=stun") == 1);
+  CHECK(rig.CountLogs("transport selected=direct match=m1 endpoint=127.0.0.1:58148 type=stun") == 1);
   CHECK(rig.Count("match.transport") == 1 && Contains(rig.LastRequest("match.transport"), "\"transport\":\"direct\""));
   CHECK(rig.service->snapshot().match->transport == MatchTransport::kDirect);
 
@@ -1348,7 +1348,7 @@ void TestDirectWinsWhenThePunchAnswersInTime() {
   CHECK(udp.peer.Receive(data, sizeof data, from) == 9 && from == udp.Game());
   CHECK(rig.Last().binary.empty());
   rig.service->LeaveMatch();
-  CHECK(rig.CountLogs("DEBUG_SAULO match transport summary match=m1 selected=direct direct_attempted=true") == 1);
+  CHECK(rig.CountLogs("match transport summary match=m1 selected=direct direct_attempted=true") == 1);
   CHECK(rig.CountLogs("relay_available=true relay_used=false") == 1);
 }
 
@@ -1364,14 +1364,14 @@ void TestNoDirectPathFallsBackToTheRelay() {
   CHECK(rig.CountLogs("udp punch tx endpoint=127.0.0.1:58148") == 1);
   CHECK(rig.Count("match.transport") == 0 && !rig.service->Assignment());
   Run(rig, 0.8);
-  CHECK(rig.CountLogs("DEBUG_SAULO direct path not established elapsed_ms=") == 1);
+  CHECK(rig.CountLogs("direct path not established elapsed_ms=") == 1);
   CHECK(rig.CountLogs("reason=no_punch_answer") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO relay fallback begin match=m1 direct_elapsed_ms=") == 1);
+  CHECK(rig.CountLogs("relay fallback begin match=m1 direct_elapsed_ms=") == 1);
   CHECK(Contains(rig.LastRequest("match.transport"), "\"match\":\"m1\",\"transport\":\"relay\""));
   CHECK(!rig.service->Assignment());  // the service has not confirmed it yet
   rig.Reply("match.transport");
-  CHECK(rig.CountLogs("DEBUG_SAULO relay ready match=m1 role=host") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO transport selected=relay match=m1") == 1);
+  CHECK(rig.CountLogs("relay ready match=m1 role=host") == 1);
+  CHECK(rig.CountLogs("transport selected=relay match=m1") == 1);
   const auto assignment = rig.service->Assignment();
   CHECK(assignment && assignment->host && assignment->relay && assignment->peer_ip == "127.0.0.2" &&
         assignment->peer_port == ssf2t::netplay::kRelayPeer.port);
@@ -1390,12 +1390,12 @@ void TestNoDirectPathFallsBackToTheRelay() {
   CHECK(GameReceive(udp.socket, from) == rollback && from == ssf2t::netplay::kRelayPeer);
   CHECK(GameReceive(udp.socket, from).empty());
   rig.Tick();
-  CHECK(rig.CountLogs("DEBUG_SAULO relay tx n=1 bytes=9") == 1 && rig.CountLogs("DEBUG_SAULO relay rx n=1 bytes=40") == 1);
+  CHECK(rig.CountLogs("relay tx n=1 bytes=9") == 1 && rig.CountLogs("relay rx n=1 bytes=40") == 1);
   Run(rig, 10.5);
-  CHECK(rig.CountLogs("DEBUG_SAULO relay stats tx_packets=1 tx_bytes=9 rx_packets=1 rx_bytes=40") >= 1);
+  CHECK(rig.CountLogs("relay stats tx_packets=1 tx_bytes=9 rx_packets=1 rx_bytes=40") >= 1);
   CHECK(rig.service->snapshot().match);  // a relayed match is not timed out by the direct path's own limits
   rig.service->LeaveMatch();
-  CHECK(rig.CountLogs("DEBUG_SAULO match transport summary match=m1 selected=relay direct_attempted=true") == 1);
+  CHECK(rig.CountLogs("match transport summary match=m1 selected=relay direct_attempted=true") == 1);
   CHECK(rig.CountLogs("relay_available=true relay_used=true tx_packets=1 rx_packets=1") == 1);
   CHECK(!udp.socket.relay_selected());
 }
@@ -1420,8 +1420,8 @@ void TestNoPublicEndpointsButRelayGoesStraightToTheRelay() {
     Rig rig(kGuestBase013, false, kToken, &udp);
     HostRelayMatch(rig, "m1", kRelayToken, kRelayNoPublicCaps);
     Discover(rig, udp);
-    CHECK(rig.CountLogs("DEBUG_SAULO direct unavailable reason=service_public_endpoints_unsupported") == 1);
-    CHECK(rig.CountLogs("DEBUG_SAULO relay fallback begin match=m1 direct_elapsed_ms=0") == 1);
+    CHECK(rig.CountLogs("direct unavailable reason=service_public_endpoints_unsupported") == 1);
+    CHECK(rig.CountLogs("relay fallback begin match=m1 direct_elapsed_ms=0") == 1);
     CHECK(rig.CountLogs("direct path not established") == 0);
     rig.Feed(PeerJson("m1", "join", kOldServicePeer));
     CHECK(rig.CountLogs("service_capability_mismatch") == 0 && rig.Count("match.leave") == 0);
@@ -1435,7 +1435,7 @@ void TestNoPublicEndpointsButRelayGoesStraightToTheRelay() {
   HostRelayMatch(late);
   Discover(late, udp2);
   late.Feed(PeerJson("m1", "join", kOldServicePeer));
-  CHECK(late.CountLogs("DEBUG_SAULO direct unavailable reason=service_public_endpoints_unsupported") == 1);
+  CHECK(late.CountLogs("direct unavailable reason=service_public_endpoints_unsupported") == 1);
   CHECK(late.CountLogs("relay fallback begin match=m1") == 1 && late.Count("match.leave") == 0);
 }
 
@@ -1450,9 +1450,9 @@ void TestNoDirectPathAndNoRelayFails() {
     CHECK(rig.CountLogs("budget_ms=2500 relay_available=false") == 1);
     rig.Feed(PeerJson("m1", "join", kOldServicePeer));
     CHECK(rig.CountLogs("reason=service_capability_mismatch") == 1);
-    CHECK(rig.CountLogs("DEBUG_SAULO transport selected=failed match=m1 cause=no_direct_path relay_available=false") ==
+    CHECK(rig.CountLogs("transport selected=failed match=m1 cause=no_direct_path relay_available=false") ==
           1);
-    CHECK(rig.CountLogs("DEBUG_SAULO match transport summary match=m1 selected=failed") == 1);
+    CHECK(rig.CountLogs("match transport summary match=m1 selected=failed") == 1);
     CHECK(rig.Count("match.leave") == 1 && !rig.service->snapshot().match);
     const auto failed = rig.service->FailedPeer();
     CHECK(failed && failed->match == "m1" && failed->peer_player == kFriendA);
@@ -1464,7 +1464,7 @@ void TestNoDirectPathAndNoRelayFails() {
   UdpRig udp2;
   Rig older(kGuestBase013, false, kToken, &udp2);
   HostRelayMatch(older, "m1", 0);
-  CHECK(older.CountLogs("DEBUG_SAULO relay available=false match=m1 reason=peer_without_relay") == 1);
+  CHECK(older.CountLogs("relay available=false match=m1 reason=peer_without_relay") == 1);
   Discover(older, udp2);
   older.Feed(PeerJson("m1", "join", kNoPublic));
   Run(older, kDirectProbeWindowSeconds + 1.0);
@@ -1508,12 +1508,12 @@ void TestRelayLossEndsTheMatchCleanly() {
     const std::string which = how;
     if (which == "relay.closed") {
       rig.Feed("{\"ev\":\"relay.closed\",\"match\":\"m1\",\"reason\":\"peer_disconnected\"}");
-      CHECK(rig.CountLogs("DEBUG_SAULO relay closed reason=peer_disconnected match=m1") == 1);
-      CHECK(rig.CountLogs("DEBUG_SAULO transport lost reason=relay_closed") == 1);
+      CHECK(rig.CountLogs("relay closed reason=peer_disconnected match=m1") == 1);
+      CHECK(rig.CountLogs("transport lost reason=relay_closed") == 1);
       CHECK(rig.Count("match.leave") == 1);
     } else if (which == "socket") {
       rig.Event(ChannelEvent::Kind::kClosed, "timeout");
-      CHECK(rig.CountLogs("DEBUG_SAULO relay closed reason=service_disconnected match=m1") == 1);
+      CHECK(rig.CountLogs("relay closed reason=service_disconnected match=m1") == 1);
     } else {
       for (uint32_t i = 0; i < 300; ++i) {
         rig.Last().in.push_back({ChannelEvent::Kind::kBinary, [&] {
@@ -1522,13 +1522,13 @@ void TestRelayLossEndsTheMatchCleanly() {
         }()});
       }
       rig.Tick(0.01);
-      CHECK(rig.CountLogs("DEBUG_SAULO relay closed reason=receive_overflow match=m1") == 1);
+      CHECK(rig.CountLogs("relay closed reason=receive_overflow match=m1") == 1);
       CHECK(rig.Count("match.leave") == 1);
     }
     CHECK(!rig.service->snapshot().match && !rig.service->Assignment());
     CHECK(!udp.socket.relay_selected());
     CHECK(rig.service->FailedPeer());
-    CHECK(rig.CountLogs("DEBUG_SAULO match transport summary match=m1 selected=relay") == 1);
+    CHECK(rig.CountLogs("match transport summary match=m1 selected=relay") == 1);
     CHECK(Contains(rig.service->snapshot().notice, which == "socket" ? "Reconnecting" : "was lost"));
   }
 }
@@ -1538,7 +1538,7 @@ void TestFindMatchJoinerFollowsTheRelayChoice() {
   UdpRig udp;
   Rig rig(kGuestBase013, false, kToken, &udp);
   JoinRelayMatch(rig);
-  CHECK(rig.CountLogs("DEBUG_SAULO relay available match=m2 role=join relay_available=true") == 1);
+  CHECK(rig.CountLogs("relay available match=m2 role=join relay_available=true") == 1);
   Discover(rig, udp);
   rig.Feed(PeerJson("m2", "host", kNoPublic));
   Run(rig, 8.0);
@@ -1547,9 +1547,9 @@ void TestFindMatchJoinerFollowsTheRelayChoice() {
   rig.Feed("{\"ev\":\"match.transport\",\"match\":\"m0\",\"transport\":\"relay\"}");
   CHECK(!rig.service->Assignment());
   rig.Feed("{\"ev\":\"match.transport\",\"match\":\"m2\",\"transport\":\"relay\"}");
-  CHECK(rig.CountLogs("DEBUG_SAULO transport choice from host transport=relay") == 1);
-  CHECK(rig.CountLogs("reason=host_chose_relay") == 1 && rig.CountLogs("DEBUG_SAULO relay fallback begin match=m2") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO relay ready match=m2 role=join") == 1);
+  CHECK(rig.CountLogs("transport choice from host transport=relay") == 1);
+  CHECK(rig.CountLogs("reason=host_chose_relay") == 1 && rig.CountLogs("relay fallback begin match=m2") == 1);
+  CHECK(rig.CountLogs("relay ready match=m2 role=join") == 1);
   const auto assignment = rig.service->Assignment();
   CHECK(assignment && !assignment->host && assignment->relay);
   FeedBinary(rig, RelayFrameOf(kRelayToken, kLobbyNine));
@@ -1576,7 +1576,7 @@ void TestJoinerFollowsTheDirectChoice() {
   rig.Feed("{\"ev\":\"match.transport\",\"match\":\"m2\",\"transport\":\"direct\"}");
   const auto assignment = rig.service->Assignment();
   CHECK(assignment && !assignment->relay && assignment->peer_ip == "127.0.0.1" && assignment->peer_port == 58148);
-  CHECK(rig.CountLogs("DEBUG_SAULO transport selected=direct match=m2") == 1);
+  CHECK(rig.CountLogs("transport selected=direct match=m2") == 1);
   CHECK(!udp.socket.relay_selected());
 }
 
@@ -1591,7 +1591,7 @@ void TestInvitedJoinerFollowsTheRelayChoice() {
   CHECK(rig.Count("pm.join") == 1);
   rig.Reply("pm.join", std::string("\"session\":\"") + kSession + "\"," +
                            MatchBody("m4", "join", "base013", kFriendA, "SauloB") + RelayField(kRelayToken));
-  CHECK(rig.CountLogs("DEBUG_SAULO invite transition consumed generation=1") == 1);
+  CHECK(rig.CountLogs("invite transition consumed generation=1") == 1);
   Discover(rig, udp);
   rig.Feed("{\"ev\":\"match.transport\",\"match\":\"m4\",\"transport\":\"relay\"}");
   CHECK(rig.service->Assignment() && rig.service->Assignment()->relay);
@@ -1649,8 +1649,8 @@ void TestRefusedRelayChoiceFailsTheMatch() {
   Discover(rig, udp);
   Run(rig, kDirectProbeWindowSeconds + 0.2);
   rig.Reply("match.transport", {}, "relay_unavailable");
-  CHECK(rig.CountLogs("DEBUG_SAULO relay fallback refused code=relay_unavailable") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO transport selected=failed match=m1 cause=relay_unavailable") == 1);
+  CHECK(rig.CountLogs("relay fallback refused code=relay_unavailable") == 1);
+  CHECK(rig.CountLogs("transport selected=failed match=m1 cause=relay_unavailable") == 1);
   CHECK(!rig.service->snapshot().match && !rig.service->Assignment() && rig.Count("match.leave") == 1);
 }
 
@@ -1782,11 +1782,11 @@ void TestDirectAt500msIsReadyAtOnce() {
   j.HostChooses("direct");
   const auto assignment = j.rig.service->Assignment();
   CHECK(assignment && !assignment->relay);
-  CHECK(j.rig.CountLogs("DEBUG_SAULO network establishment ready match=m2 transport=direct elapsed_ms=") == 1);
+  CHECK(j.rig.CountLogs("network establishment ready match=m2 transport=direct elapsed_ms=") == 1);
   CHECK(j.rig.CountLogs("relay fallback begin") == 0 && j.rig.CountLogs("relay establishment begin") == 0);
   CHECK(j.Elapsed() < 2.0);
   j.rig.service->NoteGuestWaitComplete(true);
-  CHECK(j.rig.CountLogs("DEBUG_SAULO guest wait complete result=connected elapsed_ms=") == 1);
+  CHECK(j.rig.CountLogs("guest wait complete result=connected elapsed_ms=") == 1);
   j.rig.service->NoteGuestWaitComplete(true);
   CHECK(j.rig.CountLogs("guest wait complete") == 1);  // once per match
 }
@@ -1801,8 +1801,8 @@ void TestRelayReadyAtAnyTimeInsideTheBudgetSucceeds() {
     j.HostChooses("relay");
     const auto assignment = j.rig.service->Assignment();
     CHECK(assignment && assignment->relay);
-    CHECK(j.rig.CountLogs("DEBUG_SAULO relay establishment begin match=m2 elapsed_ms=") == 1);
-    CHECK(j.rig.CountLogs("DEBUG_SAULO network establishment ready match=m2 transport=relay elapsed_ms=") == 1);
+    CHECK(j.rig.CountLogs("relay establishment begin match=m2 elapsed_ms=") == 1);
+    CHECK(j.rig.CountLogs("network establishment ready match=m2 transport=relay elapsed_ms=") == 1);
     AdvanceTo(j.rig, j.t0 + std::min(ready + 0.5, 14.9));
     CHECK(j.Wait() == GuestWait::kProgressing);
     j.rig.service->NoteGuestWaitComplete(true);
@@ -1841,7 +1841,7 @@ void TestNothingReadyAtFifteenSecondsIsATerminalTimeout() {
   AdvanceTo(j.rig, j.t0 + 14.5);
   CHECK(j.Wait() == GuestWait::kProgressing && j.rig.service->snapshot().match);
   AdvanceTo(j.rig, j.t0 + 15.3);
-  CHECK(j.rig.CountLogs("DEBUG_SAULO network establishment timeout match=m2 elapsed_ms=15") == 1);
+  CHECK(j.rig.CountLogs("network establishment timeout match=m2 elapsed_ms=15") == 1);
   CHECK(j.rig.CountLogs("transport_state=direct_probing direct_state=waiting_peer relay_state=available") == 1);
   CHECK(j.rig.CountLogs("network establishment failed match=m2 reason=establishment_timeout elapsed_ms=15") == 1);
   CHECK(!j.rig.service->snapshot().match && j.rig.Count("match.leave") == 1);
@@ -1939,7 +1939,7 @@ void TestJoinerNeverDecidesAndRepeatsChangeNothing() {
   twice.HostChooses("relay");
   AdvanceTo(twice.rig, twice.t0 + 9.0);
   twice.HostChooses("relay");
-  CHECK(twice.rig.CountLogs("DEBUG_SAULO relay ready match=m2") == 1);
+  CHECK(twice.rig.CountLogs("relay ready match=m2") == 1);
   CHECK(twice.rig.CountLogs("network establishment ready") == 1 && twice.rig.CountLogs("transport choice ignored") == 1);
   AdvanceTo(twice.rig, twice.t0 + 13.1);
   CHECK(twice.Wait() == GuestWait::kFailed);  // still 3 s + 10 s, not 9 s + 10 s
@@ -2043,7 +2043,7 @@ void TestLatePunchGetsOnlyAMinimumWindow() {
   CHECK(rig.Count("match.transport") == 0);
   AdvanceTo(rig, probe + 2.4 + kMinPunchSeconds + 0.3);
   CHECK(rig.Count("match.transport") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO relay fallback begin match=m1 direct_elapsed_ms=") == 1);
+  CHECK(rig.CountLogs("relay fallback begin match=m1 direct_elapsed_ms=") == 1);
 }
 
 // The host's own lobby wait is never managed, and Online off or no match leaves the game alone.
@@ -2072,8 +2072,8 @@ void TestInviteNeedsAnAdvertisedPlayerMatch() {
   CHECK(rig.service->SendInvite(kFriendA));
   CHECK(Contains(rig.LastRequest("invite.send"), std::string("\"player\":\"") + kFriendA + "\""));
   rig.Reply("invite.send", std::string("\"invite\":\"i1\",\"session\":\"") + kSession + "\"");
-  CHECK(rig.CountLogs(std::string("DEBUG_SAULO player_match invite friend=") + kFriendA) == 1);
-  CHECK(rig.CountLogs(std::string("DEBUG_SAULO player_match invite sent session=") + kSession) == 1);
+  CHECK(rig.CountLogs(std::string("player_match invite friend=") + kFriendA) == 1);
+  CHECK(rig.CountLogs(std::string("player_match invite sent session=") + kSession) == 1);
 }
 
 void TestAcceptedInviteJoinsThatSameSession() {
@@ -2082,7 +2082,7 @@ void TestAcceptedInviteJoinsThatSameSession() {
   rig.Feed(InviteEvent("i1"));
   const std::vector<Invite> invites = rig.service->Invites();
   CHECK(invites.size() == 1 && invites[0].id == "i1" && invites[0].ad.session == kSession && invites[0].ad.qos == "abcd");
-  CHECK(rig.CountLogs(std::string("DEBUG_SAULO player_match invite received session=") + kSession) == 1);
+  CHECK(rig.CountLogs(std::string("player_match invite received session=") + kSession) == 1);
   CHECK(rig.service->PlayerMatchResults().empty());
   CHECK(!rig.service->AcceptInvite("nope"));
   const auto accepted = rig.service->AcceptInvite("i1");
@@ -2104,7 +2104,7 @@ void TestDeclinedOrEndedInvitesDisappear() {
   rig.service->DeclineInvite("i1");
   CHECK(Contains(rig.LastRequest("invite.decline"), "\"invite\":\"i1\""));
   CHECK(rig.service->Invites().empty());
-  CHECK(rig.CountLogs("DEBUG_SAULO player_match invite declined session=") == 1);
+  CHECK(rig.CountLogs("player_match invite declined session=") == 1);
 
   rig.Feed(InviteEvent("i2"));
   rig.Feed(InviteEvent("i3"));
@@ -2170,8 +2170,8 @@ void TestFindMatchWaitsForTheServiceInsteadOfAnEmptyCache() {
   CHECK(!rig.service->PlayerMatchSearchPending(ask.epoch));
   const std::vector<PlayerMatchAd> found = rig.service->PlayerMatchResults(ask.epoch);
   CHECK(found.size() == 1 && found[0].session == kSession && found[0].player == kFriendA);
-  CHECK(rig.CountLogs("DEBUG_SAULO player_match search begin") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO player_match search results=1") == 1);
+  CHECK(rig.CountLogs("player_match search begin") == 1);
+  CHECK(rig.CountLogs("player_match search results=1") == 1);
 }
 
 void TestRepeatedGuestCallsShareOneSearch() {
@@ -2184,7 +2184,7 @@ void TestRepeatedGuestCallsShareOneSearch() {
   const auto third = rig.service->AskPlayerMatchSearch();
   CHECK(first.pending && second.pending && third.pending);
   CHECK(first.epoch == second.epoch && second.epoch == third.epoch);
-  CHECK(rig.Count("pm.search") == 1 && rig.CountLogs("DEBUG_SAULO player_match search begin") == 1);
+  CHECK(rig.Count("pm.search") == 1 && rig.CountLogs("player_match search begin") == 1);
   rig.Reply("pm.search", rig.SearchAnswer());
   for (const auto& call : {first, second, third}) {
     CHECK(!rig.service->PlayerMatchSearchPending(call.epoch) && rig.service->PlayerMatchResults(call.epoch).size() == 1);
@@ -2226,7 +2226,7 @@ void TestFailedSearchAnswerEndsTheWait() {
   const auto ask = rig.service->AskPlayerMatchSearch();
   rig.Reply("pm.search", "", "server_error");
   CHECK(!rig.service->PlayerMatchSearchPending(ask.epoch) && rig.service->PlayerMatchResults(ask.epoch).empty());
-  CHECK(rig.CountLogs("DEBUG_SAULO player_match search failed code=server_error") == 1);
+  CHECK(rig.CountLogs("player_match search failed code=server_error") == 1);
 }
 
 void TestNoConnectionNeverHoldsTheGuest() {
@@ -2251,7 +2251,7 @@ void TestStaleSearchAnswerNeverFillsALaterSearch() {
   CHECK(b.epoch != a.epoch && b.pending && rig.Count("pm.search") == 2);
 
   rig.Feed(SearchReply(stale_seq, rig.SearchAnswer()));
-  CHECK(rig.CountLogs("DEBUG_SAULO player_match search ignored stale") == 1);
+  CHECK(rig.CountLogs("player_match search ignored stale") == 1);
   CHECK(rig.service->PlayerMatchResults().empty());
   CHECK(rig.service->PlayerMatchSearchPending(b.epoch));
   CHECK(rig.service->PlayerMatchResults(a.epoch).empty());
@@ -2270,7 +2270,7 @@ void TestNewFindMatchAfterAnEmptySearchAsksAgain() {
   rig.Tick(1.5);
   const auto again = rig.service->AskPlayerMatchSearch();
   CHECK(again.pending && rig.Count("pm.search") == 2);
-  CHECK(again.epoch == first.epoch && rig.CountLogs("DEBUG_SAULO player_match search begin") == 1);
+  CHECK(again.epoch == first.epoch && rig.CountLogs("player_match search begin") == 1);
   rig.Reply("pm.search", rig.SearchAnswer());
   CHECK(!rig.service->PlayerMatchSearchPending(again.epoch) && rig.service->PlayerMatchResults(again.epoch).size() == 1);
 
@@ -2290,13 +2290,13 @@ void TestFoundMatchJoinsExactlyOnce() {
 
   CHECK(rig.service->JoinPlayerMatch(kSession));
   CHECK(!rig.service->JoinPlayerMatch(kSession));
-  CHECK(rig.Count("pm.join") == 1 && rig.CountLogs("DEBUG_SAULO player_match join begin") == 1);
+  CHECK(rig.Count("pm.join") == 1 && rig.CountLogs("player_match join begin") == 1);
   rig.Feed(SearchReply(SeqOf(rig.LastRequest("pm.search")), rig.SearchAnswer()));
   CHECK(rig.Count("pm.join") == 1);
   CHECK(!rig.service->PlayerMatchSearchPending(ask.epoch) && rig.service->PlayerMatchResults(ask.epoch).empty());
 
   rig.Reply("pm.join", std::string("\"session\":\"") + kSession + "\"," + MatchBody("m2", "join", "base013", kFriendA, "SauloB"));
-  CHECK(rig.service->snapshot().match && rig.CountLogs("DEBUG_SAULO online match created role=join") == 1);
+  CHECK(rig.service->snapshot().match && rig.CountLogs("online match created role=join") == 1);
   CHECK(rig.service->PlayerMatchResults(ask.epoch).empty() && !rig.service->snapshot().player_match.searching);
 }
 
@@ -2347,7 +2347,7 @@ void TestOutdatedServiceFailsFastWithItsOwnReason() {
     rig.Feed(PeerJson(match, host ? "join" : "host",
                       "\"ip\":\"108.202.118.218\",\"port\":7001,\"lan\":[],\"same_network\":false"));
     CHECK(rig.CountLogs("peer endpoint update raw=108.202.118.218:7001 public=none service_forwards_public=false") == 1);
-    CHECK(rig.CountLogs("DEBUG_SAULO udp rendezvous failed reason=service_capability_mismatch "
+    CHECK(rig.CountLogs("udp rendezvous failed reason=service_capability_mismatch "
                         "worker_public_endpoints_unsupported=true") == 1);
     CHECK(rig.CountLogs("udp rendezvous begin") == 0 && rig.CountLogs("udp punch tx") == 0);
     CHECK(!rig.service->snapshot().match && rig.Count("match.leave") == 1);
@@ -2382,7 +2382,7 @@ void TestAcceptedInviteSurvivesTheGuestTeardownAndJoinsOnce() {
   CHECK(rig.service->Invites().size() == 1 && rig.service->AcceptedInviteGeneration() == 0);
   CHECK(rig.service->AcceptInvite("i1") && rig.service->AcceptedInviteGeneration() == 1);
   CHECK(!rig.service->AcceptInvite("i1") && rig.service->AcceptedInviteGeneration() == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO player_match invite accepted session=") == 1);
+  CHECK(rig.CountLogs("player_match invite accepted session=") == 1);
 
   rig.service->CancelPlayerMatch();
   rig.service->SetPlayerMatchSearch(false);
@@ -2394,13 +2394,13 @@ void TestAcceptedInviteSurvivesTheGuestTeardownAndJoinsOnce() {
   CHECK(rig.service->JoinPlayerMatch(kSession));
   for (int i = 0; i < 10; ++i) rig.Tick(0.2);
   CHECK(!rig.service->JoinPlayerMatch(kSession));
-  CHECK(rig.Count("pm.join") == 1 && rig.CountLogs("DEBUG_SAULO player_match join begin") == 1);
+  CHECK(rig.Count("pm.join") == 1 && rig.CountLogs("player_match join begin") == 1);
   CHECK(rig.CountLogs("invite transition consumed") == 0);
 
   rig.Reply("pm.join", InviteJoinBody("m3"));
-  CHECK(rig.CountLogs("DEBUG_SAULO player_match join service complete") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO invite transition consumed generation=1") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO online match created role=join") == 1);
+  CHECK(rig.CountLogs("player_match join service complete") == 1);
+  CHECK(rig.CountLogs("invite transition consumed generation=1") == 1);
+  CHECK(rig.CountLogs("online match created role=join") == 1);
   CHECK(rig.service->PlayerMatchResults().empty() && rig.service->snapshot().match);
 }
 
@@ -2410,14 +2410,14 @@ void TestRejectedInviteJoinEndsOnlyThatInvite() {
   rig.Feed(InviteEvent("i1"));
   CHECK(rig.service->AcceptInvite("i1") && rig.service->JoinPlayerMatch(kSession));
   rig.Reply("pm.join", "", "not_found");
-  CHECK(rig.CountLogs("DEBUG_SAULO invite transition failed generation=1 reason=join_rejected_not_found") == 1);
+  CHECK(rig.CountLogs("invite transition failed generation=1 reason=join_rejected_not_found") == 1);
   CHECK(rig.service->PlayerMatchResults().empty() && !rig.service->snapshot().match);
 
   rig.Feed(InviteEvent("i2"));
   CHECK(rig.service->AcceptInvite("i2") && rig.service->AcceptedInviteGeneration() == 2);
   CHECK(rig.service->JoinPlayerMatch(kSession) && rig.Count("pm.join") == 2);
   rig.Reply("pm.join", InviteJoinBody("m3"));
-  CHECK(rig.CountLogs("DEBUG_SAULO invite transition consumed generation=2") == 1);
+  CHECK(rig.CountLogs("invite transition consumed generation=2") == 1);
 }
 
 void TestEndedOrReplacedInviteFailsItsGeneration() {
@@ -2446,11 +2446,11 @@ void TestOutdatedServiceAfterAnInviteJoinFailsAtOnceAndLeavesAFreshStart() {
   rig.Feed(InviteEvent("i1"));
   CHECK(rig.service->AcceptInvite("i1") && rig.service->JoinPlayerMatch(kSession));
   rig.Reply("pm.join", InviteJoinBody("m3"));
-  CHECK(rig.CountLogs("DEBUG_SAULO invite transition consumed generation=1") == 1);
+  CHECK(rig.CountLogs("invite transition consumed generation=1") == 1);
 
   rig.Feed(PeerJson("m3", "host", "\"ip\":\"177.18.65.229\",\"port\":7001,\"lan\":[],\"same_network\":false"));
-  CHECK(rig.CountLogs("DEBUG_SAULO join network capability service_forwards_public=false action=fail_fast") == 1);
-  CHECK(rig.CountLogs("DEBUG_SAULO udp rendezvous failed reason=service_capability_mismatch "
+  CHECK(rig.CountLogs("join network capability service_forwards_public=false action=fail_fast") == 1);
+  CHECK(rig.CountLogs("udp rendezvous failed reason=service_capability_mismatch "
                       "worker_public_endpoints_unsupported=true") == 1);
   CHECK(rig.CountLogs("udp rendezvous failed reason=no_direct_path") == 1 && rig.Count("match.leave") == 1);
   CHECK(!rig.service->snapshot().match && !rig.service->Assignment());
@@ -2485,7 +2485,7 @@ void TestCapabilityCheckSparesSameNetworkAndCurrentServices() {
   rig.Feed(PeerJson("m1", "join", "\"ip\":\"203.0.113.9\",\"port\":58148,\"lan\":[\"127.0.0.1\"],\"same_network\":true"));
   CHECK(rig.CountLogs("service_capability_mismatch") == 0 && rig.service->snapshot().match);
   Discover(rig, udp);
-  CHECK(rig.CountLogs("DEBUG_SAULO udp rendezvous begin") == 1);
+  CHECK(rig.CountLogs("udp rendezvous begin") == 1);
 
   UdpRig udp2;
   Rig current(kGuestBase013, false, kToken, &udp2);

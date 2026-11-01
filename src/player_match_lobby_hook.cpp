@@ -17,7 +17,6 @@
 
 REXCVAR_DECLARE(bool, ssf2t_online_enabled);
 
-// DEBUG_SAULO: telemetry of the game's own lobby code, to find why a joined Online Match lobby is left.
 namespace {
 
 using ssf2t::LoadBE32;
@@ -64,11 +63,11 @@ struct LobbyHooks {
     std::lock_guard<std::mutex> lock(g_print_mutex);
     const int repeats = g_print_repeats.Next(line);
     if (repeats < 0 || !g_print_budget.Allow(NowSeconds())) return;
-    if (repeats > 0) REXLOG_INFO("DEBUG_SAULO guest net: (previous line repeated {} more times)", repeats);
+    if (repeats > 0) REXLOG_INFO("guest net: (previous line repeated {} more times)", repeats);
     if (const uint32_t dropped = g_print_budget.TakeDropped()) {
-      REXLOG_INFO("DEBUG_SAULO guest net: ({} lines dropped by the rate limit)", dropped);
+      REXLOG_INFO("guest net: ({} lines dropped by the rate limit)", dropped);
     }
-    REXLOG_INFO("DEBUG_SAULO guest net: {}", line);
+    REXLOG_INFO("guest net: {}", line);
   }
 
   // Shared by every op: only the wait for the host's player list is held to the network establishment's budget
@@ -90,9 +89,9 @@ struct LobbyHooks {
   static void LobbyFatalError(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     const int32_t code = ctx.r3.s32;
     const uint32_t site = uint32_t(ctx.lr) - 4;
-    REXLOG_INFO("DEBUG_SAULO player_match leave requested reason={} error={} caller={:08X} guest={}",
+    REXLOG_INFO("player_match leave requested reason={} error={} caller={:08X} guest={}",
                 ssf2t::LobbyFatalReason(site, G::kTitleUpdate), code, site, G::kName);
-    REXLOG_INFO("DEBUG_SAULO player_match leave state {}", TableText<G>(base));
+    REXLOG_INFO("player_match leave state {}", TableText<G>(base));
     original(ctx, base);
   }
 
@@ -106,12 +105,12 @@ struct LobbyHooks {
     if (logged) {
       g_packets_logged = n + 1;
       const uint8_t* data = GuestPtr(base, packet);
-      REXLOG_INFO("DEBUG_SAULO player_match lobby packet n={} conn={} type={}({}) size={} head={} before {}", n + 1,
+      REXLOG_INFO("player_match lobby packet n={} conn={} type={}({}) size={} head={} before {}", n + 1,
                   int32_t(connection), ssf2t::LobbyPacketName(data[0]), data[0], size,
                   ssf2t::HexHead(data, size), TableText<G>(base));
     }
     original(ctx, base);
-    if (logged) REXLOG_INFO("DEBUG_SAULO player_match lobby packet n={} after {}", n + 1, TableText<G>(base));
+    if (logged) REXLOG_INFO("player_match lobby packet n={} after {}", n + 1, TableText<G>(base));
   }
 
   // (table, player, slot): every player the lobby takes in, local or remote.
@@ -121,13 +120,13 @@ struct LobbyHooks {
     const uint32_t before = ssf2t::ReadLobbyTable(Table<G>(base)).players;
     if (player) {
       const uint8_t* entry = GuestPtr(base, player);
-      REXLOG_INFO("DEBUG_SAULO player_match remote insert begin slot={} xuid={:016X} private={} {}", slot,
+      REXLOG_INFO("player_match remote insert begin slot={} xuid={:016X} private={} {}", slot,
                   LoadBE64(entry, 8), entry[54], TableText<G>(base));
     }
     original(ctx, base);
     const uint32_t after = ssf2t::ReadLobbyTable(Table<G>(base)).players;
-    REXLOG_INFO("DEBUG_SAULO player_match remote insert result={} slot={}", ctx.r3.s32, slot);
-    REXLOG_INFO("DEBUG_SAULO player_match GameLobby players before={} after={} guest={}", before, after, G::kName);
+    REXLOG_INFO("player_match remote insert result={} slot={}", ctx.r3.s32, slot);
+    REXLOG_INFO("player_match GameLobby players before={} after={} guest={}", before, after, G::kName);
   }
 };
 

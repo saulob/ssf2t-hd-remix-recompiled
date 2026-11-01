@@ -202,7 +202,7 @@ class OnlineService {
   void NoteGuestWaitComplete(bool connected);
   void LeaveMatch();
   void TestConnection();
-  // A DEBUG_SAULO line from the launcher page, in the same log.
+  // A line from the launcher page, in the same log.
   void LogLine(const std::string& line) { Log(line); }
   // From the fight runtime, every frame while it owns a session.
   void SetNetplayLink(NetplayLink link, std::optional<int> rtt_ms);

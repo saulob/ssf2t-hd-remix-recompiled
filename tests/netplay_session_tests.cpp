@@ -606,9 +606,9 @@ void TestFrameZeroMustMatchBeforeRollbackStarts() {
 
   RunVerified(rig, host, join, 600);
   CHECK(BothRunning(rig));
-  CHECK(host.Reported("DEBUG_SAULO netplay frame0 state match fight=0"));
-  CHECK(join.Reported("DEBUG_SAULO netplay frame0 state match fight=0"));
-  CHECK(host.Reported("DEBUG_SAULO netplay setup remote fight=0 round=0 words=00000003,00020000,00000000,00000007"));
+  CHECK(host.Reported("netplay frame0 state match fight=0"));
+  CHECK(join.Reported("netplay frame0 state match fight=0"));
+  CHECK(host.Reported("netplay setup remote fight=0 round=0 words=00000003,00020000,00000000,00000007"));
   CHECK(!host.adopted && !join.adopted && !join.Reported("round=1"));
   CHECK(SimsAgree(rig));
   const RollbackCore* core = rig.host.core();

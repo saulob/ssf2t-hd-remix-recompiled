@@ -278,7 +278,7 @@ void TestEachFightAndMatchStartsClean() {
   CHECK(Has(netplay, "if (session_ && online_driven_ && plan.online && plan.generation != generation_) {\n"
                      "      Shutdown(now_ms, \"new_match\");"));
   CHECK(Has(netplay, "Shutdown(now_ms, \"match_ended\");"));
-  CHECK(Has(netplay, "DEBUG_SAULO netplay match cleanup generation={} reason={}"));
+  CHECK(Has(netplay, "netplay match cleanup generation={} reason={}"));
   CHECK(Has(netplay, "generation_ = plan.generation;"));
   const size_t shutdown = netplay.find("void Shutdown(uint64_t now_ms, const char* reason) {");
   const std::string reset = netplay.substr(shutdown, netplay.find("void LogTransitions(", shutdown) - shutdown);
@@ -352,7 +352,7 @@ void TestFrameZeroIsTheSameOnBothPeers() {
 // logged before rejection, and a match stuck on it for too long is left instead of blocking Invite Player forever.
 void TestBadPeerAddressIsDiagnosedAndEventuallyLeft() {
   const std::string netplay = ReadSource("netplay_hook.cpp");
-  CHECK(Has(netplay, "DEBUG_SAULO netplay join failed reason=bad_peer_address raw_address={}"));
+  CHECK(Has(netplay, "netplay join failed reason=bad_peer_address raw_address={}"));
   CHECK(Has(netplay, "const bool usable = np::UsableAddress(np::ParsePeerAddress(assignment->peer_ip, address));"));
   CHECK(Has(netplay, "plan.raw_peer_address = assignment->peer_ip;"));
   const size_t begin = netplay.find("if (plan.bad_address) {");
@@ -376,7 +376,7 @@ void TestBadPeerAddressIsDiagnosedAndEventuallyLeft() {
   const std::string runtime = ReadSource("online_runtime.cpp");
   CHECK(Has(runtime, "if (settings.enabled) EnsureOnlineGameSocket();"));
   CHECK(Has(runtime, "g_game_socket.Open({kNetplayHostPort, kNetplayJoinPort})"));
-  CHECK(Has(runtime, "DEBUG_SAULO udp socket bound local=0.0.0.0:{}"));
+  CHECK(Has(runtime, "udp socket bound local=0.0.0.0:{}"));
   CHECK(Has(runtime, "config.game_socket = &g_game_socket;"));
   CHECK(runtime.find("netplay::OnlineGameSocket g_game_socket;") < runtime.find("std::unique_ptr<online::OnlineService> g_service;"));
 }

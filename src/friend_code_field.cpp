@@ -44,21 +44,21 @@ std::string PastedFriendCode(std::string_view clipboard) {
 }
 
 void FriendCodeField::ReadPaste(const FieldLog& log) {
-  log(std::string("DEBUG_SAULO online friend ctrl-v detected left_ctrl=") +
+  log(std::string("online friend ctrl-v detected left_ctrl=") +
       (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) ? "1" : "0") + " right_ctrl=" + (ImGui::IsKeyDown(ImGuiKey_RightCtrl) ? "1" : "0"));
   const ClipboardText clipboard = read_ ? read_(log) : ClipboardText{};
   if (clipboard.kind == ClipboardText::Kind::kEmpty) {
-    log("DEBUG_SAULO online friend paste empty");
+    log("online friend paste empty");
     return;
   }
   if (clipboard.kind == ClipboardText::Kind::kError) {
-    log("DEBUG_SAULO online friend paste failed step=" + clipboard.text);
+    log("online friend paste failed step=" + clipboard.text);
     return;
   }
-  log("DEBUG_SAULO online friend paste raw=" + Printable(clipboard.text));
+  log("online friend paste raw=" + Printable(clipboard.text));
   paste_ = PastedFriendCode(clipboard.text);
   const bool code = !online::NormalizeFriendCode(paste_).empty();
-  log("DEBUG_SAULO online friend paste normalized=" + (code ? paste_ : "<not a friend code> shown=" + paste_));
+  log("online friend paste normalized=" + (code ? paste_ : "<not a friend code> shown=" + paste_));
   has_paste_ = !paste_.empty();
 }
 
@@ -83,21 +83,21 @@ void FriendCodeField::Draw(char* buffer, size_t size, const FieldLog& log) {
                                                 ImGuiInputTextFlags_CharsUppercase | ImGuiInputTextFlags_CallbackAlways,
                                                 ApplyPaste, this);
   const bool active = ImGui::IsItemActive();
-  if (active != was_active_) out(std::string("DEBUG_SAULO online friend field ") + (active ? "focused" : "unfocused"));
+  if (active != was_active_) out(std::string("online friend field ") + (active ? "focused" : "unfocused"));
   if (pasted_) {
     pasted_ = false;
-    out(std::string("DEBUG_SAULO online friend field value=") + buffer);
+    out(std::string("online friend field value=") + buffer);
   } else if (changed) {
-    out(std::string("DEBUG_SAULO online friend input changed value=") + buffer);
+    out(std::string("online friend input changed value=") + buffer);
   }
   if (!active) has_paste_ = false;
   was_active_ = active;
 }
 
 bool CopyFriendCode(const std::string& code, const ClipboardWriter& write, const FieldLog& log) {
-  log("DEBUG_SAULO online friend copy clicked code=" + code);
+  log("online friend copy clicked code=" + code);
   const bool copied = write && write(code, log);
-  log((copied ? "DEBUG_SAULO online friend copy success code=" : "DEBUG_SAULO online friend copy failed code=") + code);
+  log((copied ? "online friend copy success code=" : "online friend copy failed code=") + code);
   return copied;
 }
 

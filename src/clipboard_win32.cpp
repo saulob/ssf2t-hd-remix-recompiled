@@ -10,7 +10,7 @@ constexpr int kOpenAttempts = 3;
 constexpr DWORD kOpenRetryMs = 5;
 constexpr size_t kMaxClipboardChars = 1 << 16;
 
-const std::string kPrefix = "DEBUG_SAULO online clipboard ";
+const std::string kPrefix = "online clipboard ";
 
 std::string Error(const Win32ClipboardApi& api) { return std::to_string(api.last_error()); }
 

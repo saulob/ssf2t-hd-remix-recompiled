@@ -36,7 +36,7 @@ bool StartsLikeScripts(const char* text) {
 
 void LogMultiplayerItems(const char* guest) {
   const int removed = g_multiplayer_patched ? 0 : 1;
-  REXLOG_INFO("DEBUG_SAULO multiplayer menu items local=1 online=1 ranked={} tournament={} guest={}", removed, removed,
+  REXLOG_INFO("multiplayer menu items local=1 online=1 ranked={} tournament={} guest={}", removed, removed,
               guest);
 }
 
@@ -51,22 +51,22 @@ struct OnlineMenuHooks {
     if (guest_text && StartsLikeScreenSet(guest_text)) {
       const auto patch = ssf2t::PatchScreenSet(guest_text);
       if (!patch || !ParsePatched(ctx, base, original, patch->xml)) {
-        REXLOG_INFO("DEBUG_SAULO multiplayer menu layout original guest={}", G::kName);
+        REXLOG_INFO("multiplayer menu layout original guest={}", G::kName);
         original(ctx, base);
         return;
       }
       g_multiplayer_patched = patch->multiplayer;
       LogMultiplayerItems(G::kName);
-      REXLOG_INFO("DEBUG_SAULO online_match menu items find=1 custom={} create=1 guest={}",
+      REXLOG_INFO("online_match menu items find=1 custom={} create=1 guest={}",
                   patch->player_match ? 0 : 1, G::kName);
-      REXLOG_INFO("DEBUG_SAULO create_player_match players control removed={} guest={}", patch->create_match,
+      REXLOG_INFO("create_player_match players control removed={} guest={}", patch->create_match,
                   G::kName);
       return;
     }
     if (guest_text && StartsLikeScripts(guest_text)) {
       const auto patch = ssf2t::PatchLobbyScripts(guest_text);
       if (patch && ParsePatched(ctx, base, original, patch->xml)) {
-        REXLOG_INFO("DEBUG_SAULO game_lobby actions removed gamer_card={} players_list={} slot_help={} guest={}",
+        REXLOG_INFO("game_lobby actions removed gamer_card={} players_list={} slot_help={} guest={}",
                     patch->gamer_card, patch->players_list, patch->slot_help, G::kName);
         return;
       }
@@ -96,7 +96,7 @@ struct OnlineMenuHooks {
   static void LoadHelpText(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     original(ctx, base);
     const ssf2t::HelpTextPatch patch = ssf2t::PatchHelpText(base + G::kHelpTextTable);
-    REXLOG_INFO("DEBUG_SAULO multiplayer menu help rows multiplayer={} player_match={} create_player_match={} guest={}",
+    REXLOG_INFO("multiplayer menu help rows multiplayer={} player_match={} create_player_match={} guest={}",
                 patch.multiplayer, patch.player_match, patch.create_match, G::kName);
   }
 
@@ -106,14 +106,14 @@ struct OnlineMenuHooks {
     const uint32_t multiplayer = ssf2t::HelpTextScreenText(base + G::kHelpTextTable, ssf2t::kMultiplayerScreen);
     const bool in_multiplayer = multiplayer && ctx.r3.u32 == multiplayer;
     if (in_multiplayer && !g_in_multiplayer) {
-      REXLOG_INFO("DEBUG_SAULO multiplayer menu enter guest={}", G::kName);
+      REXLOG_INFO("multiplayer menu enter guest={}", G::kName);
       LogMultiplayerItems(G::kName);
     }
     g_in_multiplayer = in_multiplayer;
     const uint32_t lobby = ssf2t::HelpTextScreenText(base + G::kHelpTextTable, ssf2t::kGameLobbyScreen);
     const bool in_lobby = lobby && ctx.r3.u32 == lobby;
     if (in_lobby != g_in_game_lobby) {
-      REXLOG_INFO("DEBUG_SAULO post_fight game_lobby {} guest={}", in_lobby ? "entered" : "left", G::kName);
+      REXLOG_INFO("post_fight game_lobby {} guest={}", in_lobby ? "entered" : "left", G::kName);
     }
     g_in_game_lobby = in_lobby;
   }

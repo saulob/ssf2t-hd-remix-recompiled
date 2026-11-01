@@ -87,11 +87,17 @@ PLAYING
 - F11 in the game switches between Windowed and Borderless Fullscreen. F11 in
   the launcher switches only the launcher.
 - F7 opens the achievements list. The game's own Achievements menu item opens
-  it too. Achievements are kept on this PC only; the four that need online
-  ranked matches cannot be earned.
+  it too. Achievements are kept on this PC only; Ranked Match is not offered,
+  so the four that need online ranked matches cannot be earned.
 - F2 shows or hides a frame counter in the corner of the window.
 - Saves work as on the console: the game saves to its own storage and loads it
-  again at the next start. There is no Xbox Live connection and no online play.
+  again at the next start. There is no Xbox Live connection.
+- Online play: on the launcher's Online page turn Online play on, choose an
+  Online name, run the Connection test, exchange Friend codes and accept the
+  request, then press PLAY and choose Multiplayer > Online Match in the game
+  (Find Match, Create Match or Invite Player). Matches use a direct UDP
+  connection and fall back to a relay automatically. Both players must run the
+  same game version (0.0.1.3 or 0.0.2.3). F3 shows the Ping display.
 - To open the launcher again after turning it off, hold Shift while starting.
 
 Launcher options:
@@ -100,7 +106,7 @@ Launcher options:
   Stretch fills the window).
 - Graphics: graphics card, render resolution, internal render resolution,
   anti-aliasing, multisampling and texture filtering.
-- Gameplay: language (English, French, German, Italian or Spanish), and what
+- Gameplay: language (English, French, German, Italian, Spanish or Portugues Brasil), and what
   the window title and the corner counter show.
 - Achievements: unlocked achievements and gamerscore.
 

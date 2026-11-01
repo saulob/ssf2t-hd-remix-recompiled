@@ -109,7 +109,7 @@ std::vector<std::string> OnlinePage::Tick(trg::SettingsStore& settings) {
   if (finished != recorded_tests_) {
     recorded_tests_ = finished;
     if (RecordConnectionTest(settings, save_now_)) {
-      Online().LogLine("DEBUG_SAULO online connection test completion saved " + OnlineUdpConfiguration());
+      Online().LogLine("online connection test completion saved " + OnlineUdpConfiguration());
     }
   }
   return notices;
@@ -185,7 +185,7 @@ void OnlinePage::NoteSendState(bool enabled) {
     for (const char* c = add_code_; *c; ++c) letters += std::isalnum(static_cast<unsigned char>(*c)) ? 1 : 0;
     reason = add_code_[0] == 0 ? " reason=empty" : letters < 8 ? " reason=incomplete" : " reason=invalid";
   }
-  Online().LogLine(std::string("DEBUG_SAULO online friend send enabled=") + (enabled ? "1" : "0") + reason +
+  Online().LogLine(std::string("online friend send enabled=") + (enabled ? "1" : "0") + reason +
                    " value=" + add_code_);
 }
 
@@ -297,7 +297,7 @@ void OnlinePage::DrawFriends(trg::Ui& ui, const online::Snapshot& state) {
   ImGui::BeginDisabled(code.empty());
   const bool clicked = ImGui::Button(Tr("Send request"));
   ImGui::EndDisabled();
-  if (clicked) Online().LogLine("DEBUG_SAULO online friend send clicked code=" + code);
+  if (clicked) Online().LogLine("online friend send clicked code=" + code);
   if (clicked && !code.empty() && Online().AddFriend(code) == online::FriendRequestResult::kSent) add_code_[0] = 0;
   if (code.empty() && std::strlen(add_code_) >= 8) ImGui::TextDisabled("%s", Tr("That is not a valid friend code."));
   for (const online::Request& r : state.outgoing) {
