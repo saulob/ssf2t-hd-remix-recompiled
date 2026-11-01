@@ -16,6 +16,7 @@
 #include "guest_memory.h"
 #include "input_owner.h"
 #include "invite_lifecycle.h"
+#include "localization/ui_text.h"
 #include "match_input.h"
 #include "online_runtime.h"
 #include "player_match.h"
@@ -99,17 +100,23 @@ bool AcceptedInviteFlag(const uint8_t* base) {
   return LoadBE32(base, G::kNetManager + ssf2t::kAcceptedInviteOffset) != 0;
 }
 
-template <size_t TitleBytes, size_t MessageBytes>
+// Copies UTF-8 text into a zeroed guest buffer, always leaving the terminating zero and never cutting a character.
+void CopyPopupText(uint8_t* destination, uint32_t capacity, const char* text) {
+  const size_t full = std::strlen(text);
+  size_t length = std::min<size_t>(full, capacity - 1);
+  while (length > 0 && length < full && (static_cast<uint8_t>(text[length]) & 0xC0) == 0x80) --length;
+  std::memcpy(destination, text, length);
+}
+
 void ShowPopup(PPCContext& ctx, uint8_t* base, PPCFunc* set_error, uint32_t title_address, uint32_t message_address,
-               const char (&title)[TitleBytes], const char (&message)[MessageBytes]) {
-  static_assert(TitleBytes <= ssf2t::kErrorTitleBytes && MessageBytes <= ssf2t::kErrorMessageBytes);
+               const char* title, const char* message) {
   ctx.r3.u64 = ssf2t::kPopupErrorCode;
   ctx.r4.u64 = ssf2t::kPopupErrorLevel;
   set_error(ctx, base);
   std::memset(base + title_address, 0, ssf2t::kErrorTitleBytes);
   std::memset(base + message_address, 0, ssf2t::kErrorMessageBytes);
-  std::memcpy(base + title_address, title, TitleBytes);
-  std::memcpy(base + message_address, message, MessageBytes);
+  CopyPopupText(base + title_address, ssf2t::kErrorTitleBytes, title);
+  CopyPopupText(base + message_address, ssf2t::kErrorMessageBytes, message);
 }
 
 template <typename G>
@@ -288,8 +295,8 @@ struct PlayerMatchHooks {
                   LiveUser<G>(base), CurrentLive().xuid, G::kName);
     }
     if (gate == ssf2t::OnlineGate::kServiceUnavailable) {
-      ShowPopup(ctx, base, set_error, G::kErrorTitle, G::kErrorMessage, ssf2t::kOnlineUnavailableTitle,
-                ssf2t::kOnlineUnavailableMessage);
+      ShowPopup(ctx, base, set_error, G::kErrorTitle, G::kErrorMessage, ssf2t::Tr(ssf2t::kOnlineUnavailableTitle),
+                ssf2t::Tr(ssf2t::kOnlineUnavailableMessage));
       ctx.r3.u64 = 0;
       popup = "online_unavailable";
     } else {

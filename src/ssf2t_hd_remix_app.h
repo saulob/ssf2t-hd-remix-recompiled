@@ -21,6 +21,7 @@
 #include <rex/ui/keybinds.h>
 #include <rex/ui/windowed_app_context.h>
 
+#include "achievement_toast.h"
 #include "achievement_ui.h"
 #include "achievements_overlay.h"
 #include "active_log.h"
@@ -330,6 +331,13 @@ class SuperStreetFighterApp : public rex::ReXApp {
         break;
     }
     return nullptr;
+  }
+
+  std::unique_ptr<rex::ui::AchievementNotificationDialog> CreateAchievementNotificationDialog() override {
+    if (!imgui_drawer() || !immediate_drawer() || !runtime()) {
+      return nullptr;
+    }
+    return std::make_unique<AchievementToast>(imgui_drawer(), immediate_drawer(), runtime());
   }
 
  private:

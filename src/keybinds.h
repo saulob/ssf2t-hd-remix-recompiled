@@ -11,6 +11,7 @@
 
 #include <imgui.h>
 
+#include "localization/ui_text.h"
 #include "trg/settings.h"
 
 namespace ssf2t {
@@ -223,7 +224,7 @@ inline std::string KeyboardBindingFor(ImGuiKey key, bool shift, bool ctrl, bool 
 // A readable form of a stored binding: "Semicolon,Space" -> "Semicolon or Space".
 inline std::string KeyboardBindingLabel(std::string_view binding) {
   if (binding.empty()) {
-    return "None";
+    return Tr("None");
   }
   std::string label;
   std::size_t start = 0;
@@ -232,7 +233,7 @@ inline std::string KeyboardBindingLabel(std::string_view binding) {
     const std::size_t comma = rest.find(',');
     const std::string_view part = keybind_detail::Trim(rest.substr(0, comma));
     if (!label.empty()) {
-      label += " or ";
+      label += Tr(" or ");
     }
     label += part;
     if (comma == std::string_view::npos) {

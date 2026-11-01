@@ -156,6 +156,10 @@ set(SSF2T_ONLINE_SOURCES
     src/updater/json.cpp
     src/updater/sha256.cpp
     src/updater/update_paths.cpp
+    src/localization/game_text.cpp
+    src/localization/pt_br_game_text.cpp
+    src/localization/pt_br_ui_text.cpp
+    src/localization/ui_text.cpp
 )
 set(SSF2T_ONLINE_LIBS)
 if(WIN32)
@@ -170,6 +174,7 @@ find_package(Threads REQUIRED)
 
 set(SSF2T_SOURCES
     src/main.cpp
+    src/achievement_toast.cpp
     src/achievement_ui_hook.cpp
     src/achievements_overlay.cpp
     src/active_log.cpp
@@ -191,6 +196,15 @@ set(SSF2T_SOURCES
     src/message_box_hook.cpp
     src/message_box_ui.cpp
     src/menu_text_hook.cpp
+    src/localization/arcade_quotes.cpp
+    src/localization/arcade_quotes_patch.cpp
+    src/localization/baked_texture.cpp
+    src/localization/game_text.cpp
+    src/localization/game_text_hook.cpp
+    src/localization/pt_br_baked_textures.cpp
+    src/localization/pt_br_game_text.cpp
+    src/localization/pt_br_ui_text.cpp
+    src/localization/ui_text.cpp
     src/launcher.cpp
     src/launcher_achievements.cpp
     src/log_filter.cpp
@@ -399,11 +413,24 @@ foreach(_test keyboard launcher_quit launcher_gamepad dpi window_host player_nam
     target_compile_definitions(${_name} PRIVATE SSF2T_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src")
     add_dependencies(ssf2t_runtime_tests ${_name})
 endforeach()
+target_sources(ssf2t_keyboard_tests PRIVATE
+    src/localization/game_text.cpp src/localization/pt_br_game_text.cpp src/localization/pt_br_ui_text.cpp src/localization/ui_text.cpp)
 
 add_executable(ssf2t_menu_text_tests EXCLUDE_FROM_ALL tests/menu_text_tests.cpp)
 target_include_directories(ssf2t_menu_text_tests PRIVATE src)
 target_compile_definitions(ssf2t_menu_text_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_dependencies(ssf2t_runtime_tests ssf2t_menu_text_tests)
+
+# pt-BR localization: registration, the translated tables against the real game string tables and fonts. Headless.
+add_executable(ssf2t_localization_tests EXCLUDE_FROM_ALL tests/localization_tests.cpp
+    src/localization/arcade_quotes.cpp src/localization/arcade_quotes_patch.cpp
+    src/localization/baked_texture.cpp src/localization/pt_br_baked_textures.cpp
+    src/localization/game_text.cpp src/localization/pt_br_game_text.cpp
+    src/localization/ui_text.cpp src/localization/pt_br_ui_text.cpp
+    src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_localization_tests PRIVATE src)
+target_compile_definitions(ssf2t_localization_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_localization_tests)
 
 add_executable(ssf2t_launcher_settings_tests EXCLUDE_FROM_ALL tests/launcher_settings_tests.cpp)
 target_include_directories(ssf2t_launcher_settings_tests PRIVATE src)
@@ -543,7 +570,8 @@ target_include_directories(ssf2t_achievement_tests PRIVATE src "${SSF2T_SDK_DIR}
 target_compile_definitions(ssf2t_achievement_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_dependencies(ssf2t_runtime_tests ssf2t_achievement_tests)
 
-add_executable(ssf2t_game_files_tests EXCLUDE_FROM_ALL tests/game_files_tests.cpp src/game_files.cpp src/stfs.cpp)
+add_executable(ssf2t_game_files_tests EXCLUDE_FROM_ALL tests/game_files_tests.cpp src/game_files.cpp src/stfs.cpp
+    src/localization/game_text.cpp src/localization/pt_br_game_text.cpp src/localization/pt_br_ui_text.cpp src/localization/ui_text.cpp)
 target_include_directories(ssf2t_game_files_tests PRIVATE src)
 target_compile_definitions(ssf2t_game_files_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_dependencies(ssf2t_runtime_tests ssf2t_game_files_tests)
@@ -752,7 +780,8 @@ target_compile_options(ssf2t_global_feature_parity_tests PRIVATE -Wall -Wextra)
 add_dependencies(ssf2t_runtime_tests ssf2t_global_feature_parity_tests)
 
 # A development build without the Title Update image: the base game alone is ready, a Title Update never is.
-add_executable(ssf2t_game_files_base_only_tests EXCLUDE_FROM_ALL tests/game_files_base_only_tests.cpp src/game_files.cpp src/stfs.cpp)
+add_executable(ssf2t_game_files_base_only_tests EXCLUDE_FROM_ALL tests/game_files_base_only_tests.cpp src/game_files.cpp src/stfs.cpp
+    src/localization/game_text.cpp src/localization/pt_br_game_text.cpp src/localization/pt_br_ui_text.cpp src/localization/ui_text.cpp)
 target_include_directories(ssf2t_game_files_base_only_tests PRIVATE src)
 target_compile_definitions(ssf2t_game_files_base_only_tests PRIVATE SSF2T_TITLE_UPDATE_IMAGE=0
     SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
@@ -790,3 +819,13 @@ if(UNIX AND NOT APPLE)
     set_target_properties(ssf2t_clipboard_sdl_tests PROPERTIES BUILD_RPATH "$ORIGIN")
     add_dependencies(ssf2t_runtime_tests ssf2t_clipboard_sdl_tests)
 endif()
+
+# Suites that link program sources which show text through Tr().
+foreach(_localized_test ssf2t_clipboard_tests ssf2t_friend_field_tests ssf2t_online_menu_tests
+        ssf2t_player_match_net_tests ssf2t_player_match_tests ssf2t_keyboard_tests ssf2t_online_connection_tests
+        ssf2t_online_identity_tests ssf2t_online_protocol_tests ssf2t_online_rendezvous_tests ssf2t_online_service_tests)
+    if(TARGET ${_localized_test})
+        target_sources(${_localized_test} PRIVATE
+            src/localization/game_text.cpp src/localization/pt_br_game_text.cpp src/localization/pt_br_ui_text.cpp src/localization/ui_text.cpp)
+    endif()
+endforeach()

@@ -33,6 +33,7 @@
 #include "internal_render_scale.h"
 #include "keybinds.h"
 #include "language_setting.h"
+#include "localization/active_language.h"
 #include "local_player_name.h"
 #include "multisampling.h"
 #include "player_name_setting.h"
@@ -62,7 +63,7 @@ REXCVAR_DEFINE_STRING(ssf2t_fight_area, "original", "SSF2T",
 REXCVAR_DEFINE_STRING(ssf2t_graphics_adapter, "auto", "SSF2T",
                       "Graphics card: auto, or the index d3d12_adapter (Windows) or vulkan_device (Linux) takes (applied at start)");
 REXCVAR_DEFINE_STRING(ssf2t_language, "en-US", "SSF2T",
-                      "Game language: en-US, fr-FR, de-DE, it-IT or es-ES (sets user_language at start)");
+                      "Game language: en-US, fr-FR, de-DE, it-IT, es-ES or pt-BR (sets user_language at start)");
 REXCVAR_DEFINE_STRING(ssf2t_player_1_name, "Player 1", "SSF2T", "Name shown in-game for local player 1");
 REXCVAR_DEFINE_STRING(ssf2t_player_2_name, "Player 2", "SSF2T", "Name shown in-game for local player 2");
 REXCVAR_DEFINE_INT32(ssf2t_launcher_x, 0, "SSF2T", "Launcher window left edge, written by the launcher");
@@ -411,6 +412,7 @@ void GameSettings::Apply() const {
 void ApplyLanguage() {
   const GameLanguage& language = LanguageFor(REXCVAR_GET(ssf2t_language));
   rex::cvar::SetFlagByName("user_language", std::to_string(language.xconfig_language));
+  localization::SetActiveLanguage(language.key);
   REXLOG_INFO("Language: {} (user_language {})", language.label, language.xconfig_language);
 }
 

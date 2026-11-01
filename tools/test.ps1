@@ -48,7 +48,7 @@ $Areas = @(
     'Online protocol', 'Direct / Relay', 'Player Match', 'Rollback', 'Frame Zero', 'Multiple fights / matches',
     'Launcher controls', 'Local multiplayer', 'Overlays / hotkeys', 'Settings', 'Display / Graphics', 'Achievements',
     'Saves / user data', 'Updates', 'Packaging structure', 'Core runtime', 'Global feature parity',
-    'Windows/Base013 feature set', 'Windows/TU023 feature set'
+    'Windows/Base013 feature set', 'Windows/TU023 feature set', 'Localization pt-BR'
 )
 $AreaLabels = @{
     'Base013' = 'Windows Base013 structural parity'
@@ -125,7 +125,8 @@ if ($python) {
         Skip-Check 'codegen scanner verify (TU023 image)' @('TU023') 'needs out\codegen\tu\raw and game\analysis\default.image.bin'
     }
 } else {
-    Skip-Check 'codegen scanner' @('Core runtime') 'python not found'
+    Skip-Check 'codegen scanner self-test' @('Core runtime') 'python not found'
+    Skip-Check 'codegen scanner verify (TU023 image)' @('TU023') 'python not found'
 }
 Invoke-Check 'guest symbol prefix (base013_/tu023_)' @('Base013', 'TU023', 'Hooks and patches') { & (Join-Path $PSScriptRoot 'test-guest-code.ps1') }
 Invoke-Check 'release folder check cases' @('Packaging structure', 'Windows platform paths') { & (Join-Path $PSScriptRoot 'test-release-check.ps1') }
@@ -155,6 +156,9 @@ $Suites = @(
     @('game files', 'game_files', 'Base013', 'TU023'),
     @('game files, base-only build', 'game_files_base_only', 'Base013'),
     @('menu text', 'menu_text', 'Hooks and patches', 'Player Match'),
+    @('localization pt-BR: registration, tables, placeholders, encoding (source)', 'localization source', 'Localization pt-BR', 'Settings', 'Windows platform paths', 'Linux platform paths'),
+    @('localization pt-BR: real game string tables and fonts', 'localization game', 'Localization pt-BR', 'Base013', 'TU023', 'Hooks and patches'),
+    @('localization pt-BR: runtime literals of both guest images and their reachability', 'localization runtime', 'Localization pt-BR', 'Base013', 'TU023', 'Hooks and patches'),
     @('fight area', 'fight_area', 'Hooks and patches', 'Display / Graphics'),
     @('infinite time', 'infinite_time', 'Hooks and patches', 'Overlays / hotkeys', 'Settings'),
     # Platforms and wire formats
@@ -294,11 +298,15 @@ if ($buildProblem) {
     $updaterSources = @(Get-ChildItem -LiteralPath (Join-Path $Root 'src\updater') -File | Where-Object Extension -in '.cpp', '.h') +
         @(Get-Item -LiteralPath (Join-Path $Root 'CMakeLists.txt'), (Join-Path $PSScriptRoot 'build-updater.ps1'))
     $newestSource = ($updaterSources | Measure-Object LastWriteTimeUtc -Maximum).Maximum
-    if (-not (Test-Path -LiteralPath $releaseUpdater) -or (Get-Item -LiteralPath $releaseUpdater).LastWriteTimeUtc -lt $newestSource) {
-        Invoke-Check 'build the release update helper (MSYS2 CLANG64)' @('Updates', 'Packaging structure') {
+    $releaseUpdaterStale = -not (Test-Path -LiteralPath $releaseUpdater) -or (Get-Item -LiteralPath $releaseUpdater).LastWriteTimeUtc -lt $newestSource
+    Invoke-Check 'release update helper build (MSYS2 CLANG64, rebuilt when missing or stale)' @('Updates', 'Packaging structure') {
+        if ($releaseUpdaterStale) {
             & (Join-Path $PSScriptRoot 'build-updater.ps1') -OutDir $releaseUpdaterDir
-        }.GetNewClosure()
-    }
+        } else {
+            Write-Host 'current'
+            $global:LASTEXITCODE = 0
+        }
+    }.GetNewClosure()
     if (Test-Path -LiteralPath $releaseUpdater) {
         Invoke-Check 'updater helper (release CLANG64 build)' @('Updates', 'Packaging structure') { & $helper $releaseUpdater }.GetNewClosure()
     } else {
@@ -483,6 +491,27 @@ if ($SkipLinux) {
         Add-Result 'the Linux build produced no wire vectors for Windows to read' $crossArea 'FAIL'
     }
     if ($LinuxVectors) { Remove-Item -LiteralPath $LinuxVectors -ErrorAction SilentlyContinue }
+}
+
+# ---- Required Windows checks: a registered check that never reported cannot hide behind the totals -------------
+
+$RequiredWindows = @(
+    'codegen scanner self-test', 'codegen scanner verify (TU023 image)', 'guest symbol prefix (base013_/tu023_)',
+    'release folder check cases', 'online instance script', 'online service (Worker, Node)'
+) + @($Suites | ForEach-Object { $_[0] }) + @(
+    $Suites | Where-Object { $_[1] -like 'global_feature_parity *' } | ForEach-Object { $name = $_[0]; $TargetAreas.Values | ForEach-Object { "$name ($_)" } }
+)
+if (-not $buildProblem) {
+    $RequiredWindows += @(
+        'clipboard (Win32)', 'updater helper', 'release update helper build (MSYS2 CLANG64, rebuilt when missing or stale)',
+        'updater helper (release CLANG64 build)', 'online integration (C++ client against the local lobby)'
+    )
+}
+$executedWindows = @($Results | Where-Object Platform -eq 'Windows' | ForEach-Object { $_.What })
+foreach ($required in $RequiredWindows) {
+    if ($executedWindows -notcontains $required) {
+        Add-Result "required suite '$required' did not execute" @('Core runtime') 'FAIL'
+    }
 }
 
 # ---- Summary ---------------------------------------------------------------------------------------------------

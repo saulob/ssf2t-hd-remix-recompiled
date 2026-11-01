@@ -18,13 +18,17 @@ struct GameLanguage {
   uint32_t xconfig_language;
 };
 
-// The title maps only these five XC_LANGUAGE values to its string tables; every other value gives English.
+inline constexpr char kPortugueseBrazilKey[] = "pt-BR";
+
+// The title maps only five XC_LANGUAGE values to its string tables; every other value gives English. Português Brasil has
+// no table of its own: it runs on the English slot and the port replaces the text.
 inline constexpr GameLanguage kGameLanguages[] = {
     {"en-US", "English", 1},
     {"fr-FR", "French", 4},
     {"de-DE", "German", 3},
     {"it-IT", "Italian", 6},
     {"es-ES", "Spanish", 5},
+    {kPortugueseBrazilKey, "Portugu\xC3\xAA" "s Brasil", 1},
 };
 
 // An unknown value selects English.

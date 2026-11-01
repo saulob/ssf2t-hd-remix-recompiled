@@ -4,6 +4,7 @@
 #include <chrono>
 #include <thread>
 
+#include "localization/ui_text.h"
 #include "online/lobby_link.h"
 #include "online/net_addr.h"
 #include "online/protocol.h"
@@ -55,11 +56,11 @@ ServiceProbe CheckHealth(const std::string& url) {
   const json::Value* service = body && body->IsObject() ? body->Find("service") : nullptr;
   const json::Value* protocol = body && body->IsObject() ? body->Find("protocol") : nullptr;
   if (!service || !service->IsString() || service->AsString() != kServiceName || !protocol || !protocol->IsNumber()) {
-    return Refused("The online service answered unexpectedly.", "health: body not recognised");
+    return Refused(Tr("The online service answered unexpectedly."), "health: body not recognised");
   }
   const int version = int(protocol->AsInt64().value_or(0));
   if (version != kLobbyProtocol) {
-    return Refused("The online service needs a different version of the game.",
+    return Refused(Tr("The online service needs a different version of the game."),
                    "health: service protocol " + std::to_string(version) + ", game " + std::to_string(kLobbyProtocol));
   }
   ServiceProbe probe;
@@ -91,7 +92,7 @@ ServiceProbe SignIn(const ConnectionTestRequest& request) {
       const int latency = ElapsedMs(started);
       channel->Close();
       if (!reply || reply->kind != ServerMessage::Kind::kResponse) {
-        return Refused("The online service answered unexpectedly.", "sign-in: reply not recognised");
+        return Refused(Tr("The online service answered unexpectedly."), "sign-in: reply not recognised");
       }
       if (reply->code != "ok") return Refused(DescribeServiceError(reply->code), "sign-in: code " + reply->code);
       ServiceProbe probe;
@@ -121,6 +122,17 @@ std::string PortList(const std::vector<uint16_t>& ports) {
     text += (i == 0 ? "" : i + 1 == ports.size() ? " or " : ", ") + std::to_string(ports[i]);
   }
   return text;
+}
+
+// The joiner of PortList is English text that is also logged, so it is translated where the report shows it.
+std::string LocalizedPortList(std::string ports) {
+  const std::string joiner = " or ";
+  const std::string translated = Tr(joiner);
+  if (translated == joiner) return ports;
+  for (size_t at = ports.find(joiner); at != std::string::npos; at = ports.find(joiner, at + translated.size())) {
+    ports.replace(at, joiner.size(), translated);
+  }
+  return ports;
 }
 
 // On 0.0.0.0, the first free port of the game's, as the game's own socket binds; `local_port` is the one it got.
@@ -232,13 +244,14 @@ ConnectionReport SummarizeConnection(const ConnectionFacts& f) {
   };
 
   if (!f.identity_ok) {
-    line(Mark::kProblem, "Online service", "Your online identity could not be created.");
+    line(Mark::kProblem, "Online service", Tr("Your online identity could not be created."));
   } else if (f.lobby_ok) {
     r.latency_ms = int(f.lobby_latency_ms);
     line(Mark::kOk, "Online service",
-         f.lobby_latency_ms >= 0 ? "Connected \xC2\xB7 " + std::to_string(f.lobby_latency_ms) + " ms" : "Connected.");
+         f.lobby_latency_ms >= 0 ? Tr("Connected \xC2\xB7 ") + std::to_string(f.lobby_latency_ms) + Tr(" ms")
+                                 : std::string(Tr("Connected.")));
   } else {
-    line(Mark::kProblem, "Online service", f.lobby_refusal.empty() ? kNotReachable : f.lobby_refusal);
+    line(Mark::kProblem, "Online service", f.lobby_refusal.empty() ? std::string(Tr(kNotReachable)) : f.lobby_refusal);
   }
 
   // A second STUN server agreeing (same_mapping) or seeing this PC's own address (public_address) actually tests
@@ -247,31 +260,31 @@ ConnectionReport SummarizeConnection(const ConnectionFacts& f) {
   const bool direct_untested = f.udp_ok && !f.second_answer && !direct_confident;
   const bool router_opened = f.router == Router::kMapped;
   const bool port_open = f.closed_ports.empty();
-  const std::string on_port = f.udp_port ? " on UDP port " + std::to_string(f.udp_port) : "";
+  const std::string on_port = f.udp_port ? Tr(" on UDP port ") + std::to_string(f.udp_port) : std::string();
   if (!port_open) {
     line(Mark::kProblem, "Direct connections",
-         "Cannot open UDP port " + f.closed_ports +
-             ". Another program may already be using it, or network security may be blocking it.");
+         Tr("Cannot open UDP port ") + LocalizedPortList(f.closed_ports) +
+             Tr(". Another program may already be using it, or network security may be blocking it."));
   } else if (f.stun_off) {
-    line(Mark::kNote, "Direct connections", "Not checked.");
+    line(Mark::kNote, "Direct connections", Tr("Not checked."));
   } else if (!f.udp_ok) {
-    line(Mark::kProblem, "Direct connections", "May be blocked by your network or firewall" + on_port + ".");
+    line(Mark::kProblem, "Direct connections", Tr("May be blocked by your network or firewall") + on_port + ".");
   } else if (direct_confident) {
-    line(Mark::kOk, "Direct connections", "UDP endpoint available" + on_port + "." + kVerifiedInMatch);
+    line(Mark::kOk, "Direct connections", Tr("UDP endpoint available") + on_port + "." + Tr(kVerifiedInMatch));
   } else if (direct_untested) {
     line(Mark::kNote, "Direct connections",
-         "UDP endpoint available" + on_port +
-             ", but your network's NAT type could not be confirmed (only one STUN server answered)." +
-             kVerifiedInMatch);
+         Tr("UDP endpoint available") + on_port +
+             Tr(", but your network's NAT type could not be confirmed (only one STUN server answered).") +
+             Tr(kVerifiedInMatch));
   } else if (router_opened) {
     line(Mark::kOk, "Direct connections",
-         "UDP endpoint available through your router" + on_port + "." + kVerifiedInMatch);
+         Tr("UDP endpoint available through your router") + on_port + "." + Tr(kVerifiedInMatch));
   } else {
-    line(Mark::kProblem, "Direct connections", "Your router may stop some players from connecting to you.");
+    line(Mark::kProblem, "Direct connections", Tr("Your router may stop some players from connecting to you."));
     line(Mark::kProblem, "Router configuration",
          f.router == Router::kMappedBehindNat
-             ? "Another router is in front of yours (often your provider's), so it cannot be opened automatically."
-             : "Automatic setup is not available on your router.");
+             ? Tr("Another router is in front of yours (often your provider's), so it cannot be opened automatically.")
+             : Tr("Automatic setup is not available on your router."));
   }
 
   // A relayed match plays on the same UDP socket, so the relay only stands in for the direct path when that port opened.
@@ -282,7 +295,8 @@ ConnectionReport SummarizeConnection(const ConnectionFacts& f) {
         entry.mark = Mark::kNote;
       }
     }
-    line(Mark::kOk, "Relay", "Available. A match that cannot connect directly connects through the online service.");
+    line(Mark::kOk, "Relay",
+         Tr("Available. A match that cannot connect directly connects through the online service."));
   }
   if (f.udp_ok && f.second_answer && !f.same_mapping && !f.public_address) {
     r.details.push_back("NAT: another public port per destination (symmetric NAT)");

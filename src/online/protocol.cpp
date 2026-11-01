@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 
+#include "localization/ui_text.h"
 #include "updater/json.h"
 
 namespace ssf2t::online {
@@ -383,18 +384,18 @@ std::string NormalizeFriendCode(std::string_view text) {
 }
 
 std::string DescribeServiceError(const std::string& code) {
-  if (code == "version_mismatch") return "Game versions do not match.";
-  if (code == "not_found") return "No player has that friend code.";
-  if (code == "not_friends") return "That player is not your friend.";
-  if (code == "offline") return "Your friend is not online.";
-  if (code == "busy") return "One of you is already in a match.";
-  if (code == "bad_request") return "That is not a valid friend code.";
-  if (code == "rate_limited" || code == "limit") return "Too many requests. Try again in a moment.";
-  if (code == "proto") return "The online service needs a different version of the game.";
-  if (code == "unauthorized" || code == "bad_game" || code == "bad_guest") return "The online service did not accept this game.";
-  if (code == "unreachable" || code == "link_lost" || code == "timeout") return "Unable to reach online service.";
-  if (code == "relay_unavailable") return "The connection through the online service is not available.";
-  return "The online service refused the request (" + code + ").";
+  if (code == "version_mismatch") return Tr("Game versions do not match.");
+  if (code == "not_found") return Tr("No player has that friend code.");
+  if (code == "not_friends") return Tr("That player is not your friend.");
+  if (code == "offline") return Tr("Your friend is not online.");
+  if (code == "busy") return Tr("One of you is already in a match.");
+  if (code == "bad_request") return Tr("That is not a valid friend code.");
+  if (code == "rate_limited" || code == "limit") return Tr("Too many requests. Try again in a moment.");
+  if (code == "proto") return Tr("The online service needs a different version of the game.");
+  if (code == "unauthorized" || code == "bad_game" || code == "bad_guest") return Tr("The online service did not accept this game.");
+  if (code == "unreachable" || code == "link_lost" || code == "timeout") return Tr("Unable to reach online service.");
+  if (code == "relay_unavailable") return Tr("The connection through the online service is not available.");
+  return std::string(Tr("The online service refused the request (")) + code + ").";
 }
 
 bool GuestsCompatible(const std::string& guest_a, int build_a, const std::string& guest_b, int build_b) {
@@ -414,16 +415,16 @@ std::string ChoosePeerAddress(const std::vector<std::string>& mine, const PeerIn
 }
 
 std::string FriendStatusLine(const Friend& entry) {
-  if (!entry.online) return "Offline";
+  if (!entry.online) return Tr("Offline");
   std::string line;
   switch (entry.state) {
-    case FriendState::kPlayerMatch: line = "Online Match"; break;
-    case FriendState::kConnecting: line = "Connecting"; break;
-    case FriendState::kInGame: line = "In game"; break;
-    default: line = "Online"; break;
+    case FriendState::kPlayerMatch: line = Tr("Online Match"); break;
+    case FriendState::kConnecting: line = Tr("Connecting"); break;
+    case FriendState::kInGame: line = Tr("In game"); break;
+    default: line = Tr("Online"); break;
   }
-  if (!entry.platform.empty()) line += " \xC2\xB7 " + entry.platform;
-  if (!entry.version.empty()) line += " \xC2\xB7 v" + entry.version;
+  if (!entry.platform.empty()) line += Tr(" \xC2\xB7 ") + entry.platform;
+  if (!entry.version.empty()) line += Tr(" \xC2\xB7 v") + entry.version;
   return line;
 }
 

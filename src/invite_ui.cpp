@@ -11,6 +11,7 @@
 #include <rex/ui/imgui_dialog.h>
 
 #include "launcher.h"
+#include "localization/ui_text.h"
 #include "modal_dialog.h"
 #include "online/friend_view.h"
 #include "online_runtime.h"
@@ -61,11 +62,11 @@ class InvitePicker final : public ModalDialog {
  protected:
   void DrawContent(ImGuiIO& io) override {
     ImGui::PushFont(LauncherRegularFont());
-    if (BeginCenteredWindow("Invite a friend##invite_picker", io, &focused_)) {
-      ImGui::TextUnformatted("Invite a friend");
+    if (BeginCenteredWindow((std::string(Tr("Invite a friend")) + "##invite_picker").c_str(), io, &focused_)) {
+      ImGui::TextUnformatted(Tr("Invite a friend"));
       ImGui::Separator();
       const std::vector<online::InviteChoice> choices = online::InviteChoices(Online().snapshot().friends);
-      if (choices.empty()) ImGui::TextWrapped("No friends yet. Add them on the launcher's Online page.");
+      if (choices.empty()) ImGui::TextWrapped("%s", Tr("No friends yet. Add them on the launcher's Online page."));
       for (const online::InviteChoice& choice : choices) {
         ImGui::PushID(choice.player.c_str());
         const std::string row = choice.name + "    " + choice.status;
@@ -76,7 +77,7 @@ class InvitePicker final : public ModalDialog {
         }
         ImGui::PopID();
       }
-      Hint("A  Invite     B  Back");
+      Hint(Tr("A  Invite     B  Back"));
     }
     ImGui::End();
     ImGui::PopFont();
@@ -93,20 +94,20 @@ class InvitePrompt final : public ModalDialog {
  protected:
   void DrawContent(ImGuiIO& io) override {
     ImGui::PushFont(LauncherRegularFont());
-    if (BeginCenteredWindow("Online Match invite##invite_prompt", io, &focused_)) {
-      ImGui::TextUnformatted((invite_.ad.name + " invited you to an Online Match.").c_str());
+    if (BeginCenteredWindow((std::string(Tr("Online Match invite")) + "##invite_prompt").c_str(), io, &focused_)) {
+      ImGui::TextUnformatted((invite_.ad.name + Tr(" invited you to an Online Match.")).c_str());
       ImGui::Spacing();
-      if (ImGui::Button("Accept")) {
+      if (ImGui::Button(Tr("Accept"))) {
         const InputSource source = ActivationSource();
         if (const auto ad = Online().AcceptInvite(invite_.id)) DeliverAcceptedInvite(*ad, source);
         RequestClose();
       }
       ImGui::SameLine();
-      if (ImGui::Button("Decline")) {
+      if (ImGui::Button(Tr("Decline"))) {
         Online().DeclineInvite(invite_.id);
         RequestClose();
       }
-      Hint("A  Choose     B  Later");
+      Hint(Tr("A  Choose     B  Later"));
     }
     ImGui::End();
     ImGui::PopFont();

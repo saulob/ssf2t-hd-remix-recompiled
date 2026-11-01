@@ -324,7 +324,7 @@ void TestOnlineNameFieldMatchesItsHelp() {
   CHECK(Has(page, "char text[online::kMaxOnlineNameChars + 1] = {};"));
   CHECK(Has(page, "ImGuiInputTextFlags_CallbackCharFilter, OnlineNameFilter"));
   CHECK(Has(page, "online::OnlineNameChar(char(data->EventChar))"));
-  CHECK(Has(page, "\"Other players see \" + shown"));
+  CHECK(Has(page, "Tr(\"Other players see \") + shown"));
   CHECK(Has(ReadSource("online/identity.cpp"), "if (OnlineNameChar(c)) out += c;"));
 }
 
@@ -354,7 +354,7 @@ void TestOnlinePageWording() {
     CHECK(!Has(text, "Player Match"));
     CHECK(!Has(text, "Xbox LIVE") && !Has(text, "Challenge"));
   }
-  CHECK(Has(ReadSource("online/protocol.cpp"), "case FriendState::kPlayerMatch: line = \"Online Match\"; break;"));
+  CHECK(Has(ReadSource("online/protocol.cpp"), "case FriendState::kPlayerMatch: line = Tr(\"Online Match\"); break;"));
 }
 
 void TestNetplayTestControlsAreDeveloperOnly() {
@@ -629,7 +629,7 @@ void TestLauncherWiresPlayRefusalToTheOnlinePage() {
   CHECK(Has(launcher, "const bool pressed = play_attempt_.PressedThisCall(ImGui::GetFrameCount());"));
   CHECK(Has(launcher, "if (pressed) online_page_.RequestConnectionTestAttention();\n        return trg::PlayCheck{false, "
                       "kConnectionTestRequired, online_page};"));
-  CHECK(Has(launcher, "ImGui::TextWrapped(\"%s\", kConnectionTestRequired);"));  // the Play page keeps its line
+  CHECK(Has(launcher, "ImGui::TextWrapped(\"%s\", Tr(kConnectionTestRequired));"));  // the Play page keeps its line
   const std::string page = ReadSource("online_page.cpp");
   CHECK(Has(page, "ui.ButtonRow(\"Connection test\", kTestHelp, state.testing ? \"Testing...\" : \"Run test\", "
                   "view.primary_button)"));

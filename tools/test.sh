@@ -91,10 +91,11 @@ A_GLIBC="Linux GLIBC <= 2.31"
 A_RPATH="Linux RPATH/RUNPATH"
 A_DEPS="Linux dynamic dependencies"
 A_CORE="Linux core runtime"
+A_LOC="Linux localization pt-BR"
 A_GATE="Linux test.sh gate"
 AREAS=("$A_ENV" "$A_BDIR" "$A_PROD" "$A_B13" "$A_TU" "$A_PAIR" "$A_HOOK" "$A_GFP" "$A_T_B13" "$A_T_TU" "$A_PLAT" "$A_WS" "$A_NET"
   "$A_RELAY" "$A_PM" "$A_RB" "$A_FZ" "$A_MULTI" "$A_WORKER" "$A_WIRE" "$A_CTRL" "$A_SET" "$A_KEYS" "$A_DISP" "$A_GPU"
-  "$A_ACH" "$A_CLIP" "$A_CRASH" "$A_DATA" "$A_UPD" "$A_PKG" "$A_GLIBC" "$A_RPATH" "$A_DEPS" "$A_CORE" "$A_GATE")
+  "$A_ACH" "$A_CLIP" "$A_CRASH" "$A_DATA" "$A_UPD" "$A_PKG" "$A_GLIBC" "$A_RPATH" "$A_DEPS" "$A_CORE" "$A_LOC" "$A_GATE")
 TARGETS=("linux/base013|$A_T_B13" "linux/tu023|$A_T_TU")
 
 A_CROSS="Windows/Linux wire compatibility"
@@ -243,6 +244,9 @@ SUITES=(
   "game files|ssf2t_game_files_tests|$A_B13;$A_TU"
   "game files, base-only build|ssf2t_game_files_base_only_tests|$A_B13"
   "menu text|ssf2t_menu_text_tests|$A_HOOK;$A_PM"
+  "localization pt-BR: registration, tables, placeholders, encoding (source)|ssf2t_localization_tests source|$A_LOC;$A_SET;$A_PLAT"
+  "localization pt-BR: real game string tables and fonts|ssf2t_localization_tests game|$A_LOC;$A_B13;$A_TU;$A_HOOK"
+  "localization pt-BR: runtime literals of both guest images and their reachability|ssf2t_localization_tests runtime|$A_LOC;$A_B13;$A_TU;$A_HOOK"
   "fight area|ssf2t_fight_area_tests|$A_HOOK;$A_DISP"
   "infinite time|ssf2t_infinite_time_tests|$A_HOOK;$A_KEYS;$A_SET"
   "wire bytes (tests/wire-vectors.txt)|ssf2t_wire_parity_tests|$A_WIRE;$A_NET;$A_RELAY"

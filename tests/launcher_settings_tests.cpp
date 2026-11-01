@@ -38,7 +38,7 @@ void TestPresentationSegments() {
 }
 
 void TestLanguageTable() {
-  CHECK(std::size(kGameLanguages) == 5);
+  CHECK(std::size(kGameLanguages) == 6);
   CHECK(std::string_view(kLanguageSetting) == "ssf2t_language");
   CHECK(std::string_view(kGameLanguages[0].key) == kDefaultLanguage);
   std::set<std::string_view> keys;
@@ -48,7 +48,7 @@ void TestLanguageTable() {
     xconfig.insert(language.xconfig_language);
   }
   CHECK(keys.size() == std::size(kGameLanguages));
-  CHECK(xconfig.size() == std::size(kGameLanguages));
+  CHECK(xconfig.size() == std::size(kGameLanguages) - 1);  // Português Brasil runs on the English slot
 }
 
 // The title maps XC_LANGUAGE 1, 3, 4, 5 and 6 to English, German, French, Spanish and Italian.
@@ -58,6 +58,8 @@ void TestLanguageXConfigValues() {
   CHECK(LanguageFor("fr-FR").xconfig_language == 4);
   CHECK(LanguageFor("es-ES").xconfig_language == 5);
   CHECK(LanguageFor("it-IT").xconfig_language == 6);
+  CHECK(LanguageFor("pt-BR").xconfig_language == 1);
+  CHECK(std::string_view(LanguageFor("pt-BR").label) == "Portugu\xC3\xAAs Brasil");
 }
 
 void TestLanguageFallback() {

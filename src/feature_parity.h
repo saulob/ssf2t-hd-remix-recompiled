@@ -55,7 +55,7 @@ inline constexpr Feature kFeatures[] = {
      "src/game_files.cpp,src/stfs.cpp,src/guest_image.cpp,src/title_update_image.h", "", "", "", "",
      "tests/game_files_tests.cpp,tests/game_files_base_only_tests.cpp,tests/guest_build_tests.cpp"},
     {"Achievements", "Achievements::kShowAchievementsWrapper", "Achievements::kShowAchievementsWrapper", "", "", "", "",
-     "F7=sdk", "src/achievement_ui_hook.cpp,src/achievements_overlay.cpp,src/launcher_achievements.cpp", "", "", "", "",
+     "F7=sdk", "src/achievement_toast.cpp,src/achievement_ui_hook.cpp,src/achievements_overlay.cpp,src/launcher_achievements.cpp", "", "", "", "",
      "tests/achievement_tests.cpp,tests/achievement_metadata_tests.cpp"},
     {"Game message boxes", "MessageBox::kShowMessageBoxWrapper", "MessageBox::kShowMessageBoxWrapper", "", "", "", "",
      "", "src/message_box_hook.cpp,src/message_box_ui.cpp,src/modal_dialog.cpp", "", "", "", "",
@@ -95,6 +95,13 @@ inline constexpr Feature kFeatures[] = {
      "src/graphics_adapters.cpp:ListGraphicsAdapters", "tests/graphics_adapter_tests.cpp", "Graphics card"},
     {"Language", "", "", "kLanguageSetting", "", "", "", "", "src/language_setting.h", "", "", "", "",
      "tests/launcher_settings_tests.cpp", "kLanguageLabel"},
+    {"Language: Português Brasil (game text, launcher and overlays)", "GameText::kTextTableRead,GameText::kTextTableReadReturn,GameText::kTextureParse,GameText::kPromptText,GameText::kLeaderboardError,GameText::kArcadeQuoteInit,GameText::kArcadeQuotePool",
+     "GameText::kTextTableRead,GameText::kTextureParse,GameText::kPromptText,GameText::kLeaderboardError,GameText::kArcadeQuoteInit", "", "", "", "", "",
+     "src/localization/arcade_quotes.cpp,src/localization/arcade_quotes.h,src/localization/arcade_quotes_patch.cpp,src/localization/baked_texture.cpp,src/localization/baked_texture.h,src/localization/pt_br_baked_textures.cpp,"
+     "src/localization/game_text.cpp,src/localization/game_text.h,src/localization/game_text_guest.h,"
+     "src/localization/game_text_hook.cpp,src/localization/pt_br_game_text.cpp,src/localization/pt_br_ui_text.cpp,"
+     "src/localization/ui_text.cpp,src/localization/ui_text.h,src/localization/active_language.h",
+     "", "", "", "", "tests/localization_tests.cpp"},
     {"Title bar and frame counter", "", "", "ssf2t_show_fps,ssf2t_show_render_resolution,ssf2t_show_frame_counter", "",
      "", "", "F2=src/frame_counter.cpp", "src/frame_counter.cpp,src/window_title.h", "", "", "", "",
      "tests/window_host_tests.cpp", "Frame rate in title,Render resolution in title,Frame counter"},

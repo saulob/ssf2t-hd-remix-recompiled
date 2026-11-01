@@ -41,6 +41,8 @@
 #include "internal_render_scale.h"
 #include "keybinds.h"
 #include "language_setting.h"
+#include "localization/active_language.h"
+#include "localization/ui_text.h"
 #include "local_player_name.h"
 #include "netplay_setting.h"
 #include "online_page.h"
@@ -125,6 +127,8 @@ std::unique_ptr<rex::ui::ImmediateTexture> LoadHeaderArt(rex::ui::ImmediateDrawe
 trg::Fonts g_fonts;
 float g_font_density = 1.0f;
 
+const char* TranslateLauncherText(const char* english) { return Tr(english); }
+
 GameCheck CheckAndLogGameFiles(const std::filesystem::path& game_dir) {
   const GameCheck check = CheckGameFiles(game_dir);
   if (check.state == GameFiles::kUnsupported || check.state == GameFiles::kUpdateUnsupported) {
@@ -154,10 +158,10 @@ std::string Size(int width, int height) {
 std::vector<trg::Option> RenderResolutionOptions(AspectRatio aspect) {
   std::vector<trg::Option> options;
   for (int scale = 1; scale <= 4; ++scale) {
-    std::string label = scale == 1 ? "Original" : std::to_string(scale) + "x";
+    std::string label = scale == 1 ? std::string(Tr("Original")) : std::to_string(scale) + "x";
     label += " \xE2\x80\x94 " + std::to_string(GuestWidth(aspect) * scale) + "x" + std::to_string(kGuestHeight * scale);
     if (scale == 2) {
-      label += " \xE2\x80\x94 Recommended for 1440p";
+      label += Tr(" \xE2\x80\x94 Recommended for 1440p");
     }
     options.push_back({std::to_string(scale), label});
   }
@@ -190,6 +194,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         graphics_adapters_(ListGraphicsAdapters()) {
     SetGameFiles(CheckAndLogGameFiles(paths_.game_dir));
     header_art_ = LoadHeaderArt(paths_.immediate_drawer);
+    trg::SetTranslator(&TranslateLauncherText);
+    localization::SetActiveLanguage(settings_.Get(kLanguageSetting, kDefaultLanguage));
     launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
     updater_ = std::make_unique<trg::update::UpdateController>(MakeUpdateConfig(PortFolder()));
     updater_->StartCheck();
@@ -206,6 +212,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     if (done_) {
       return;
     }
+    localization::SetActiveLanguage(settings_.Get(kLanguageSetting, kDefaultLanguage));
     online_page_.SetOwnerWindow(WindowHandle());
     PollInstall();
     PollUpdate();
@@ -287,7 +294,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
 
   // Drawn outside the disabled frame so the message keeps full brightness.
   void DrawStartingMessage() {
-    constexpr const char* kText = "Settings saved. Starting game...";
+    const char* kText = Tr("Settings saved. Starting game...");
     ImFont* font = g_fonts.semibold ? g_fonts.semibold : ImGui::GetFont();
     const float size = g_fonts.size * 1.25f;
     const ImGuiViewport* vp = ImGui::GetMainViewport();
@@ -547,7 +554,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     }
     if (playable_ && online_page_.PlayNeedsTest(settings_)) {
       ImGui::PushStyleColor(ImGuiCol_Text, ui.theme().warn_dot);
-      ImGui::TextWrapped("%s", kConnectionTestRequired);
+      ImGui::TextWrapped("%s", Tr(kConnectionTestRequired));
       ImGui::PopStyleColor();
     }
     if (!install_failure_.empty()) {
@@ -569,13 +576,13 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         const float button_width =
             buttons.update_available ? (ImGui::GetContentRegionAvail().x - gap) / 2.0f : ImGui::GetContentRegionAvail().x;
         const bool game_clicked = buttons.game_installed
-                                       ? ImGui::Button(buttons.game_label.c_str(), ImVec2(button_width, 0))
+                                       ? ImGui::Button(Tr(buttons.game_label).c_str(), ImVec2(button_width, 0))
                                        : ui.AccentButton(buttons.game_label.c_str(), ImVec2(button_width, 0));
         bool update_clicked = false;
         if (buttons.update_available) {
           ImGui::SameLine(0, gap);
           update_clicked = buttons.update_installed
-                               ? ImGui::Button(buttons.update_label.c_str(), ImVec2(button_width, 0))
+                               ? ImGui::Button(Tr(buttons.update_label).c_str(), ImVec2(button_width, 0))
                                : ui.AccentButton(buttons.update_label.c_str(), ImVec2(button_width, 0));
         }
         if (game_clicked) {
@@ -596,7 +603,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   static void DrawFailure(trg::Ui& ui, const std::string& title, const std::string& text) {
     ui.Spacer(4);
     ImGui::PushStyleColor(ImGuiCol_Text, ui.theme().warn_dot);
-    ImGui::TextUnformatted(title.c_str());
+    ImGui::TextUnformatted(Tr(title).c_str());
     ImGui::PopStyleColor();
     ui.Help(text.c_str());
     ui.Spacer(4);
@@ -692,7 +699,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     REXLOG_WARN("Game install failed: {} ({})", message.title, result.detail);
     install_failure_ = message.title;
     install_failure_text_ = message.text;
-    launcher_->SetStatus("Install failed: " + install_failure_, 8.0);
+    launcher_->SetStatus(Tr("Install failed: ") + install_failure_, 8.0);
   }
 
   void PageDisplay(trg::Ui& ui) {
@@ -792,11 +799,11 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     const float scale = monitor ? monitor->scale : 1.0f;
     auto label = [scale](int w, int h) {
       if (w <= 0 || h <= 0) {
-        return std::string("Default");
+        return std::string(Tr("Default"));
       }
       std::string text = Size(w, h);
       if (scale != 1.0f) {
-        text += "   (" + Size(int(std::lround(w * scale)), int(std::lround(h * scale))) + " on screen)";
+        text += Tr("   (") + Size(int(std::lround(w * scale)), int(std::lround(h * scale))) + Tr(" on screen)");
       }
       return text;
     };
@@ -822,13 +829,13 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     const int current = settings_.GetInt("monitor", 0);
     auto label = [this](int index) {
       if (index <= 0) {
-        return std::string("Default");
+        return std::string(Tr("Default"));
       }
       if (index > int(monitors_.size())) {
-        return "Display " + std::to_string(index) + " (not connected)";
+        return Tr("Display ") + std::to_string(index) + Tr(" (not connected)");
       }
       const MonitorInfo& m = monitors_[size_t(index - 1)];
-      return "Display " + std::to_string(index) + (m.primary ? " (primary)" : "") + "   " + Size(m.width, m.height);
+      return Tr("Display ") + std::to_string(index) + (m.primary ? Tr(" (primary)") : "") + "   " + Size(m.width, m.height);
     };
     if (ImGui::BeginCombo("##monitor", label(current).c_str())) {
       for (int i = 1; i <= int(monitors_.size()); ++i) {
@@ -945,7 +952,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
 
   static void DrawAchievementSummary(trg::Ui& ui, const AchievementSummary& summary) {
     ImGui::PushFont(ui.fonts().semibold, 0.0f);
-    ImGui::Text("%d / %d unlocked", summary.unlocked, summary.total);
+    ImGui::Text(Tr("%d / %d unlocked"), summary.unlocked, summary.total);
     ImGui::SameLine();
     ImGui::TextColored(kAccent, "%dG / %dG", summary.earned_gamerscore, summary.total_gamerscore);
     ImGui::PopFont();
@@ -1064,9 +1071,9 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     }
     ui.Info("Port version", SSF2T_PORT_VERSION);
     ui.Info("Libraries", "ReXGlue SDK " REXGLUE_VERSION_STRING "   \xC2\xB7   TRG Launcher " SSF2T_TRG_VERSION);
-    const std::string game_info = std::string("Xbox Live Arcade, title 584108A4, game version ") +
+    const std::string game_info = std::string(Tr("Xbox Live Arcade, title 584108A4, game version ")) +
                                   GuestExecutableVersion(game_check_.guest) +
-                                  (game_check_.guest == GuestVersion::kTitleUpdate023 ? " (Title Update #1)" : "");
+                                  (game_check_.guest == GuestVersion::kTitleUpdate023 ? Tr(" (Title Update #1)") : "");
     ui.Info("Game", game_info.c_str());
     ui.Link(DisplayUrl(kRepositoryUrl).c_str(), kRepositoryUrl);
   }

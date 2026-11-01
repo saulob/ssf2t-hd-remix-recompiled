@@ -25,7 +25,7 @@
 - **Render resolution and Internal render resolution**: Render resolution (1x to 4x) sets the target resolution of the picture. Internal render resolution (100% Native, 75% Performance, 50% Low-end) lowers the resolution the GPU draws at before the picture is scaled up, trading sharpness for performance. Both are separate from the Window size.
 - **Graphics card selection**: choose which compatible GPU renders the game.
 - **Anti-aliasing, multisampling and texture filtering** choices.
-- **Language**: English, French, German, Italian or Spanish.
+- **Language**: English, French, German, Italian, Spanish or Português Brasil (see [docs/localization-pt-br.md](docs/localization-pt-br.md)).
 - **Local saves**: the game saves and loads as on the console.
 - **Offline achievements**: the game's 12 achievements (200G) are kept on this PC, listed with **F7**, in the game's own Achievements menu item and in the launcher. There is no Xbox Live connection, and the four achievements that need online ranked matches cannot be earned.
 - **Xbox controller support** with no setup, and keyboard play as an Xbox 360 controller.

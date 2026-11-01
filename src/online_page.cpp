@@ -9,6 +9,7 @@
 
 #include "friend_code_field.h"
 #include "infinite_time.h"
+#include "localization/ui_text.h"
 #include "online/friend_view.h"
 #include "online/identity.h"
 #include "online/protocol.h"
@@ -43,7 +44,7 @@ void OnlineNameRow(trg::Ui& ui) {
   }
   ImGui::PopID();
   const std::string shown = online::CleanOnlineName(saved);
-  if (!saved.empty() && shown != saved) ui.Help(("Other players see " + shown + ".").c_str());
+  if (!saved.empty() && shown != saved) ui.Help((Tr("Other players see ") + shown + ".").c_str());
 }
 
 bool AcceptButton(trg::Ui& ui, const char* id) {
@@ -81,7 +82,7 @@ void FriendHeading(trg::Ui& ui, const std::string& name, const online::FriendRow
     ImGui::SameLine(0.0f, 0.0f);
     ImGui::TextColored(ui.theme().dim, " \xC2\xB7 ");
     ImGui::SameLine(0.0f, 0.0f);
-    ImGui::TextColored(ui.theme().warn_dot, "Game versions do not match");
+    ImGui::TextColored(ui.theme().warn_dot, "%s", Tr("Game versions do not match"));
   }
   ImGui::PopFont();
   if (in_table) {
@@ -99,7 +100,7 @@ std::vector<std::string> OnlinePage::Tick(trg::SettingsStore& settings) {
   std::vector<std::string> notices;
   if (edited.enabled && settings.GetBool(kInfiniteTimeSetting, kDefaultInfiniteTime)) {
     settings.Set(kInfiniteTimeSetting, "false");
-    notices.push_back(kInfiniteTimeOff);
+    notices.push_back(Tr(kInfiniteTimeOff));
   }
   TickOnline(edited);
   for (std::string& notice : Online().TakeNotices()) notices.push_back(std::move(notice));
@@ -158,15 +159,15 @@ void OnlinePage::DrawFriendRequests(trg::Ui& ui, const online::Snapshot& state) 
     ImGui::BeginChild("##card", ImVec2(-FLT_MIN, 0),
                       ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_AutoResizeY);
     ImGui::PushFont(ui.fonts().semibold, 0.0f);
-    ImGui::TextUnformatted("New friend request");
+    ImGui::TextUnformatted(Tr("New friend request"));
     ImGui::PopFont();
     ImGui::PushStyleColor(ImGuiCol_Text, t.dim);
-    ImGui::TextUnformatted((sender.name + " wants to be your friend").c_str());
+    ImGui::TextUnformatted((sender.name + Tr(" wants to be your friend")).c_str());
     ImGui::PopStyleColor();
     ImGui::Dummy(ImVec2(0, 2.0f * s));
-    if (AcceptButton(ui, "     Accept")) Online().AcceptFriend(sender.player);
+    if (AcceptButton(ui, Tr("     Accept"))) Online().AcceptFriend(sender.player);
     ImGui::SameLine();
-    if (ImGui::Button("Decline")) Online().DeclineFriend(sender.player);
+    if (ImGui::Button(Tr("Decline"))) Online().DeclineFriend(sender.player);
     ImGui::EndChild();
     ImGui::PopStyleColor(2);
     ImGui::PopStyleVar(3);
@@ -191,12 +192,12 @@ void OnlinePage::NoteSendState(bool enabled) {
 void OnlinePage::DrawFriendCode(trg::Ui& ui, const online::Snapshot& state) {
   ui.Row("Your friend code", kFriendCodeHelp);
   if (state.friend_code.empty()) {
-    ImGui::TextDisabled("%s", state.connection == online::Connection::kOffline ? "Not available right now" : "Connecting...");
+    ImGui::TextDisabled("%s", state.connection == online::Connection::kOffline ? Tr("Not available right now") : Tr("Connecting..."));
     return;
   }
   ImGui::TextUnformatted(state.friend_code.c_str());
   ImGui::SameLine();
-  if (ImGui::SmallButton("Copy")) {
+  if (ImGui::SmallButton(Tr("Copy"))) {
     const auto write = [this](const std::string& text, const FieldLog& log) {
       return WriteClipboardText(owner_window_, text, log);
     };
@@ -257,7 +258,7 @@ void OnlinePage::DrawConnectionTestBody(trg::Ui& ui, const online::Snapshot& sta
   if (view.required_text) {
     ui.EndRows();
     ImGui::PushFont(ui.fonts().semibold, 0.0f);
-    ImGui::TextColored(ui.theme().accent, "%s", kConnectionTestRequiredLabel);
+    ImGui::TextColored(ui.theme().accent, "%s", Tr(kConnectionTestRequiredLabel));
     ImGui::PopFont();
   }
   if (view.windows_note) {
@@ -274,7 +275,7 @@ void OnlinePage::DrawConnectionTestBody(trg::Ui& ui, const online::Snapshot& sta
     ImGui::TextUnformatted(line.mark == Mark::kOk ? "OK" : line.mark == Mark::kNote ? "--" : "!!");
     ImGui::PopStyleColor();
     ImGui::SameLine();
-    ImGui::TextWrapped("%s: %s", line.label.c_str(), line.text.c_str());
+    ImGui::TextWrapped("%s: %s", Tr(line.label.c_str()), line.text.c_str());
   }
   ui.Spacer();
 }
@@ -294,22 +295,22 @@ void OnlinePage::DrawFriends(trg::Ui& ui, const online::Snapshot& state) {
   NoteSendState(!code.empty());
   ImGui::SameLine();
   ImGui::BeginDisabled(code.empty());
-  const bool clicked = ImGui::Button("Send request");
+  const bool clicked = ImGui::Button(Tr("Send request"));
   ImGui::EndDisabled();
   if (clicked) Online().LogLine("DEBUG_SAULO online friend send clicked code=" + code);
   if (clicked && !code.empty() && Online().AddFriend(code) == online::FriendRequestResult::kSent) add_code_[0] = 0;
-  if (code.empty() && std::strlen(add_code_) >= 8) ImGui::TextDisabled("That is not a valid friend code.");
+  if (code.empty() && std::strlen(add_code_) >= 8) ImGui::TextDisabled("%s", Tr("That is not a valid friend code."));
   for (const online::Request& r : state.outgoing) {
     ui.Row(r.name.c_str(), "Your request is waiting for an answer.");
     ImGui::PushID(("out" + r.player).c_str());
-    if (ImGui::Button("Cancel request")) Online().DeclineFriend(r.player);
+    if (ImGui::Button(Tr("Cancel request"))) Online().DeclineFriend(r.player);
     ImGui::PopID();
   }
   for (const online::Friend& f : state.friends) {
     const online::FriendRowView view = online::DescribeFriend(state, f);
     FriendHeading(ui, f.name, view);
     ImGui::PushID(("f" + f.player).c_str());
-    if (ImGui::Button("Remove")) Online().RemoveFriend(f.player);
+    if (ImGui::Button(Tr("Remove"))) Online().RemoveFriend(f.player);
     ImGui::PopID();
   }
   if (state.fetched && state.friends.empty() && state.incoming.empty() && state.outgoing.empty()) {

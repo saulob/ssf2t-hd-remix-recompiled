@@ -13,6 +13,7 @@
 #include <rex/ui/imgui_drawer.h>
 
 #include "launcher.h"
+#include "localization/ui_text.h"
 #include "message_box.h"
 #include "modal_dialog.h"
 #include "overlay_rules.h"
@@ -80,7 +81,7 @@ class GuestMessageBox final : public ModalDialog {
       DrawButtons(style.progress_bar);
       ImGui::Spacing();
       ImGui::PushFont(nullptr, ImGui::GetFontSize() * kHintScale);
-      ImGui::TextColored(style.header_text, "A  Select     B  Cancel");
+      ImGui::TextColored(style.header_text, "%s", Tr("A  Select     B  Cancel"));
       ImGui::PopFont();
     }
     ImGui::End();

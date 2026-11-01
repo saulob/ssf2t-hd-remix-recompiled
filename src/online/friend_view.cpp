@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cctype>
 
+#include "localization/ui_text.h"
+
 namespace ssf2t::online {
 
 std::string GuestLabel(const std::string& guest) {
@@ -18,16 +20,16 @@ namespace {
 
 std::string MatchStatus(const MatchSnapshot& match) {
   const std::string guest = GuestLabel(match.guest);
-  if (match.peer_lost) return "Reconnecting";
-  if (!match.endpoints_exchanged) return "Connecting";
-  const std::string latency = match.rtt_ms ? " \xC2\xB7 " + std::to_string(*match.rtt_ms) + " ms" : std::string();
+  if (match.peer_lost) return Tr("Reconnecting");
+  if (!match.endpoints_exchanged) return Tr("Connecting");
+  const std::string latency = match.rtt_ms ? Tr(" \xC2\xB7 ") + std::to_string(*match.rtt_ms) + Tr(" ms") : std::string();
   switch (match.link) {
-    case NetplayLink::kFighting: return "In game \xC2\xB7 " + guest + latency;
-    case NetplayLink::kConnected: return "Connected \xC2\xB7 " + guest + latency;
-    case NetplayLink::kConnecting: return "Connecting \xC2\xB7 " + guest;
+    case NetplayLink::kFighting: return Tr("In game \xC2\xB7 ") + guest + latency;
+    case NetplayLink::kConnected: return Tr("Connected \xC2\xB7 ") + guest + latency;
+    case NetplayLink::kConnecting: return Tr("Connecting \xC2\xB7 ") + guest;
     case NetplayLink::kNone: break;
   }
-  return "Connected \xC2\xB7 " + guest;
+  return Tr("Connected \xC2\xB7 ") + guest;
 }
 
 }  // namespace
@@ -35,13 +37,13 @@ std::string MatchStatus(const MatchSnapshot& match) {
 std::vector<InviteChoice> InviteChoices(const std::vector<Friend>& friends) {
   std::vector<InviteChoice> choices;
   for (const Friend& f : friends) {
-    InviteChoice choice{f.player, f.name, "Offline", false};
+    InviteChoice choice{f.player, f.name, Tr("Offline"), false};
     if (f.online) {
       const bool busy = f.state == FriendState::kConnecting || f.state == FriendState::kInGame;
-      choice.status = f.state == FriendState::kPlayerMatch ? "Online Match"
-                      : busy                               ? "In game"
-                                                           : "Online";
-      if (!f.compatible) choice.status = "Game versions do not match";
+      choice.status = f.state == FriendState::kPlayerMatch ? Tr("Online Match")
+                      : busy                               ? Tr("In game")
+                                                           : Tr("Online");
+      if (!f.compatible) choice.status = Tr("Game versions do not match");
       choice.selectable = f.compatible && !busy;
     }
     choices.push_back(std::move(choice));

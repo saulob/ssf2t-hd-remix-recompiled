@@ -14,6 +14,7 @@
 
 #include "frame_counter.h"
 #include "infinite_time.h"
+#include "localization/ui_text.h"
 #include "settings.h"
 #include "window_host.h"
 
@@ -44,7 +45,7 @@ class InfiniteTimeNoticeOverlay final : public rex::ui::ImGuiDialog {
     if (!g_notice.Visible(NowSeconds(), StartupNoticeReady(frame_counter_shown, frame_counter_visible))) {
       return;
     }
-    const char* text = g_notice.text();
+    const char* text = Tr(g_notice.text());
     ImFont* font = ImGui::GetFont();
     const float size = ImGui::GetFontSize();
     const ImVec2 text_size = font->CalcTextSizeA(size, FLT_MAX, 0, text);
