@@ -757,6 +757,21 @@ CC0 requires no attribution; the source is listed for reference.
 
 
 ========================================================================
+Launcher icon: Heart
+========================================================================
+
+Heart icon
+Source: SVG Repo (www.svgrepo.com), https://www.svgrepo.com/svg/532473/heart
+The file's own header reads "Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools". The source
+file was named heart-svgrepo-com.svg.
+Modified to be a white filled heart: the stroke color #000000 became #FFFFFF and a #FFFFFF fill was added (the path is
+unchanged). assets/launcher/sponsor-heart.svg is the only copy kept; assets/launcher/sponsor-heart.png is a 64 x 64
+rendering of it.
+
+License: CC0 (public domain dedication).
+
+
+========================================================================
 FFmpeg (libavcodec, libavutil)
 ========================================================================
 

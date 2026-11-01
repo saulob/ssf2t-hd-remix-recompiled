@@ -467,6 +467,7 @@ STUB
   clang-20 -shared -fPIC -O1 -Wl,-rpath,'$ORIGIN' "$fix/lib.c" -o "$bin/librexgpu-xenos.so" || return 1
   cp "$SRC/config/ssf2t_hd_remix.toml" "$bin/$BIN_NAME.toml"
   cp "$SRC/assets/launcher/header-art.png" "$bin/assets/launcher/header-art.png"
+  cp "$SRC/assets/launcher/sponsor-heart.png" "$bin/assets/launcher/sponsor-heart.png"
   stage_appdir "$appdir" "$bin" "$fix/symbols" "$SRC"
 }
 

@@ -137,7 +137,7 @@ echo "== Build ($PRESET)"
 BIN="$WORK/out/build/$PRESET"
 [ "$CLEAN" = 1 ] && rm -rf "$BIN"
 (cd "$WORK" && cmake --preset "$PRESET" -DSSF2T_TITLE_UPDATE_IMAGE=ON >/dev/null && cmake --build --preset "$PRESET")
-for f in $BIN_NAME librexruntime.so librexgpu-xenos.so $BIN_NAME.toml assets/launcher/header-art.png; do
+for f in $BIN_NAME librexruntime.so librexgpu-xenos.so $BIN_NAME.toml assets/launcher/header-art.png assets/launcher/sponsor-heart.png; do
   [ -f "$BIN/$f" ] || fail "build output is missing $f"
 done
 bash "$PATCHED" --check "$SDK" --staged "$BIN" || fail "the build folder does not hold the patched ReXGlue libraries"

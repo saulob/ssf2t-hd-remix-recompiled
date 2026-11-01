@@ -20,6 +20,7 @@ $APP_ID.desktop
 usr/bin/$BIN_NAME
 usr/bin/$BIN_NAME.toml
 usr/bin/assets/launcher/header-art.png
+usr/bin/assets/launcher/sponsor-heart.png
 usr/bin/librexgpu-xenos.so
 usr/bin/librexruntime.so
 usr/lib/libgcc_s.so.1
@@ -107,7 +108,7 @@ stage_appdir() {  # appdir bin_dir symbols_dir source_tree
   rm -rf "$appdir" "$symbols"
   mkdir -p "$appdir/usr/bin/assets/launcher" "$appdir/usr/lib" "$doc" "$symbols"
   cp "$bin/librexruntime.so" "$bin/librexgpu-xenos.so" "$bin/$BIN_NAME.toml" "$appdir/usr/bin/"
-  cp "$bin/assets/launcher/header-art.png" "$appdir/usr/bin/assets/launcher/"
+  cp "$bin/assets/launcher/header-art.png" "$bin/assets/launcher/sponsor-heart.png" "$appdir/usr/bin/assets/launcher/"
   # The debug sections carry the build machine's folders, so they stay in $symbols.
   objcopy --only-keep-debug "$bin/$BIN_NAME" "$symbols/$BIN_NAME.debug"
   objcopy --strip-debug --add-gnu-debuglink="$symbols/$BIN_NAME.debug" "$bin/$BIN_NAME" "$appdir/usr/bin/$BIN_NAME"
@@ -138,7 +139,7 @@ stage_appdir() {  # appdir bin_dir symbols_dir source_tree
   cp "$icons/app-icon-256.png" "$appdir/.DirIcon"
   chmod 755 "$appdir/AppRun" "$appdir/usr/bin/$BIN_NAME"
   chmod 644 "$appdir/"*.desktop "$appdir/"*.png "$appdir/.DirIcon" "$appdir/usr/bin/"*.so \
-    "$appdir/usr/bin/$BIN_NAME.toml" "$appdir/usr/bin/assets/launcher/header-art.png" "$appdir/usr/lib/"* "$doc/"*
+    "$appdir/usr/bin/$BIN_NAME.toml" "$appdir/usr/bin/assets/launcher/header-art.png" "$appdir/usr/bin/assets/launcher/sponsor-heart.png" "$appdir/usr/lib/"* "$doc/"*
   find "$theme" -type f -exec chmod 644 {} +
 }
 

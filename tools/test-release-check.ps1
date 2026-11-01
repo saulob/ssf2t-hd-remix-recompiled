@@ -61,6 +61,7 @@ try {
         }
         New-Item -ItemType Directory -Force (Join-Path $stage 'assets\launcher') | Out-Null
         Set-Content -LiteralPath (Join-Path $stage 'assets\launcher\header-art.png') -Value 'placeholder'
+        Set-Content -LiteralPath (Join-Path $stage 'assets\launcher\sponsor-heart.png') -Value 'placeholder'
         New-Item -ItemType Directory -Force (Join-Path $stage 'licenses') | Out-Null
         foreach ($leaf in 'ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt') {
             Set-Content -LiteralPath (Join-Path $stage "licenses\$leaf") -Value 'placeholder'

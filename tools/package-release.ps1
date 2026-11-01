@@ -37,7 +37,7 @@ $SdkRoot = Join-Path $Root 'tools\rexglue\win-amd64'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 $ProgramFiles = @('ssf2t_hd_remix.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'ssf2t_hd_remix.toml')
 $LicenseFiles = @('ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt')
-$AssetFiles = @('assets\launcher\header-art.png')
+$AssetFiles = @('assets\launcher\header-art.png', 'assets\launcher\sponsor-heart.png')
 $CheckFolder = Join-Path $PSScriptRoot 'check-release-folder.ps1'
 
 function Write-Problems($problems) {

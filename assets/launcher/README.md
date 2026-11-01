@@ -19,3 +19,14 @@ $png = Join-Path (Resolve-Path assets/launcher).Path 'header-art.png'
 
 The launcher draws the PNG over its header gradient, anchored to the header's top-right corner at the
 full header height; the SVG's empty left side is what keeps the title readable.
+
+# Sponsor heart
+
+`sponsor-heart.svg` is the source of truth for the heart in the Sponsor on GitHub buttons (CC0, see
+`packaging/licenses/THIRD-PARTY-LICENSES.txt`). `sponsor-heart.png` is the runtime asset, a white 64x64 rendering of it
+with a transparent background. Do not edit it by hand; regenerate it after every SVG change, from the repository root
+with rsvg-convert:
+
+```sh
+rsvg-convert -w 64 -h 64 -f png -o assets/launcher/sponsor-heart.png assets/launcher/sponsor-heart.svg
+```

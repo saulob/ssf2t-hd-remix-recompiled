@@ -73,6 +73,7 @@ constexpr ImGuiConfigFlags kNavFlags = ImGuiConfigFlags_NavEnableKeyboard | ImGu
 
 constexpr char kAuthorUrl[] = "https://github.com/saulob";
 constexpr char kRepositoryUrl[] = "https://github.com/saulob/ssf2t-hd-remix-recompiled";
+constexpr char kSponsorUrl[] = "https://github.com/sponsors/saulob";
 
 // Street Fighter orange over a dark ember background.
 const ImVec4 kAccent = ImVec4(1.00f, 0.52f, 0.08f, 1.0f);
@@ -101,24 +102,31 @@ trg::HeaderPainter LauncherHeader(ImTextureID art, float art_aspect) {
   };
 }
 
-std::unique_ptr<rex::ui::ImmediateTexture> LoadHeaderArt(rex::ui::ImmediateDrawer* drawer) {
-  const std::filesystem::path path = LauncherHeaderArtPath(rex::filesystem::GetExecutableFolder());
+std::unique_ptr<rex::ui::ImmediateTexture> LoadLauncherImage(rex::ui::ImmediateDrawer* drawer, const char* file,
+                                                             bool whiten_transparent = false) {
+  const std::filesystem::path path = LauncherImagePath(rex::filesystem::GetExecutableFolder(), file);
   if (!drawer) {
-    REXLOG_WARN("Launcher header art unavailable without an immediate drawer: {}", Utf8(path.filename()));
+    REXLOG_WARN("Launcher image unavailable without an immediate drawer: {}", file);
     return nullptr;
   }
   std::ifstream in(path, std::ios::binary);
   if (!in) {
-    REXLOG_WARN("Launcher header art not found: {}", Utf8(path.filename()));
+    REXLOG_WARN("Launcher image not found: {}", file);
     return nullptr;
   }
   const std::vector<uint8_t> encoded((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
   int width = 0;
   int height = 0;
-  const std::vector<uint8_t> pixels = rex::ui::DecodeImageRGBA(encoded.data(), encoded.size(), width, height);
+  std::vector<uint8_t> pixels = rex::ui::DecodeImageRGBA(encoded.data(), encoded.size(), width, height);
   if (pixels.empty() || width <= 0 || height <= 0) {
-    REXLOG_WARN("Launcher header art could not be decoded: {}", Utf8(path.filename()));
+    REXLOG_WARN("Launcher image could not be decoded: {}", file);
     return nullptr;
+  }
+  if (whiten_transparent) {
+    // Transparent texels are white too, so linear filtering does not darken the icon edge.
+    for (size_t i = 0; i + 3 < pixels.size(); i += 4) {
+      if (pixels[i + 3] == 0) pixels[i] = pixels[i + 1] = pixels[i + 2] = 255;
+    }
   }
   return drawer->CreateTexture(uint32_t(width), uint32_t(height), rex::ui::ImmediateTextureFilter::kLinear, false,
                                pixels.data());
@@ -193,7 +201,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         monitors_(ListMonitors()),
         graphics_adapters_(ListGraphicsAdapters()) {
     SetGameFiles(CheckAndLogGameFiles(paths_.game_dir));
-    header_art_ = LoadHeaderArt(paths_.immediate_drawer);
+    header_art_ = LoadLauncherImage(paths_.immediate_drawer, "header-art.png");
+    sponsor_icon_ = LoadLauncherImage(paths_.immediate_drawer, "sponsor-heart.png", true);
     trg::SetTranslator(&TranslateLauncherText);
     localization::SetActiveLanguage(settings_.Get(kLanguageSetting, kDefaultLanguage));
     launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
@@ -511,6 +520,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         header_art_ ? float(header_art_->width) / float(header_art_->height) : kHeaderArtAspect;
     c.branding.background = LauncherHeader(
         header_art_ ? reinterpret_cast<ImTextureID>(header_art_.get()) : ImTextureID{}, art_aspect);
+    c.sponsor = {"Sponsor on GitHub", kSponsorUrl,
+                 sponsor_icon_ ? reinterpret_cast<ImTextureID>(sponsor_icon_.get()) : ImTextureID{}};
     c.pages = {
         {"Play", "Check the game files and start playing.", [this](trg::Ui& ui) { PagePlay(ui); },
          [this] { return !playable_; }},
@@ -1043,6 +1054,10 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   }
 
   void PageAbout(trg::Ui& ui) {
+    ui.SponsorCard(
+        "This open source PC port is maintained and developed in my free time. If you enjoy the project and would "
+        "like to support its continued development, you can sponsor my work on GitHub.",
+        "Support is completely optional and helps support ongoing improvements and future projects.");
     ui.Paragraph(
         "Super Street Fighter II Turbo HD Remix for Xbox Live Arcade, statically recompiled to run natively on PC with "
         "the ReXGlue SDK. No game code or assets are included: the game runs from your own game files.");
@@ -1100,6 +1115,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   std::vector<MonitorInfo> monitors_;
   std::vector<GraphicsAdapter> graphics_adapters_;
   std::unique_ptr<rex::ui::ImmediateTexture> header_art_;
+  std::unique_ptr<rex::ui::ImmediateTexture> sponsor_icon_;
   std::unique_ptr<trg::Launcher> launcher_;
   OnlinePage online_page_;
   PlayAttemptDetector play_attempt_;
