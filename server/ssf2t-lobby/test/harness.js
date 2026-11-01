@@ -32,7 +32,7 @@ export function makeHub({ local = false, db } = {}) {
 }
 
 export class Client {
-  constructor(hub, host, who, { ip = '203.0.113.7', guest = 'base013', build = 1, name, version = '0.2.2', platform = 'Windows',
+  constructor(hub, host, who, { ip = '203.0.113.7', country = '', guest = 'base013', build = 1, name, version = '0.2.2', platform = 'Windows',
     presence = true } = {}) {
     this.hub = hub;
     this.host = host;
@@ -42,7 +42,7 @@ export class Client {
     this.binary = [];
     this.closedWith = null;
     this.seq = 0;
-    const first = hub.admit(ip);
+    const first = hub.admit(ip, country);
     this.admitted = Boolean(first);
     if (!first) return;
     this.conn = new LocalConn({

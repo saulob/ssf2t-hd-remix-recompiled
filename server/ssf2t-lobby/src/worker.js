@@ -4,6 +4,7 @@
 // binary frames are relay frames of the sender's match.
 import { DurableObject } from 'cloudflare:workers';
 
+import { COUNTRY_HEADER, handleAdmin, internalMetricsRoute, isAdminPath, withEdgeCountry } from './admin.js';
 import { Hub } from './hub.js';
 import { LIMITS, PROTOCOL, RELAY, SERVICE, WORKER_BUILD } from './protocol.js';
 
@@ -62,7 +63,11 @@ export class SSF2TLobby extends DurableObject {
   }
 
   async fetch(request) {
-    const first = this.hub.admit(request.headers.get('CF-Connecting-IP') ?? '');
+    const metrics = internalMetricsRoute(request);
+    if (metrics?.kind === 'summary') return Response.json(this.hub.metricsSummary());
+    if (metrics?.kind === 'history') return Response.json(this.hub.metricsHistory(metrics.days));
+    if (metrics) return new Response('Bad request', { status: 400 });
+    const first = this.hub.admit(request.headers.get('CF-Connecting-IP') ?? '', request.headers.get(COUNTRY_HEADER));
     if (!first) return new Response('Too many connections from this address', { status: 429 });
     const [client, server] = Object.values(new WebSocketPair());
     this.ctx.acceptWebSocket(server);
@@ -106,8 +111,19 @@ const json = (body, status = 200) =>
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const lobby = () => env.LOBBY.get(env.LOBBY.idFromName('global'));
+    if (isAdminPath(url.pathname)) {
+      const internal = (path) => lobby().fetch(`https://lobby.internal${path}`).then((r) => {
+        if (!r.ok) throw new Error(`lobby answered ${r.status}`);
+        return r.json();
+      });
+      return handleAdmin(request, env, {
+        summary: () => internal('/metrics/summary'),
+        history: (days) => internal(`/metrics/history?days=${days}`),
+      }, (text) => console.log(text));
+    }
     if (request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
-      return env.LOBBY.get(env.LOBBY.idFromName('global')).fetch(request);
+      return lobby().fetch(withEdgeCountry(request));
     }
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
       return json({ service: SERVICE, protocol: PROTOCOL, status: 'ok', worker_build: WORKER_BUILD,

@@ -4,6 +4,7 @@
 // relay frames between the two sockets of one match. State lives in SQL tables and in each socket's attachment, so a
 // hibernated Durable Object resumes as if it had never stopped; relay routes are a memory cache rebuilt from them.
 // The same class runs in the development server (local/server.js).
+import { Metrics, SAMPLE_MS, countryCode, platformCategory, sampleBucket, versionCategory } from './metrics.js';
 import { sha256Hex, toHex } from './sha256.js';
 import {
   BUCKETS, CAPABILITIES, LIMITS, ProtocolError, RELAY, compatibleGuests, fail, ipGroup, isLocalAddress,
@@ -15,6 +16,9 @@ const SOCIAL_OPS = new Set(['friends.add', 'pm.host', 'pm.join', 'invite.send', 
 const RULE_KEY = /^[a-z_]{1,16}$/;
 const QOS_DATA = /^(?:[0-9a-f]{2}){0,256}$/;
 const ROLES = ['host', 'join'];
+const GROWING_OPS = new Set(['hello', 'pm.host', 'pm.join', 'match.resume']);
+const REJECT_CODES = new Set(['proto', 'bad_game', 'bad_guest', 'version_mismatch']);
+const MATCH_LIST_MAX = 50;
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
@@ -40,13 +44,13 @@ const SCHEMA = [
      host_port INTEGER NOT NULL DEFAULT 0, join_port INTEGER NOT NULL DEFAULT 0,
      host_lan TEXT NOT NULL DEFAULT '[]', join_lan TEXT NOT NULL DEFAULT '[]',
      host_ready INTEGER NOT NULL DEFAULT 0, join_ready INTEGER NOT NULL DEFAULT 0,
-     relay_token INTEGER NOT NULL DEFAULT 0)`,
+     relay_token INTEGER NOT NULL DEFAULT 0, transport TEXT NOT NULL DEFAULT '')`,
 ];
 // Added after the table first shipped: CREATE TABLE above only runs on a fresh database.
 const ADDED_COLUMNS = [
   ['matches', 'host_pub_ip', "TEXT NOT NULL DEFAULT ''"], ['matches', 'join_pub_ip', "TEXT NOT NULL DEFAULT ''"],
   ['matches', 'host_pub_port', 'INTEGER NOT NULL DEFAULT 0'], ['matches', 'join_pub_port', 'INTEGER NOT NULL DEFAULT 0'],
-  ['matches', 'relay_token', 'INTEGER NOT NULL DEFAULT 0'],
+  ['matches', 'relay_token', 'INTEGER NOT NULL DEFAULT 0'], ['matches', 'transport', "TEXT NOT NULL DEFAULT ''"],
 ];
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -78,6 +82,23 @@ function playerOf(value) {
   return value;
 }
 
+const transportOf = (row) =>
+  (row.transport === 'direct' ? 'direct' : row.transport === 'relay' && row.relay_token ? 'relay' : 'pending');
+
+// One match as the dashboard shows it: a short id, no player, address, connection or token.
+function matchReport(row, now) {
+  return {
+    id: row.id.slice(0, 6),
+    state: row.host_ready && row.join_ready ? 'in_game' : 'connecting',
+    guest: row.guest,
+    transport: transportOf(row),
+    relay_available: row.relay_token !== 0,
+    endpoints: (row.host_pub_port ? 1 : 0) + (row.join_pub_port ? 1 : 0),
+    seats: ROLES.filter((r) => row[`${r}_cid`] !== null).length,
+    age_ms: Math.max(0, now - row.created),
+  };
+}
+
 export class Hub {
   // host: { sql: { all(q, ...a), get(q, ...a), run(q, ...a) }, sockets(): Conn[], now(): ms, setAlarm(ms), log(text) }
   // Conn: { send(text), close(code, reason), attachment(), setAttachment(object) }
@@ -90,6 +111,7 @@ export class Hub {
     this.relayDrops = new Map();
     this.relayTold = new Set();
     for (const statement of SCHEMA) host.sql.run(statement);
+    this.metrics = new Metrics(host.sql, () => host.now());
     for (const [table, column, definition] of ADDED_COLUMNS) {
       try { host.sql.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`); } catch { /* already there */ }
     }
@@ -130,13 +152,13 @@ export class Hub {
   }
 
   // ---- connection lifecycle ----
-  admit(ip) {
+  admit(ip, country = '') {
     const group = ipGroup(ip);
     if (!(this.local && isLocalAddress(ip))) {
       const open = this.host.sockets().filter((c) => ipGroup(c.attachment()?.ip) === group).length;
       if (open >= LIMITS.socketsPerIp) return null;
     }
-    return { cid: this.randomHex(8), ip, opened: this.host.now() };
+    return { cid: this.randomHex(8), ip, opened: this.host.now(), country: countryCode(country) };
   }
 
   message(conn, text) {
@@ -171,8 +193,13 @@ export class Hub {
       conn.setAttachment(att);
       conn.send(JSON.stringify({ re: seq, code: 'ok', ...body }));
       this.runDeferred();
+      if (GROWING_OPS.has(msg.op)) this.observe();
     } catch (error) {
       this.deferred = null;
+      if (error instanceof ProtocolError && REJECT_CODES.has(error.code) && !att.rejected) {
+        att.rejected = true;
+        this.track(() => this.metrics.reject(error.code));
+      }
       conn.setAttachment(att);
       if (!(error instanceof ProtocolError)) {
         this.host.log(`hub: internal error in request ${seq}: ${error?.stack ?? error}`);
@@ -242,7 +269,7 @@ export class Hub {
     }
     this.runDeferred();
     this.index = null;
-    this.scheduleAlarm();
+    this.observe();
   }
 
   scheduleAlarm() {
@@ -255,7 +282,69 @@ export class Hub {
       times.push(row.created + LIMITS.matchMaxMs);
       for (const role of ROLES) if (row[`${role}_grace`] !== null) times.push(row[`${role}_grace`]);
     }
+    if (this.host.sockets().length) times.push(sampleBucket(this.host.now()) + SAMPLE_MS);
     if (times.length) this.host.setAlarm(Math.min(...times));
+  }
+
+  // Metrics never fail a hub operation.
+  track(fn) {
+    try {
+      fn();
+    } catch (error) {
+      this.host.log(`hub: metrics error: ${error?.stack ?? error}`);
+    }
+  }
+
+  observe() {
+    this.track(() => this.metrics.observe(this.liveMetrics()));
+    this.scheduleAlarm();
+  }
+
+  // What is online now, from the open sockets and the match tables: a player with several connections counts once.
+  liveMetrics() {
+    this.index = null;
+    const sockets = this.sockets();
+    const players = new Map();
+    for (const { att } of sockets) if (att.presence && !players.has(att.player)) players.set(att.player, att);
+    const tally = (pick) => {
+      const counts = new Map();
+      for (const att of players.values()) counts.set(pick(att), (counts.get(pick(att)) ?? 0) + 1);
+      return counts;
+    };
+    const now = this.host.now();
+    const rows = this.host.sql.all('SELECT * FROM matches ORDER BY created DESC');
+    const transport = new Map();
+    let seated = 0;
+    for (const row of rows) {
+      const kind = transportOf(row);
+      transport.set(kind, (transport.get(kind) ?? 0) + 1);
+      seated += ROLES.filter((r) => row[`${r}_cid`] !== null).length;
+    }
+    const advertised = this.host.sql.all('SELECT owner, refreshed FROM player_matches')
+      .filter((row) => row.refreshed + LIMITS.playerMatchMs > now && players.has(row.owner)).length;
+    return {
+      online: players.size,
+      in_matches: seated,
+      advertised,
+      connections: sockets.length,
+      matches: rows.length,
+      direct: transport.get('direct') ?? 0,
+      relay: transport.get('relay') ?? 0,
+      pending: transport.get('pending') ?? 0,
+      platform: tally((att) => platformCategory(att.platform)),
+      version: tally((att) => versionCategory(att.version)),
+      country: tally((att) => countryCode(att.country)),
+      transport,
+      list: rows.slice(0, MATCH_LIST_MAX).map((row) => matchReport(row, now)),
+    };
+  }
+
+  metricsSummary() {
+    return this.metrics.summary(this.liveMetrics());
+  }
+
+  metricsHistory(days) {
+    return this.metrics.history(days);
   }
 
   // ---- helpers ----
@@ -413,6 +502,7 @@ export class Hub {
     this.host.sql.run(`INSERT INTO matches (id, host, joiner, guest, build, created, host_cid, join_cid, relay_token)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, host.att.player, joiner.att.player, joiner.att.guest, joiner.att.build,
       this.host.now(), host.att.cid, joiner.att.cid, token);
+    this.track(() => this.metrics.count('matches_started'));
     joiner.att.match = id;
     host.att.match = id;
     host.conn.setAttachment(host.att);
@@ -578,7 +668,8 @@ export class Hub {
 
   endRelay(row, reason, notifyExcept = null, notify = true) {
     if (!row?.relay_token) return;
-    this.host.sql.run('UPDATE matches SET relay_token = 0 WHERE id = ?', row.id);
+    this.host.sql.run(`UPDATE matches SET relay_token = 0, transport = CASE WHEN transport = 'relay' THEN '' ELSE transport END
+      WHERE id = ?`, row.id);
     this.forgetRelayMatch(row.id);
     this.host.log(`relay close match=${row.id} reason=${reason}`);
     if (!notify) return;
@@ -625,6 +716,7 @@ const HANDLERS = {
     const wasOnline = hello.presence && this.presentSockets(hello.player).length > 0;
     Object.assign(att, { hello: true, player: hello.player, name: hello.name, presence: hello.presence, guest: hello.guest,
       build: hello.build, version: hello.version, platform: hello.platform, relay: hello.relay, match: null });
+    if (hello.presence) this.track(() => this.metrics.session(att));
     this.index = null;
     if (hello.presence ? !wasOnline || renamed : renamed) this.later(() => this.notifyStatus(hello.player));
     return { player: hello.player, name: hello.name, friend_code: hello.player, time: now, capabilities: CAPABILITIES };
@@ -730,6 +822,7 @@ const HANDLERS = {
       this.host.sql.run(`INSERT INTO player_matches (id, owner, guest, build, slots, rules, qos, created, refreshed)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, this.randomHex(8), att.player, att.guest, att.build, slots,
       JSON.stringify(rules), qos, now, now);
+      this.track(() => this.metrics.count('advertised'));
       this.later(() => this.notifyStatus(att.player));
     }
     this.scheduleAlarm();
@@ -853,6 +946,8 @@ const HANDLERS = {
     } else {
       fail('bad_request', 'transport expected');
     }
+    if (!row.transport) this.track(() => this.metrics.transport(msg.transport));
+    this.host.sql.run('UPDATE matches SET transport = ? WHERE id = ?', msg.transport, row.id);
     this.later(() => this.sendToRole(row, 'join', { ev: 'match.transport', match: row.id, transport: msg.transport }));
     return {};
   },

@@ -89,6 +89,20 @@ Relay: 400 frames/s (burst 800) and 128 KB/s (burst 256 KB) per socket, twice th
 match end its relay. All matches share the one Durable Object, so relayed traffic counts against its CPU and request
 budget.
 
+## Admin dashboard
+
+`GET /admin` serves a static page (same shell as the Dragon's Crown Pro PC dashboard); its data comes from
+`/admin/api/summary` and `/admin/api/history?days=N`, which need `Authorization: Bearer <SSF2T_DASHBOARD_TOKEN>`
+(a Worker secret of 16 or more characters; without it the API answers 503). The page is read-only. It shows players
+online, players in matches, advertised matches, the running matches as Direct, Relay or Pending, and daily counters
+and 15-minute samples kept in the object's `metrics_*` tables. No row names a player, an address or a match. The
+match list is read live and shows a short id only; relay tokens, connection ids, friend codes and addresses never
+leave the hub.
+
+```
+npx wrangler secret put SSF2T_DASHBOARD_TOKEN
+```
+
 ## Local
 
 No dependencies and no Cloudflare account are needed (Node 22.13 or newer, for `node:sqlite`).
