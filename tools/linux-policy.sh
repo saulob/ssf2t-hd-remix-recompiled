@@ -108,6 +108,7 @@ stage_appdir() {  # appdir bin_dir symbols_dir source_tree
   rm -rf "$appdir" "$symbols"
   mkdir -p "$appdir/usr/bin/assets/launcher" "$appdir/usr/lib" "$doc" "$symbols"
   cp "$bin/librexruntime.so" "$bin/librexgpu-xenos.so" "$bin/$BIN_NAME.toml" "$appdir/usr/bin/"
+  strip --strip-unneeded "$appdir/usr/bin/librexruntime.so" "$appdir/usr/bin/librexgpu-xenos.so"
   cp "$bin/assets/launcher/header-art.png" "$bin/assets/launcher/sponsor-heart.png" "$appdir/usr/bin/assets/launcher/"
   # The debug sections carry the build machine's folders, so they stay in $symbols.
   objcopy --only-keep-debug "$bin/$BIN_NAME" "$symbols/$BIN_NAME.debug"

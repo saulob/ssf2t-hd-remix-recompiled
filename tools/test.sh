@@ -227,6 +227,7 @@ check "codegen scanner self-test" "$A_CORE" python3 -I "$SRC/tools/find-missing-
 check "generated guest code matches config/guest" "$A_B13;$A_TU" bash "$SRC/tools/check-guest-code.sh" "$SRC"
 check "packaging scripts parse (package-linux.sh, test.sh, AppRun)" "$A_PKG" \
   bash -c "bash -n '$SRC/tools/package-linux.sh' && bash -n '$SRC/tools/test.sh' && bash -n '$SRC/tools/linux-policy.sh' && sh -n '$SRC/packaging/linux/AppRun'"
+check "AppImage release pins (runtime source, patch and SHA-256, appimagetool, --runtime-file, wrong inputs refused)" "$A_PKG"   bash "$SRC/tools/test-appimage-release.sh" "$SRC"
 check "online service (Worker, Node $($NODE --version))" "$A_WORKER;$A_NET;$A_RELAY;$A_PM;$A_MULTI" \
   bash -c "cd '$SRC/server/ssf2t-lobby' && '$NODE' --test 'test/*.test.js'"
 
@@ -550,6 +551,13 @@ appimage_fixture() {
   ARCH=x86_64 "$APPIMAGETOOL" --appimage-extract-and-run --no-appstream --runtime-file "$APPIMAGE_RUNTIME" \
     "$APPDIR_FIXTURE" "$image" >/dev/null 2>&1 || { echo "PARITY FAIL: appimagetool could not build the fixture AppImage"; return 1; }
   chmod 755 "$image"
+  bash "$SRC/tools/build-appimage-runtime.sh" --check-image "$image" || { echo "PARITY FAIL: the fixture AppImage does not start with the reviewed runtime"; failed=1; }
+  cp "$image" "$image.tampered"
+  printf 'X' | dd of="$image.tampered" bs=1 seek=5000 conv=notrunc 2>/dev/null
+  if bash "$SRC/tools/build-appimage-runtime.sh" --check-image "$image.tampered" >/dev/null 2>&1; then
+    echo "PARITY FAIL: an AppImage with an altered runtime was accepted"; failed=1
+  fi
+  rm -f "$image.tampered"
   bash "$SRC/tools/build-appimage-runtime.sh" --check "$image" || { echo "PARITY FAIL: the fixture AppImage does not carry the pinned runtime"; failed=1; }
 
   echo "-- extract-and-run"

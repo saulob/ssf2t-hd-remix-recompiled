@@ -77,7 +77,7 @@ fi
 echo "Source: $SOURCE"
 
 echo "== Tools"
-for tool in clang-20 clang++-20 ld.lld-20 cmake ninja rsync sha256sum objcopy readelf objdump ldd; do
+for tool in clang-20 clang++-20 ld.lld-20 cmake ninja rsync sha256sum objcopy strip readelf objdump ldd; do
   command -v "$tool" >/dev/null || fail "$tool not found"
 done
 command -v wget >/dev/null || command -v curl >/dev/null || fail "wget or curl not found"
@@ -133,6 +133,17 @@ if ! bash "$PATCHED" --check "$SDK" >/dev/null 2>&1; then
 fi
 bash "$PATCHED" --check "$SDK"
 
+# The shipped libraries are the built ones with their symbol tables stripped (the debug sections stay out of the AppImage).
+holds_built_libraries() {  # dir
+  local lib stripped
+  stripped="$(mktemp)"
+  for lib in librexruntime.so librexgpu-xenos.so; do
+    strip --strip-unneeded -o "$stripped" "$BIN/$lib"
+    cmp -s "$stripped" "$1/$lib" || { rm -f "$stripped"; return 1; }
+  done
+  rm -f "$stripped"
+}
+
 echo "== Build ($PRESET)"
 BIN="$WORK/out/build/$PRESET"
 [ "$CLEAN" = 1 ] && rm -rf "$BIN"
@@ -146,7 +157,7 @@ echo "== AppDir"
 APPDIR="$WORK/AppDir"
 SYMBOLS="$OUT_DIR/$NAME-symbols"
 stage_appdir "$APPDIR" "$BIN" "$SYMBOLS" "$WORK"
-bash "$PATCHED" --check "$SDK" --staged "$APPDIR/usr/bin" || fail "the AppDir does not hold the patched ReXGlue libraries"
+holds_built_libraries "$APPDIR/usr/bin" || fail "the AppDir does not hold the patched ReXGlue libraries"
 
 echo "== Release check"
 scan_appdir "$APPDIR" AppDir "$ROOT" "$WORK" "$HOME"
@@ -161,6 +172,7 @@ rm -f "$OUT"
 ARCH=x86_64 "$TOOL" --appimage-extract-and-run --no-appstream --runtime-file "$RUNTIME" "$APPDIR" "$OUT" >/dev/null
 chmod 755 "$OUT"
 bash "$ROOT/tools/build-appimage-runtime.sh" --check "$OUT"
+bash "$ROOT/tools/build-appimage-runtime.sh" --check-image "$OUT"
 
 echo "== Final AppImage check"
 VERIFY="$(mktemp -d)"
@@ -168,8 +180,7 @@ trap 'rm -rf "$VERIFY"' EXIT
 cp "$OUT" "$VERIFY/verify.AppImage"
 (cd "$VERIFY" && ./verify.AppImage --appimage-extract >/dev/null)
 scan_appdir "$VERIFY/squashfs-root" "extracted AppImage" "$ROOT" "$WORK" "$HOME"
-[ "$(sha256sum "$VERIFY/squashfs-root/usr/bin/librexruntime.so" | cut -d' ' -f1)" = "$(sha256sum "$BIN/librexruntime.so" | cut -d' ' -f1)" ] ||
-  fail "the AppImage does not hold the built runtime"
+holds_built_libraries "$VERIFY/squashfs-root/usr/bin" || fail "the AppImage does not hold the built runtime"
 (cd "$OUT_DIR" && sha256sum "$NAME.AppImage" > "$NAME.sha256")
 
 echo

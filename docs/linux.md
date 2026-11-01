@@ -109,3 +109,10 @@ AppImage.
 The AppImage runtime is built from the pinned upstream AppImage/type2-runtime commit with the patch in
 `patches/appimage-runtime` (`tools/build-appimage-runtime.sh`), so that an AppImage whose FUSE mount fails falls back to
 extract-and-run instead of stopping.
+
+The reviewed runtime has the SHA-256 in `patches/appimage-runtime/baseline.env`; the build refuses any other result.
+`tools/build-appimage-runtime.sh --check-image FILE` proves that an AppImage starts with exactly that runtime (appimagetool
+only fills the runtime's 16-byte `.digest_md5` section), and `tools/test-appimage-release.sh` checks the pins: runtime
+commit, runtime patch, appimagetool 1.9.1 and its SHA-256, and `--runtime-file` on every appimagetool call. The shipped
+`librexruntime.so` and `librexgpu-xenos.so` have their symbol tables stripped (`strip --strip-unneeded`); the program keeps
+its dynamic symbols and its debug information is in the separate symbols folder.

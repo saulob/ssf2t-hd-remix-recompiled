@@ -6,6 +6,7 @@
 #
 #   tools/build-appimage-runtime.sh OUT [WORK_DIR]   build when OUT is missing or the pins or patches changed, write OUT
 #   tools/build-appimage-runtime.sh --check FILE     verify a runtime
+#   tools/build-appimage-runtime.sh --check-image FILE   verify that an AppImage starts with the reviewed runtime
 #
 # Needs root (it builds in a chroot inside a private mount namespace; sudo is used when not root), git, tar, unshare,
 # curl or wget, and network access for the source, the Alpine root file system and its packages, and the libfuse and
@@ -36,6 +37,25 @@ check_runtime() {
   readelf -h "$file" | grep -q 'Machine:.*X86-64' || fail "$file is not an x86-64 program"
   if readelf -d "$file" 2>/dev/null | grep -q NEEDED; then fail "$file is not statically linked"; fi
   "$file" --appimage-version 2>&1 | grep -qF "$VERSION_MARK" || fail "$file is not the runtime built from the pinned source"
+}
+
+# appimagetool writes the MD5 of the AppImage into the runtime's .digest_md5 section; every other byte of the runtime
+# in front of the SquashFS must be the reviewed one.
+check_image_runtime() {  # AppImage
+  local image="$1" offset prefix section_offset section_size
+  [ -f "$image" ] || fail "missing $image"
+  offset="$("$image" --appimage-offset)" || fail "$image does not report its SquashFS offset"
+  prefix="$(mktemp)"
+  head -c "$offset" "$image" > "$prefix"
+  read -r section_offset section_size < <(readelf -S -W "$prefix" |
+    awk '{sub(/^ *\[ *[0-9]+\] */, "")} $1 == ".digest_md5" {print $4, $5}')
+  [ -n "${section_offset:-}" ] || { rm -f "$prefix"; fail "$image has no .digest_md5 section in front of its SquashFS"; }
+  dd if=/dev/zero of="$prefix" bs=1 seek=$((16#$section_offset)) count=$((16#$section_size)) conv=notrunc 2>/dev/null
+  if [ "$(sha256sum "$prefix" | cut -d' ' -f1)" != "$RUNTIME_SHA256" ]; then
+    rm -f "$prefix"
+    fail "the runtime at the front of $image is not the reviewed one ($RUNTIME_SHA256, patches/appimage-runtime/baseline.env)"
+  fi
+  rm -f "$prefix"
 }
 
 download() {  # url file sha256
@@ -136,8 +156,13 @@ case "${1:-}" in
     check_runtime "$2"
     echo "AppImage runtime: ${VERSION_MARK##*/}, patched build verified"
     ;;
+  --check-image)
+    [ $# -eq 2 ] || fail "usage: $0 --check-image FILE"
+    check_image_runtime "$2"
+    echo "AppImage runtime: the reviewed ${RUNTIME_SHA256:0:12} runtime is at the front of the image"
+    ;;
   "" | -*)
-    fail "usage: $0 OUT [WORK_DIR] | --check FILE"
+    fail "usage: $0 OUT [WORK_DIR] | --check FILE | --check-image FILE"
     ;;
   *)
     OUT="$(realpath -m "$1")"
