@@ -134,3 +134,14 @@ The SHA-256 of each file is published with the release as `SSF2THDRemix-v0.3.0-w
 | --- | --- |
 | `SSF2THDRemix-v0.3.0-windows-x64.zip` | `d8d77de616fbb35d00f50af966f92008d192da5fe5f9f376fcb7fbc81c2a4ce7` |
 | `SSF2THDRemix-v0.3.0-x86_64.AppImage` | `c59887aba4afd98609aa37d6df7438942a648047b0cdbfbab8b27831d46e4372` |
+
+## VirusTotal
+
+Both final release artifacts were scanned with VirusTotal before publication and had 0 detections at release preparation time
+
+| File | Result | VirusTotal |
+| --- | --- | --- |
+| SSF2THDRemix-v0.3.0-windows-x64.zip | 0 detections | [VirusTotal report](https://www.virustotal.com/gui/file/d8d77de616fbb35d00f50af966f92008d192da5fe5f9f376fcb7fbc81c2a4ce7) |
+| SSF2THDRemix-v0.3.0-x86_64.AppImage | 0 detections | [VirusTotal report](https://www.virustotal.com/gui/file/c59887aba4afd98609aa37d6df7438942a648047b0cdbfbab8b27831d46e4372) |
+
+VirusTotal is an additional check, not a guarantee of safety, so please also verify the SHA-256 of your download
