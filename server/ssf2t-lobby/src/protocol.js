@@ -41,6 +41,7 @@ export const RELAY = {
   connection: { packets: { burst: 800, perSecond: 400 }, bytes: { burst: 256 * 1024, perSecond: 128 * 1024 } },
   match: { packets: { burst: 1600, perSecond: 800 }, bytes: { burst: 512 * 1024, perSecond: 256 * 1024 } },
   overrunsToClose: 256,
+  invalid: { burst: 200, perSecond: 5 },
   bufferedBytes: 256 * 1024,
   loggedForwards: 3,
 };
@@ -187,7 +188,17 @@ export function parseEndpoint(message) {
   return { port: message.port, lan: [...lan], publicIp, publicPort };
 }
 
-export const ipGroup = (ip) => (typeof ip === 'string' && ip.includes(':') ? ip.split(':').slice(0, 4).join(':') : String(ip));
+// Per-address limits group IPv6 clients by their /64, whatever the spelling.
+export function ipGroup(ip) {
+  if (typeof ip !== 'string' || !ip.includes(':')) return String(ip);
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+  if (mapped) return mapped[1];
+  const [head, tail] = ip.split('::');
+  const before = head ? head.split(':') : [];
+  const after = tail ? tail.split(':') : [];
+  const gap = tail === undefined ? [] : Array(Math.max(0, 8 - before.length - after.length)).fill('0');
+  return [...before, ...gap, ...after].slice(0, 4).map((g) => g.toLowerCase().replace(/^0+(?=.)/, '')).join(':');
+}
 export const isLocalAddress = (ip) => ip === '::1' || ipv4Kind(ip) === 'loopback';
 
 export function compatibleGuests(a, b) {

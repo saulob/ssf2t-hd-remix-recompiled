@@ -4,7 +4,8 @@
 // binary frames are relay frames of the sender's match.
 import { DurableObject } from 'cloudflare:workers';
 
-import { COUNTRY_HEADER, handleAdmin, internalMetricsRoute, isAdminPath, withEdgeCountry } from './admin.js';
+import { COUNTRY_HEADER, handleAdmin, internalMetricsRoute, isAdminPath, limitedCount } from './admin.js';
+import { handleUpgrade } from './edge.js';
 import { Hub } from './hub.js';
 import { LIMITS, PROTOCOL, RELAY, SERVICE, WORKER_BUILD } from './protocol.js';
 
@@ -47,18 +48,21 @@ export class SSF2TLobby extends DurableObject {
     super(ctx, env);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     const sql = ctx.storage.sql;
-    this.hub = new Hub({
-      sql: {
-        all: (query, ...args) => sql.exec(query, ...args).toArray(),
-        get: (query, ...args) => sql.exec(query, ...args).toArray()[0],
-        run: (query, ...args) => {
-          sql.exec(query, ...args);
+    // Every wake builds the hub again; knowing the stored alarm keeps it from being written again each time.
+    ctx.blockConcurrencyWhile(async () => {
+      this.hub = new Hub({
+        sql: {
+          all: (query, ...args) => sql.exec(query, ...args).toArray(),
+          get: (query, ...args) => sql.exec(query, ...args).toArray()[0],
+          run: (query, ...args) => {
+            sql.exec(query, ...args);
+          },
         },
-      },
-      sockets: () => ctx.getWebSockets().map((ws) => new WorkerConn(ws)),
-      now: () => Date.now(),
-      setAlarm: (ms) => ctx.storage.setAlarm(ms),
-      log: (text) => console.log(text),
+        sockets: () => ctx.getWebSockets().map((ws) => new WorkerConn(ws)),
+        now: () => Date.now(),
+        setAlarm: (ms) => ctx.storage.setAlarm(ms),
+        log: (text) => console.log(text),
+      }, { alarmAt: await ctx.storage.getAlarm() });
     });
   }
 
@@ -67,6 +71,7 @@ export class SSF2TLobby extends DurableObject {
     if (metrics?.kind === 'summary') return Response.json(this.hub.metricsSummary());
     if (metrics?.kind === 'history') return Response.json(this.hub.metricsHistory(metrics.days));
     if (metrics) return new Response('Bad request', { status: 400 });
+    this.hub.edgeLimited(limitedCount(request.headers));
     const first = this.hub.admit(request.headers.get('CF-Connecting-IP') ?? '', request.headers.get(COUNTRY_HEADER));
     if (!first) return new Response('Too many connections from this address', { status: 429 });
     const [client, server] = Object.values(new WebSocketPair());
@@ -123,7 +128,7 @@ export default {
       }, (text) => console.log(text));
     }
     if (request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
-      return lobby().fetch(withEdgeCountry(request));
+      return handleUpgrade(request, env, lobby());
     }
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
       return json({ service: SERVICE, protocol: PROTOCOL, status: 'ok', worker_build: WORKER_BUILD,
