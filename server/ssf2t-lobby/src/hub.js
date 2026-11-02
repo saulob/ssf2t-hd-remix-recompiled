@@ -4,6 +4,7 @@
 // relay frames between the two sockets of one match. State lives in SQL tables and in each socket's attachment, so a
 // hibernated Durable Object resumes as if it had never stopped; relay routes are a memory cache rebuilt from them.
 // The same class runs in the development server (local/server.js).
+import { PROTECTION, RateLimiter } from './abuse.js';
 import { Metrics, SAMPLE_MS, countryCode, platformCategory, sampleBucket, versionCategory } from './metrics.js';
 import { sha256Hex, toHex } from './sha256.js';
 import {
@@ -12,7 +13,7 @@ import {
 } from './protocol.js';
 
 const DAY_MS = 24 * 3600 * 1000;
-const SOCIAL_OPS = new Set(['friends.add', 'pm.host', 'pm.join', 'invite.send', 'match.leave', 'match.resume']);
+const SOCIAL_OPS = new Set(['friends.add', 'pm.host', 'pm.join', 'invite.send', 'match.resume']);
 const RULE_KEY = /^[a-z_]{1,16}$/;
 const QOS_DATA = /^(?:[0-9a-f]{2}){0,256}$/;
 const ROLES = ['host', 'join'];
@@ -23,7 +24,7 @@ const MATCH_LIST_MAX = 50;
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS players (player TEXT PRIMARY KEY, token_hash TEXT NOT NULL, name TEXT NOT NULL,
-     created INTEGER NOT NULL, seen INTEGER NOT NULL)`,
+     created INTEGER NOT NULL, seen INTEGER NOT NULL, session INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS friends (player TEXT NOT NULL, friend TEXT NOT NULL, since INTEGER NOT NULL,
      PRIMARY KEY (player, friend))`,
   `CREATE TABLE IF NOT EXISTS friend_requests (sender TEXT NOT NULL, target TEXT NOT NULL, ms INTEGER NOT NULL,
@@ -48,6 +49,7 @@ const SCHEMA = [
 ];
 // Added after the table first shipped: CREATE TABLE above only runs on a fresh database.
 const ADDED_COLUMNS = [
+  ['players', 'session', 'INTEGER NOT NULL DEFAULT 0'],
   ['matches', 'host_pub_ip', "TEXT NOT NULL DEFAULT ''"], ['matches', 'join_pub_ip', "TEXT NOT NULL DEFAULT ''"],
   ['matches', 'host_pub_port', 'INTEGER NOT NULL DEFAULT 0'], ['matches', 'join_pub_port', 'INTEGER NOT NULL DEFAULT 0'],
   ['matches', 'relay_token', 'INTEGER NOT NULL DEFAULT 0'], ['matches', 'transport', "TEXT NOT NULL DEFAULT ''"],
@@ -101,6 +103,7 @@ function matchReport(row, now) {
 
 export class Hub {
   // host: { sql: { all(q, ...a), get(q, ...a), run(q, ...a) }, sockets(): Conn[], now(): ms, setAlarm(ms), log(text) }
+  // options: { local, alarmAt } - alarmAt is the alarm the host already has stored, if any.
   // Conn: { send(text), close(code, reason), attachment(), setAttachment(object) }
   constructor(host, options = {}) {
     this.host = host;
@@ -110,6 +113,18 @@ export class Hub {
     this.relayMatches = new Map();
     this.relayDrops = new Map();
     this.relayTold = new Set();
+    this.relayFaults = new Map();
+    this.alarmAt = options.alarmAt ?? null;
+    this.guards = {
+      hello: new RateLimiter(PROTECTION.hello),
+      advertiseAccount: new RateLimiter(PROTECTION.advertiseAccount),
+      advertiseAddress: new RateLimiter(PROTECTION.advertiseAddress),
+      joinAccount: new RateLimiter(PROTECTION.joinAccount),
+      resumeAccount: new RateLimiter(PROTECTION.resumeAccount),
+      inviteAccount: new RateLimiter(PROTECTION.inviteAccount),
+      inviteAddress: new RateLimiter(PROTECTION.inviteAddress),
+      rejects: new RateLimiter({ burst: 1, perSecond: 1000 / PROTECTION.rejectWindowMs }),
+    };
     for (const statement of SCHEMA) host.sql.run(statement);
     this.metrics = new Metrics(host.sql, () => host.now());
     for (const [table, column, definition] of ADDED_COLUMNS) {
@@ -156,9 +171,18 @@ export class Hub {
     const group = ipGroup(ip);
     if (!(this.local && isLocalAddress(ip))) {
       const open = this.host.sockets().filter((c) => ipGroup(c.attachment()?.ip) === group).length;
-      if (open >= LIMITS.socketsPerIp) return null;
+      if (open >= LIMITS.socketsPerIp) {
+        this.diagnose('ws_upgrade_ip_cap');
+        return null;
+      }
     }
+    this.diagnose('ws_upgrade_accepted');
     return { cid: this.randomHex(8), ip, opened: this.host.now(), country: countryCode(country) };
+  }
+
+  // Upgrades the Worker refused before they reached this object.
+  edgeLimited(count) {
+    if (count > 0) this.diagnose('ws_upgrade_limited', count);
   }
 
   message(conn, text) {
@@ -198,7 +222,7 @@ export class Hub {
       this.deferred = null;
       if (error instanceof ProtocolError && REJECT_CODES.has(error.code) && !att.rejected) {
         att.rejected = true;
-        this.track(() => this.metrics.reject(error.code));
+        this.countReject(error.code, ipGroup(att.ip));
       }
       conn.setAttachment(att);
       if (!(error instanceof ProtocolError)) {
@@ -224,6 +248,7 @@ export class Hub {
   // A socket closed: a match seat is held for the grace period; presence ends with the player's last present socket.
   closed(conn) {
     const att = conn.attachment();
+    if (att) this.forgetRelayConnection(att.cid);
     if (!att?.hello) return;
     this.index = null;
     if (att.match) {
@@ -237,7 +262,6 @@ export class Hub {
         this.scheduleAlarm();
       }
     }
-    this.forgetRelayConnection(att.cid);
     att.match = null;
     att.hello = false;
     conn.setAttachment(att);
@@ -253,6 +277,7 @@ export class Hub {
   }
 
   alarm() {
+    this.alarmAt = null;
     this.index = null;
     const now = this.host.now();
     for (const row of this.host.sql.all('SELECT * FROM player_matches WHERE refreshed + ? <= ?', LIMITS.playerMatchMs, now)) {
@@ -269,9 +294,11 @@ export class Hub {
     }
     this.runDeferred();
     this.index = null;
+    this.track(() => this.metrics.flushDiagnostics());
     this.observe();
   }
 
+  // An alarm that is already set for the same moment or earlier stays: it fires early at worst, and alarm() sets the next.
   scheduleAlarm() {
     const times = [];
     const advertised = this.host.sql.get('SELECT MIN(refreshed) AS t FROM player_matches');
@@ -282,8 +309,12 @@ export class Hub {
       times.push(row.created + LIMITS.matchMaxMs);
       for (const role of ROLES) if (row[`${role}_grace`] !== null) times.push(row[`${role}_grace`]);
     }
-    if (this.host.sockets().length) times.push(sampleBucket(this.host.now()) + SAMPLE_MS);
-    if (times.length) this.host.setAlarm(Math.min(...times));
+    if (this.host.sockets().length || this.metrics.pending.size) times.push(sampleBucket(this.host.now()) + SAMPLE_MS);
+    if (!times.length) return;
+    const at = Math.min(...times);
+    if (this.alarmAt !== null && this.alarmAt <= at) return;
+    this.alarmAt = at;
+    this.host.setAlarm(at);
   }
 
   // Metrics never fail a hub operation.
@@ -293,6 +324,19 @@ export class Hub {
     } catch (error) {
       this.host.log(`hub: metrics error: ${error?.stack ?? error}`);
     }
+  }
+
+  diagnose(name, amount = 1) {
+    if (this.metrics.diagnose(name, amount)) this.scheduleAlarm();
+  }
+
+  // One rejection per reason and address per window: a reconnect loop must not write on every turn.
+  countReject(reason, key) {
+    if (this.guards.rejects.take(`${reason}|${key}`, this.host.now())) this.track(() => this.metrics.reject(reason));
+  }
+
+  exempt(att) {
+    return this.local && isLocalAddress(att.ip);
   }
 
   observe() {
@@ -461,6 +505,59 @@ export class Hub {
     this.host.sql.run('DELETE FROM friend_requests WHERE (sender = ? AND target = ?) OR (sender = ? AND target = ?)', a, b, b, a);
   }
 
+  // Counted once the token matched, so nobody can lock out another player by guessing at the account.
+  limitHello(att, player, now) {
+    if (this.exempt(att) || this.guards.hello.take(player, now)) return;
+    this.diagnose('hello_limited');
+    fail('limit', 'too many sign-ins');
+  }
+
+  touchPlayer(row, name, now, newSession) {
+    if (newSession) {
+      this.host.sql.run('UPDATE players SET name = ?, seen = ?, session = ? WHERE player = ?', name, now, now, row.player);
+    } else if (row.name !== name || now - row.seen >= PROTECTION.seenRefreshMs) {
+      this.host.sql.run('UPDATE players SET name = ?, seen = ? WHERE player = ?', name, now, row.player);
+    }
+  }
+
+  limitAdvertise(att) {
+    if (this.exempt(att)) return;
+    const now = this.host.now();
+    const address = ipGroup(att.ip);
+    const { advertiseAccount, advertiseAddress } = this.guards;
+    if (!advertiseAccount.allows(att.player, now) || !advertiseAddress.allows(address, now)) {
+      this.diagnose('pm_host_limited');
+      fail('limit', 'hosting too fast');
+    }
+    advertiseAccount.take(att.player, now);
+    advertiseAddress.take(address, now);
+  }
+
+  limitJoin(att) {
+    if (this.exempt(att) || this.guards.joinAccount.take(att.player, this.host.now())) return;
+    this.diagnose('pm_join_limited');
+    fail('limit', 'joining too fast');
+  }
+
+  limitResume(att) {
+    if (this.exempt(att) || this.guards.resumeAccount.take(att.player, this.host.now())) return;
+    this.diagnose('match_resume_limited');
+    fail('limit', 'resuming too fast');
+  }
+
+  limitInvite(att) {
+    if (this.exempt(att)) return;
+    const now = this.host.now();
+    const address = ipGroup(att.ip);
+    const { inviteAccount, inviteAddress } = this.guards;
+    if (!inviteAccount.allows(att.player, now) || !inviteAddress.allows(address, now)) {
+      this.diagnose('invite_limited');
+      fail('limit', 'inviting too fast');
+    }
+    inviteAccount.take(att.player, now);
+    inviteAddress.take(address, now);
+  }
+
   requireFriendRoom(a, b) {
     if (this.friendCount(a) >= LIMITS.friends || this.friendCount(b) >= LIMITS.friends) fail('limit', 'friend list full');
   }
@@ -571,7 +668,7 @@ export class Hub {
 
   introduce(row) {
     if (!row.host_port || !row.join_port) return;
-    this.host.sql.run('UPDATE matches SET introduced = 1 WHERE id = ?', row.id);
+    if (!row.introduced) this.host.sql.run('UPDATE matches SET introduced = 1 WHERE id = ?', row.id);
     for (const role of ROLES) {
       const other = this.otherRole(role);
       const peer = this.playerRow(this.playerOfRole(row, other));
@@ -589,18 +686,23 @@ export class Hub {
   // frame could name.
   relay(conn, bytes) {
     const att = conn.attachment();
-    if (!att?.hello) return this.dropRelay('unknown_connection');
+    if (!att) return this.dropRelay('unknown_connection');
+    if (this.relayFaults.get(att.cid)?.abusive) return;
+    if (!att.hello) return this.senderFault(conn, att, 'unknown_connection');
     const frame = parseRelayFrame(bytes);
-    if (frame.error) return this.dropRelay(frame.error, att.match);
-    const route = this.relayRouteFor(att);
-    if (!route) return this.dropRelay('no_relay', att.match, att);
-    if (frame.token !== route.token) return this.dropRelay('stale_token', route.match, att);
+    if (frame.error) return this.senderFault(conn, att, frame.error, att.match);
+    const { route, fault } = this.relayRouteFor(att);
+    if (!route) return this.senderFault(conn, att, 'no_relay', att.match, { tell: true, count: fault });
+    if (frame.token !== route.token) return this.senderFault(conn, att, 'stale_token', route.match, { tell: true });
     const now = this.host.now();
     const shared = this.relayMatch(route.match);
     if (!takeRelayBudget(route.budget, RELAY.connection, now, bytes.length) ||
         !takeRelayBudget(shared.budget, RELAY.match, now, bytes.length)) {
       this.dropRelay('rate_limit', route.match);
-      if (++shared.overruns >= RELAY.overrunsToClose) this.endRelay(this.matchRow(route.match), 'rate_limit');
+      if (++shared.overruns >= RELAY.overrunsToClose) {
+        this.diagnose('relay_abuse_closed');
+        this.endRelay(this.matchRow(route.match), 'rate_limit');
+      }
       return;
     }
     const buffered = route.peer.bufferedAmount;
@@ -621,23 +723,25 @@ export class Hub {
     }
   }
 
-  // From the match row on a miss only; later frames take the cached peer socket.
+  // From the match row on a miss only; later frames take the cached peer socket. Without a route, `fault` says whether
+  // the sender is to blame: a peer that is away (grace, resuming) or a relay that closed with it is not the sender's doing.
   relayRouteFor(att) {
     const cached = this.relayRoutes.get(att.cid);
-    if (cached && cached.match === att.match) return cached;
+    if (cached && cached.match === att.match) return { route: cached };
     this.relayRoutes.delete(att.cid);
     const row = att.match ? this.matchRow(att.match) : null;
-    if (!row?.relay_token) return null;
+    if (!row) return { fault: true };
     const role = this.roleOf(row, att.player);
-    if (!role || row[`${role}_cid`] !== att.cid) return null;
+    if (!role || row[`${role}_cid`] !== att.cid) return { fault: true };
+    if (!row.relay_token) return { fault: ROLES.every((r) => row[`${r}_cid`] !== null) };
     this.index = null;
     const peer = this.socketByCid(row[`${this.otherRole(role)}_cid`]);
     this.index = null;
-    if (!peer) return null;
+    if (!peer) return { fault: false };
     const route = { match: row.id, token: row.relay_token, role, peerCid: peer.att.cid, peer: peer.conn, budget: {},
       forwards: 0 };
     this.relayRoutes.set(att.cid, route);
-    return route;
+    return { route };
   }
 
   relayMatch(id) {
@@ -666,6 +770,24 @@ export class Hub {
     if (s) this.send(s.conn, { ev: 'relay.closed', match: att.match, reason: 'unavailable' });
   }
 
+  // Drops the frame; a sender that keeps producing frames no well-behaved client sends loses its connection.
+  senderFault(conn, att, reason, match = null, { tell = false, count = true } = {}) {
+    this.dropRelay(reason, match, tell ? att : null);
+    if (!count) return;
+    const state = this.relayFaults.get(att.cid) ?? { bucket: null, abusive: false };
+    state.bucket = takeToken(state.bucket, RELAY.invalid, this.host.now());
+    this.relayFaults.set(att.cid, state);
+    if (state.bucket) return;
+    state.abusive = true;
+    this.host.log(`relay sender closed cid=${att.cid} reason=${reason}`);
+    this.diagnose('relay_abuse_closed');
+    try {
+      conn.close(1008, 'relay abuse');
+    } catch {
+      // Already closing.
+    }
+  }
+
   endRelay(row, reason, notifyExcept = null, notify = true) {
     if (!row?.relay_token) return;
     this.host.sql.run(`UPDATE matches SET relay_token = 0, transport = CASE WHEN transport = 'relay' THEN '' ELSE transport END
@@ -684,6 +806,7 @@ export class Hub {
   }
 
   forgetRelayConnection(cid) {
+    this.relayFaults.delete(cid);
     for (const [key, route] of this.relayRoutes) {
       if (key === cid || route.peerCid === cid) this.relayRoutes.delete(key);
     }
@@ -695,8 +818,11 @@ const HANDLERS = {
     if (att.hello) fail('bad_request', 'already greeted');
     const hello = parseHello(msg);
     const now = this.host.now();
-    let row = this.playerRow(hello.player);
+    const row = this.playerRow(hello.player);
+    if (row && row.token_hash !== hello.hash) fail('unauthorized');
+    this.limitHello(att, hello.player, now);
     let renamed = false;
+    let newSession = hello.presence;
     if (!row) {
       const ipKey = this.ipKey(att.ip);
       if (!(this.local && isLocalAddress(att.ip))) {
@@ -704,19 +830,20 @@ const HANDLERS = {
         const recent = this.host.sql.get('SELECT COUNT(*) AS n FROM registrations WHERE ip = ?', ipKey).n;
         if (recent >= LIMITS.registrationsPerIpPerDay) fail('limit', 'too many new players');
       }
-      this.host.sql.run('INSERT INTO players (player, token_hash, name, created, seen) VALUES (?, ?, ?, ?, ?)', hello.player,
-        hello.hash, hello.name, now, now);
+      this.host.sql.run('INSERT INTO players (player, token_hash, name, created, seen, session) VALUES (?, ?, ?, ?, ?, ?)',
+        hello.player, hello.hash, hello.name, now, now, hello.presence ? now : 0);
       this.host.sql.run('INSERT INTO registrations (ip, ms) VALUES (?, ?)', ipKey, now);
-    } else if (row.token_hash !== hello.hash) {
-      fail('unauthorized');
     } else {
       renamed = row.name !== hello.name;
-      this.host.sql.run('UPDATE players SET name = ?, seen = ? WHERE player = ?', hello.name, now, hello.player);
+      newSession = hello.presence && now - row.session >= PROTECTION.sessionWindowMs;
+      this.touchPlayer(row, hello.name, now, newSession);
     }
     const wasOnline = hello.presence && this.presentSockets(hello.player).length > 0;
     Object.assign(att, { hello: true, player: hello.player, name: hello.name, presence: hello.presence, guest: hello.guest,
       build: hello.build, version: hello.version, platform: hello.platform, relay: hello.relay, match: null });
-    if (hello.presence) this.track(() => this.metrics.session(att));
+    if (newSession) this.track(() => this.metrics.session(att));
+    else if (hello.presence) this.diagnose('hello_reconnect_deduped');
+    this.diagnose('hello_accepted');
     this.index = null;
     if (hello.presence ? !wasOnline || renamed : renamed) this.later(() => this.notifyStatus(hello.player));
     return { player: hello.player, name: hello.name, friend_code: hello.player, time: now, capabilities: CAPABILITIES };
@@ -815,18 +942,26 @@ const HANDLERS = {
     if (typeof qos !== 'string' || !QOS_DATA.test(qos)) fail('bad_request', 'qos expected');
     const now = this.host.now();
     const existing = this.playerMatchOf(att.player);
+    const rulesText = JSON.stringify(rules);
     if (existing) {
-      this.host.sql.run('UPDATE player_matches SET guest = ?, build = ?, slots = ?, rules = ?, qos = ?, refreshed = ? WHERE id = ?',
-        att.guest, att.build, slots, JSON.stringify(rules), qos, now, existing.id);
-    } else {
-      this.host.sql.run(`INSERT INTO player_matches (id, owner, guest, build, slots, rules, qos, created, refreshed)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, this.randomHex(8), att.player, att.guest, att.build, slots,
-      JSON.stringify(rules), qos, now, now);
-      this.track(() => this.metrics.count('advertised'));
-      this.later(() => this.notifyStatus(att.player));
+      const unchanged = existing.guest === att.guest && existing.build === att.build && existing.slots === slots &&
+        existing.rules === rulesText && existing.qos === qos;
+      if (!unchanged || now - existing.refreshed >= PROTECTION.advertiseRefreshMs) {
+        this.host.sql.run('UPDATE player_matches SET guest = ?, build = ?, slots = ?, rules = ?, qos = ?, refreshed = ? WHERE id = ?',
+          att.guest, att.build, slots, rulesText, qos, now, existing.id);
+      }
+      this.scheduleAlarm();
+      return { session: existing.id };
     }
+    this.limitAdvertise(att);
+    const id = this.randomHex(8);
+    this.host.sql.run(`INSERT INTO player_matches (id, owner, guest, build, slots, rules, qos, created, refreshed)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, att.player, att.guest, att.build, slots, rulesText, qos, now, now);
+    this.diagnose('pm_host_accepted');
+    this.track(() => this.metrics.count('advertised'));
+    this.later(() => this.notifyStatus(att.player));
     this.scheduleAlarm();
-    return { session: this.playerMatchOf(att.player).id };
+    return { session: id };
   },
 
   'pm.cancel'(att) {
@@ -863,6 +998,7 @@ const HANDLERS = {
     }
     if (!compatibleGuests(att, row)) fail('version_mismatch');
     if (this.matchOfPlayer(att.player) || this.matchOfPlayer(row.owner)) fail('busy');
+    this.limitJoin(att);
     const owner = this.presentSockets(row.owner)[0];
     const own = this.playerMatchOf(att.player);
     if (own) this.dropPlayerMatch(own, 'cancelled');
@@ -887,6 +1023,7 @@ const HANDLERS = {
     if (!recipient) fail('offline');
     if (!compatibleGuests(recipient.att, row)) fail('version_mismatch');
     if (this.matchOfPlayer(target)) fail('busy');
+    this.limitInvite(att);
     const now = this.host.now();
     const id = this.randomHex(8);
     this.host.sql.run('DELETE FROM invites WHERE session = ? AND target = ?', row.id, target);
@@ -911,9 +1048,14 @@ const HANDLERS = {
     if (!row || row.id !== msg.match) fail('not_found');
     const role = this.roleOf(row, att.player);
     const endpoint = parseEndpoint(msg);
-    this.host.sql.run(
-      `UPDATE matches SET ${role}_ip = ?, ${role}_pub_ip = ?, ${role}_pub_port = ?, ${role}_port = ?, ${role}_lan = ? WHERE id = ?`,
-      att.ip, endpoint.publicIp, endpoint.publicPort, endpoint.port, JSON.stringify(endpoint.lan), row.id);
+    const lan = JSON.stringify(endpoint.lan);
+    const unchanged = row[`${role}_ip`] === att.ip && row[`${role}_pub_ip`] === endpoint.publicIp &&
+      row[`${role}_pub_port`] === endpoint.publicPort && row[`${role}_port`] === endpoint.port && row[`${role}_lan`] === lan;
+    if (!unchanged) {
+      this.host.sql.run(
+        `UPDATE matches SET ${role}_ip = ?, ${role}_pub_ip = ?, ${role}_pub_port = ?, ${role}_port = ?, ${role}_lan = ? WHERE id = ?`,
+        att.ip, endpoint.publicIp, endpoint.publicPort, endpoint.port, lan, row.id);
+    }
     this.later(() => this.introduce(this.matchRow(row.id)));
     return {};
   },
@@ -923,7 +1065,9 @@ const HANDLERS = {
     if (!row || row.id !== msg.match) fail('not_found');
     if (typeof msg.ready !== 'boolean') fail('bad_request', 'ready expected');
     const role = this.roleOf(row, att.player);
-    this.host.sql.run(`UPDATE matches SET ${role}_ready = ? WHERE id = ?`, msg.ready ? 1 : 0, row.id);
+    if (row[`${role}_ready`] !== (msg.ready ? 1 : 0)) {
+      this.host.sql.run(`UPDATE matches SET ${role}_ready = ? WHERE id = ?`, msg.ready ? 1 : 0, row.id);
+    }
     this.later(() => {
       this.sendToRole(row, this.otherRole(role), { ev: 'match.ready', match: row.id, ready: msg.ready });
       this.notifyStatus(row.host);
@@ -947,7 +1091,7 @@ const HANDLERS = {
       fail('bad_request', 'transport expected');
     }
     if (!row.transport) this.track(() => this.metrics.transport(msg.transport));
-    this.host.sql.run('UPDATE matches SET transport = ? WHERE id = ?', msg.transport, row.id);
+    if (row.transport !== msg.transport) this.host.sql.run('UPDATE matches SET transport = ? WHERE id = ?', msg.transport, row.id);
     this.later(() => this.sendToRole(row, 'join', { ev: 'match.transport', match: row.id, transport: msg.transport }));
     return {};
   },
@@ -966,6 +1110,7 @@ const HANDLERS = {
     const row = typeof msg.match === 'string' ? this.matchRow(msg.match) : null;
     const role = row && this.roleOf(row, att.player);
     if (!role || !att.presence) fail('not_found');
+    this.limitResume(att);
     const old = this.socketByCid(row[`${role}_cid`]);
     if (old && old.att.cid !== att.cid) {
       old.att.match = null;

@@ -1,10 +1,12 @@
-// The Worker's edge: the private dashboard under /admin (SSF2T_DASHBOARD_TOKEN as a Bearer header) and the country the
-// lobby may count, which only the edge sets. No Cloudflare import, so Node runs it in the tests.
+// The Worker's edge: the private dashboard under /admin (SSF2T_DASHBOARD_TOKEN as a Bearer header) and the country and
+// refused-upgrade count the lobby may use, which only the edge sets. No Cloudflare import, so Node runs it in the tests.
 import { ADMIN_CSS, ADMIN_HTML, ADMIN_JS } from './admin_page.js';
 import { HISTORY_MAX_DAYS, countryCode } from './metrics.js';
 import { sha256Hex } from './sha256.js';
 
 export const COUNTRY_HEADER = 'X-SSF2T-Edge-Country';
+export const LIMITED_HEADER = 'X-SSF2T-Edge-Limited';
+const MAX_LIMITED_COUNT = 1_000_000;
 export const DEFAULT_HISTORY_DAYS = 30;
 const MIN_TOKEN_CHARS = 16;
 
@@ -95,9 +97,16 @@ export function internalMetricsRoute(request) {
 
 export const edgeCountry = (cf) => countryCode(cf?.country);
 
-// The request the lobby receives: any country header from the client is replaced by Cloudflare's.
-export function withEdgeCountry(request, cf = request.cf) {
+// The request the lobby receives: any edge header from the client is replaced by the Worker's.
+export function withEdgeCountry(request, cf = request.cf, limited = 0) {
   const headers = new Headers(request.headers);
   headers.set(COUNTRY_HEADER, edgeCountry(cf));
+  if (limited > 0) headers.set(LIMITED_HEADER, String(limited));
+  else headers.delete(LIMITED_HEADER);
   return new Request(request, { headers });
+}
+
+export function limitedCount(headers) {
+  const count = Number(headers.get(LIMITED_HEADER));
+  return Number.isInteger(count) && count > 0 ? Math.min(count, MAX_LIMITED_COUNT) : 0;
 }

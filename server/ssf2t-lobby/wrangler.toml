@@ -9,3 +9,8 @@ class_name = "SSF2TLobby"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SSF2TLobby"]
+
+[[ratelimits]]
+name = "WS_UPGRADE_LIMITER"
+namespace_id = "2002"
+simple = { limit = 30, period = 60 }

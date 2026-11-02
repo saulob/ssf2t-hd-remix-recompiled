@@ -11,11 +11,13 @@ protocol (`game: "ssf2t-hd-remix-pc"`).
 ## Design
 
 - `src/worker.js`: the Worker. `GET /` and `GET /health` return `{"service":"ssf2t-lobby","protocol":3,"status":"ok"}`.
-  Every WebSocket goes to the single `SSF2TLobby` Durable Object (SQLite-backed, WebSocket Hibernation).
+  Every WebSocket goes to the single `SSF2TLobby` Durable Object (SQLite-backed, WebSocket Hibernation), after the edge
+  gate in `src/edge.js`.
 - `src/hub.js`: the whole service, independent of Cloudflare (`local/server.js` runs the same code on Node). Tables:
   `players`, `friends`, `friend_requests`, `player_matches`, `matches`. A **match** is a row, not an object: any number of
   matches run side by side, each between two players, with no per-match Worker or class.
 - `src/protocol.js`: versions, limits, validation, friend code derivation.
+- `src/abuse.js`: the in-memory limits listed under Abuse protection.
 
 A player is identified by a private token that never leaves their PC. The public id (`XXXX-XXXX`) is derived from it and
 is also the friend code. The hub stores only a hash of the token and refuses a known id with another token.
@@ -84,10 +86,37 @@ connection; only the port comes from the client, and LAN candidates reach only a
 dropped socket keeps its match seat for 30 s (`match.resume` retakes it); after that the peer hears `match.ended`.
 
 Limits: 4 KB frames, 16-character names, 60 messages burst then 20/s per socket (`friends.add`, `pm.host`, `pm.join`,
-`match.leave`, `match.resume` 10 burst then 1/s), 16 sockets and 20 new players per day per address, 200 friends, 50 pending requests each way.
+`invite.send`, `match.resume` 10 burst then 1/s), 16 sockets and 20 new players per day per address, 200 friends, 50 pending requests each way.
 Relay: 400 frames/s (burst 800) and 128 KB/s (burst 256 KB) per socket, twice that per match; 256 dropped frames in a
 match end its relay. All matches share the one Durable Object, so relayed traffic counts against its CPU and request
 budget.
+
+## Abuse protection
+
+None of this changes the protocol, the wire format or what a released client sees in normal use.
+
+- **Edge**: the `WS_UPGRADE_LIMITER` rate-limit binding allows 30 WebSocket upgrades per address group (IPv6 by /64) per
+  60 s. A refused upgrade is an HTTP 429 with `Retry-After` and never reaches the Durable Object. `/`, `/health`,
+  `/admin` and the metrics routes are not upgrades and are not limited. Without the binding, or if it fails, upgrades pass.
+- **Sign-in**: 12 `hello` per player burst, then one per 15 s, counted only after the token matched (a wrong token cannot
+  lock the real player out). `players` is rewritten only when the name changed or `seen` is 15 minutes old. A reconnect
+  within 10 minutes of a counted presence session is not a new session in the dashboard; the Connection test
+  (`presence: false`) never uses up that window.
+- **Player Match**: creating an advertisement (not refreshing one) allows 6 per player burst, one per 20 s, and 20 per
+  address burst, one per 6 s; `pm.join` 20 burst then one per 5 s per player; `match.resume` 12 burst then one per 10 s.
+  An unchanged advertisement refreshed within 30 s is not rewritten (the client refreshes every 60 s; the advertisement
+  lasts 180 s). Limits apply after validation, so a failed join or host spends nothing, and `match.leave` is never limited.
+- **Invites**: 20 per player burst, one per 3 s, and 60 per address burst, one per 2 s.
+- **Relay**: budgets are unchanged. A sender that keeps producing frames no client sends (malformed, bad token, not in
+  a match, a seat that was taken, a relay that closed while both players are seated, before `hello`) is allowed 200
+  of them, then 5 per second, and is then closed with code 1008. A peer that is away (grace, resuming) is not a fault.
+- **Alarms**: an alarm already set for the same time or earlier is not set again, and a woken object reads its stored
+  alarm. Unchanged endpoint, ready and transport updates and repeated `introduced` flags are not written.
+- **Loopback** is exempt from the sign-in, advertising, join, resume and invite limits in `local/server.js`.
+- **Diagnostics**: counts of accepted and refused upgrades, sign-ins, advertisements, joins, invites and closed relays are
+  kept in memory and written to `metrics_daily_dimensions` (`abuse`) at the 15-minute alarm, and shown on the dashboard.
+  They hold counter names only, never an address, player, token or match, and a counter not yet written is lost if
+  the object is evicted.
 
 ## Admin dashboard
 
@@ -123,7 +152,8 @@ npx wrangler whoami                 # the account must be the one that owns the 
 npx wrangler deploy
 ```
 
-The Durable Object class `SSF2TLobby` and its migration `v1` already exist; this change needs no new migration. Do not
+The Durable Object class `SSF2TLobby` and its migration `v1` already exist; this change needs no new migration. The
+rate-limit binding `WS_UPGRADE_LIMITER` (namespace `2002`) is declared in `wrangler.toml` and created by the deploy. Do not
 edit an applied migration. The hub keeps its data in the object's SQLite tables, created on first use (later columns,
 such as `relay_token`, are added on start), and drops the unused `challenges` table. Clients of protocols 1 and 2 are
 refused with `proto` after the deploy. Protocol 3 clients without relay support keep working: their matches simply

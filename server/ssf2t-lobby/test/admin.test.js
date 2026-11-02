@@ -138,14 +138,14 @@ test('players online, advertisements and sessions are counted once per account',
   assert.equal(summary.live.online, 2);
   assert.equal(summary.live.connections, 3);
   assert.equal(summary.live.advertised, 1);
-  assert.equal(summary.today.sessions, 3);
+  assert.equal(summary.today.sessions, 2);
   assert.equal(summary.today.advertised, 1);
   assert.equal(summary.today.peak_online, 2);
   assert.deepEqual(summary.live.platform, [{ value: 'Windows', count: 2 }]);
   assert.deepEqual(summary.live.version, [{ value: '0.2.2', count: 2 }]);
   const probe = env.connect(identity(3));
   assert.equal(probe.hello({ presence: false }).code, 'ok');
-  assert.equal((await summaryOf(env)).today.sessions, 3);
+  assert.equal((await summaryOf(env)).today.sessions, 2);
 });
 
 test('a match shows as Pending, then Relay or Direct once the host chooses', async () => {
@@ -211,8 +211,7 @@ test('the country is the edge header; a client never chooses it', async () => {
   b.hello();
   const summary = await summaryOf(env);
   assert.deepEqual(summary.live.country, [{ value: 'BR', count: 1 }, { value: 'Unknown', count: 1 }]);
-  const worker = readFileSync(join(SRC, 'worker.js'), 'utf8');
-  assert.ok(worker.includes('withEdgeCountry(request)'));
+  assert.ok(readFileSync(join(SRC, 'edge.js'), 'utf8').includes('withEdgeCountry(request, request.cf, limited)'));
   assert.equal(COUNTRY_HEADER, 'X-SSF2T-Edge-Country');
 });
 
