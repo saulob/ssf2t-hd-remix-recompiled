@@ -610,28 +610,38 @@ class FightRuntime {
         !FightTelemetryReady(base)) {
       return;
     }
-    last_snapshot_ = np::ReadFightSnapshot<G>(np::GuestMemory{base});
-    const uint32_t starts = fight_reporter_.starts();
-    fight_reporter_.Begin(generation_, session_->fight_index(), last_snapshot_);
-    if (fight_reporter_.starts() != starts) {
-      REXLOG_INFO("fight telemetry start generation={} fight={} p1={} p2={} guest={}", generation_,
-                  session_->fight_index(), last_snapshot_.character[0], last_snapshot_.character[1], G::kName);
-    }
+    identity_ready_ = false;
+    fight_reporter_.Begin(generation_, session_->fight_index());
   }
 
   void ObserveFight(const uint8_t* base) {
     if (!fight_reporter_.active() || telemetry_code_ != TelemetryCode::kMatches) return;
     last_snapshot_ = np::ReadFightSnapshot<G>(np::GuestMemory{base});
-    fight_reporter_.Observe(last_snapshot_);
+    identity_ready_ = identity_ready_ || IdentityReady(ReadModes(base));
+    const bool started = fight_reporter_.started();
+    const auto* core = session_->core();
+    fight_reporter_.Observe(last_snapshot_, identity_ready_, core ? core->current_frame() : 0,
+                            core ? core->confirmed_frame() : 0);
+    if (!started && fight_reporter_.started()) {
+      REXLOG_INFO("DEBUG_SAULO fight telemetry start point=presentation_complete generation={} fight={} p1={} p2={} guest={}",
+                  generation_, session_->fight_index(), fight_reporter_.character(0), fight_reporter_.character(1),
+                  G::kName);
+    }
   }
 
   void FinishFightReport() {
     if (!fight_reporter_.active()) return;
     const uint32_t completions = fight_reporter_.completions();
-    fight_reporter_.End();
-    REXLOG_INFO("DEBUG_SAULO fight telemetry end completed={} wins={}:{} to_beat={} p1={} p2={} guest={}",
-                fight_reporter_.completions() != completions, last_snapshot_.wins[0], last_snapshot_.wins[1],
-                last_snapshot_.wins_to_beat, last_snapshot_.character[0], last_snapshot_.character[1], G::kName);
+    const uint32_t starts = fight_reporter_.starts();
+    fight_reporter_.End(last_snapshot_, identity_ready_);
+    identity_ready_ = false;
+    const bool completed = fight_reporter_.completions() != completions;
+    REXLOG_INFO("DEBUG_SAULO fight telemetry end started={} late_start={} completed={} winner={} source={} wins={}:{} to_beat={} start_p1={} start_p2={} raw_p1={} raw_p2={} guest={}",
+                fight_reporter_.started(), fight_reporter_.starts() != starts, completed,
+                ssf2t::online::FightResultName(fight_reporter_.result()),
+                fight_reporter_.confirmed_result() ? "confirmed" : "left", last_snapshot_.wins[0], last_snapshot_.wins[1],
+                last_snapshot_.wins_to_beat, fight_reporter_.character(0), fight_reporter_.character(1),
+                last_snapshot_.character[0], last_snapshot_.character[1], G::kName);
   }
 
   void OfferFrameZero(PPCContext& ctx, uint8_t* base, const GuestCalls& calls) {
@@ -722,6 +732,10 @@ class FightRuntime {
     return modes;
   }
 
+  static bool IdentityReady(const ModeWords& modes) {
+    return modes.mode[1] == kFightMode && modes.mode[2] >= kRoundInitMode;
+  }
+
   void LogPreFight(const uint8_t* base) {
     if (!online_driven_ || presentation_logged_ || !LocalFightActive(base)) return;
     const ModeWords modes = ReadModes(base);
@@ -730,7 +744,7 @@ class FightRuntime {
     REXLOG_INFO("pre_fight state={:X}/{:X}/{:X}/{:X} timer={} request={} generation={} guest={}",
                 modes.mode[0], modes.mode[1], modes.mode[2], modes.mode[3], modes.timer, modes.request, generation_,
                 G::kName);
-    if (modes.mode[1] == kFightMode && modes.mode[2] >= kRoundInitMode) {
+    if (IdentityReady(modes)) {
       presentation_logged_ = true;
       REXLOG_INFO("pre_fight presentation complete state={:X}/{:X}/{:X}/{:X} generation={} guest={}",
                   modes.mode[0], modes.mode[1], modes.mode[2], modes.mode[3], generation_, G::kName);
@@ -916,6 +930,7 @@ class FightRuntime {
   enum class TelemetryCode { kUnchecked, kMatches, kDiffers };
   TelemetryCode telemetry_code_ = TelemetryCode::kUnchecked;
   ssf2t::online::FightSnapshot last_snapshot_;
+  bool identity_ready_ = false;
   ssf2t::online::FightReporter fight_reporter_{
       [](const ssf2t::online::FightReport& report) { return ssf2t::Online().ReportFight(report); }};
   uint32_t generation_ = 0;

@@ -51,33 +51,39 @@ constexpr bool FightReportable(bool online_driven, uint8_t game_mode, uint8_t on
 
 // Turns what the fight runtime sees into at most one start and one completion per fight. It reads and decides; it never
 // writes the game and never waits: the sink answers false when it could not take a report, which is only counted.
+// A fight is armed at its logical start but reports its start once the fighters' characters are authoritative.
 class FightReporter {
  public:
   using Sink = std::function<bool(const FightReport&)>;
 
-  // A result must hold this many consecutive observations before it is final: a rollback rewrites at most a few frames.
-  static constexpr int kStableObservations = 20;
-
   explicit FightReporter(Sink sink) : sink_(std::move(sink)) {}
 
-  // The fight became authoritative. The same (generation, fight) again, as after a retry, reports nothing.
-  void Begin(uint32_t generation, uint32_t fight, const FightSnapshot& snapshot);
-  // Every frame of the running fight.
-  void Observe(const FightSnapshot& snapshot);
-  // The fight is over or was cut short; a completion is reported only for a result that became final.
-  void End();
+  // The same (generation, fight) again, as after a retry, arms nothing.
+  void Begin(uint32_t generation, uint32_t fight);
+  // Every frame of the running fight. `identity_ready` is the lifecycle point from which the characters are the selected
+  // fighters; `frame` and `confirmed` are the simulated frame and the newest frame both peers agree on.
+  void Observe(const FightSnapshot& snapshot, bool identity_ready, uint32_t frame, uint32_t confirmed);
+  // The fight is over or was cut short. A start still waiting for its characters gets one last attempt from `last`.
+  void End(const FightSnapshot& last, bool identity_ready);
 
   bool active() const { return active_; }
+  bool started() const { return started_; }
+  bool confirmed_result() const { return confirmed_result_; }
   uint32_t starts() const { return starts_; }
   uint32_t completions() const { return completions_; }
   uint32_t dropped() const { return dropped_; }
   uint32_t skipped() const { return skipped_; }
+  int character(int side) const { return character_[side]; }
+  FightResult result() const { return result_; }
 
  private:
   void Emit(const FightReport& report);
+  bool TryStart(const FightSnapshot& snapshot, bool identity_ready);
 
   Sink sink_;
   bool active_ = false;
+  bool started_ = false;
+  bool confirmed_result_ = false;
   bool has_last_ = false;
   uint32_t last_generation_ = 0;
   uint32_t last_fight_ = 0;
@@ -85,8 +91,9 @@ class FightReporter {
   uint32_t fight_ = 0;
   int character_[2] = {-1, -1};
   FightResult candidate_ = FightResult::kNone;
-  int stable_ = 0;
+  uint32_t candidate_frame_ = 0;
   FightResult final_ = FightResult::kNone;
+  FightResult result_ = FightResult::kNone;
   uint32_t starts_ = 0;
   uint32_t completions_ = 0;
   uint32_t dropped_ = 0;

@@ -69,7 +69,7 @@ test('the final state is only what the service can tell', () => {
   lost.b.drop();
   env.advance(31 * 1000);
   const states = recentOf(env).matches.map((r) => r.state);
-  assert.deepEqual(states, ['Disconnected', 'Abandoned', 'Failed', 'Completed']);
+  assert.deepEqual(states, ['Disconnected', 'Ended', 'Failed', 'Completed']);
 });
 
 test('a match that outlives its limit is a timeout', () => {
@@ -157,4 +157,55 @@ test('a fight reported late for a closed match leaves the recent list as it was'
   const m = finished(env, 1, { fights: 1, completed: 1 });
   assert.equal(send(m.a, fightEvent(m, 'start', 5)).code, 'not_found');
   assert.equal(recentOf(env).matches[0].fights_started, 1);
+});
+
+test('a played-out fight followed by the normal leave is Completed', () => {
+  const env = makeHub();
+  const m = startFightMatch(env);
+  m.a.call('match.ready', { match: m.match, ready: true });
+  m.b.call('match.ready', { match: m.match, ready: true });
+  playFight(m, 0, { p1: 0, p2: 1, result: 'p1' });
+  m.b.call('match.leave', { match: m.match });
+  const [row] = recentOf(env).matches;
+  assert.equal(row.state, 'Completed');
+  assert.equal(row.fights_started, 1);
+  assert.equal(row.fights_completed, 1);
+});
+
+test('a completed fight and an interrupted one leave an Abandoned match with both counts', () => {
+  const env = makeHub();
+  const m = startFightMatch(env);
+  m.a.call('match.ready', { match: m.match, ready: true });
+  m.b.call('match.ready', { match: m.match, ready: true });
+  playFight(m, 0, { p1: 13, p2: 0, result: 'p1' });
+  playFight(m, 1, { p1: 13, p2: 0, complete: false });
+  m.a.call('match.leave', { match: m.match });
+  const [row] = recentOf(env).matches;
+  assert.equal(row.state, 'Abandoned');
+  assert.equal(row.fights_started, 2);
+  assert.equal(row.fights_completed, 1);
+});
+
+test('leaving with no fight started is Ended, never Abandoned', () => {
+  const env = makeHub();
+  const m = startFightMatch(env);
+  m.a.call('match.ready', { match: m.match, ready: true });
+  m.b.call('match.ready', { match: m.match, ready: true });
+  m.a.call('match.leave', { match: m.match });
+  assert.equal(recentOf(env).matches[0].state, 'Ended');
+});
+
+test('a connection lost during an unfinished fight stays Disconnected with the fight counts', () => {
+  const env = makeHub();
+  const m = startFightMatch(env);
+  m.a.call('match.ready', { match: m.match, ready: true });
+  m.b.call('match.ready', { match: m.match, ready: true });
+  playFight(m, 0, { p1: 0, p2: 1, complete: false });
+  m.a.drop();
+  m.b.drop();
+  env.advance(31 * 1000);
+  const [row] = recentOf(env).matches;
+  assert.equal(row.state, 'Disconnected');
+  assert.equal(row.fights_started, 1);
+  assert.equal(row.fights_completed, 0);
 });

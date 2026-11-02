@@ -95,10 +95,13 @@ A_LOC="Linux localization pt-BR"
 A_FIGHT="Linux fight telemetry"
 A_DASH="Linux dashboard"
 A_RECENT="Linux recent matches"
+A_ABUSE="Linux abuse protection"
+A_CHARS="Linux character analytics"
+A_MATCHUPS="Linux matchup analytics"
 A_GATE="Linux test.sh gate"
 AREAS=("$A_ENV" "$A_BDIR" "$A_PROD" "$A_B13" "$A_TU" "$A_PAIR" "$A_HOOK" "$A_GFP" "$A_T_B13" "$A_T_TU" "$A_PLAT" "$A_WS" "$A_NET"
   "$A_RELAY" "$A_PM" "$A_RB" "$A_FZ" "$A_MULTI" "$A_WORKER" "$A_WIRE" "$A_CTRL" "$A_SET" "$A_KEYS" "$A_DISP" "$A_GPU"
-  "$A_ACH" "$A_CLIP" "$A_CRASH" "$A_DATA" "$A_UPD" "$A_PKG" "$A_GLIBC" "$A_RPATH" "$A_DEPS" "$A_CORE" "$A_LOC" "$A_FIGHT" "$A_DASH" "$A_RECENT" "$A_GATE")
+  "$A_ACH" "$A_CLIP" "$A_CRASH" "$A_DATA" "$A_UPD" "$A_PKG" "$A_GLIBC" "$A_RPATH" "$A_DEPS" "$A_CORE" "$A_LOC" "$A_FIGHT" "$A_DASH" "$A_RECENT" "$A_ABUSE" "$A_CHARS" "$A_MATCHUPS" "$A_GATE")
 TARGETS=("linux/base013|$A_T_B13" "linux/tu023|$A_T_TU")
 
 A_CROSS="Windows/Linux wire compatibility"
@@ -237,6 +240,10 @@ check "fight telemetry (Worker, Node)" "$A_FIGHT;$A_WORKER;$A_NET;$A_MULTI" \
   bash -c "cd '$SRC/server/ssf2t-lobby' && '$NODE' --test test/fights.test.js test/wire.test.js"
 check "recent matches (Worker, Node)" "$A_RECENT;$A_WORKER" \
   bash -c "cd '$SRC/server/ssf2t-lobby' && '$NODE' --test test/recent.test.js"
+check "abuse protection (Worker, Node)" "$A_ABUSE;$A_WORKER" \
+  bash -c "cd '$SRC/server/ssf2t-lobby' && '$NODE' --test test/abuse.test.js"
+check "character and matchup analytics (Worker, Node)" "$A_CHARS;$A_MATCHUPS;$A_WORKER" \
+  bash -c "cd '$SRC/server/ssf2t-lobby' && '$NODE' --test test/analytics.test.js"
 check "dashboard (page and admin API, Node)" "$A_DASH;$A_WORKER" \
   bash -c "cd '$SRC/server/ssf2t-lobby' && '$NODE' --test test/dashboard.test.js test/admin.test.js"
 check "fight telemetry mutations (Worker and dashboard)" "$A_FIGHT;$A_WORKER;$A_DASH;$A_RECENT" \

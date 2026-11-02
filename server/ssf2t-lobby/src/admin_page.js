@@ -131,6 +131,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
       <div class="panel"><h2>Most wins</h2><div id="d-wins"></div></div>
       <div class="panel"><h2>Most losses</h2><div id="d-losses"></div></div>
     </div>
+    <div class="panel"><h2>Most played matchups</h2><div id="d-matchups"></div></div>
     <div class="panel">
       <h2>Characters</h2>
       <div class="scroll"><table id="chars"></table></div>
@@ -394,7 +395,8 @@ export const ADMIN_JS = String.raw`(function () {
     relay_abuse_closed: 'Relay connections or relays closed for abuse'
   };
   var STATES = { in_game: 'In game', connecting: 'Connecting' };
-  var BUILDS = { base013: 'Base013', tu023: 'TU023' };
+  var BUILDS = { base013: 'Original · 0.0.1.3', tu023: 'Title Update #1 · 0.0.2.3' };
+  function buildText(value) { return BUILDS[value] || (value ? String(value) : 'Unknown'); }
   var DAY_SERIES = {
     fights: [
       { key: 'fights_started', label: 'Started', cls: 's1', key_cls: 'k1' },
@@ -644,19 +646,37 @@ export const ADMIN_JS = String.raw`(function () {
 
   function completedOf(c) { return c.wins + c.losses + c.draws; }
 
+  var TOP = 10;
+
+  function matchupText(m, total) {
+    var text = fmt(m.fights) + ' · ' + percent(ratio(m.fights, total));
+    var done = m.a_wins + m.b_wins + m.draws;
+    if (m.a === m.b || !done) return text;
+    var parts = [m.a_name + ' ' + percent(ratio(m.a_wins, done)), m.b_name + ' ' + percent(ratio(m.b_wins, done))];
+    if (m.draws) parts.push('Draw ' + percent(ratio(m.draws, done)));
+    return text + ' · ' + parts.join(' / ');
+  }
+
+  function matchupPanel(matchups) {
+    var total = matchups.reduce(function (a, m) { return a + m.fights; }, 0);
+    barList($('d-matchups'), matchups.slice(0, TOP).map(function (m) {
+      return { label: m.a_name + ' vs ' + m.b_name, value: m.fights, text: matchupText(m, total) };
+    }), 'No matchups recorded in this range.');
+  }
+
   function characterPanels(characters) {
     var picks = characters.reduce(function (a, c) { return a + c.picks; }, 0);
     barList($('d-played'), characters.filter(function (c) { return c.picks > 0; }).map(function (c) {
       return { label: c.name, value: c.picks, text: fmt(c.picks) + ' · ' + percent(ratio(c.picks, picks)) };
-    }), 'No fights reported in this range.');
+    }).slice(0, TOP), 'No fights reported in this range.');
     var wins = characters.filter(function (c) { return c.wins > 0; }).sort(function (a, b) { return b.wins - a.wins || a.id - b.id; });
     barList($('d-wins'), wins.map(function (c) {
       return { label: c.name, value: c.wins, text: plural(c.wins, 'win', 'wins') + ' · ' + percent(ratio(c.wins, completedOf(c))) };
-    }), 'No completed fights in this range.');
+    }).slice(0, TOP), 'No completed fights in this range.');
     var losses = characters.filter(function (c) { return c.losses > 0; }).sort(function (a, b) { return b.losses - a.losses || a.id - b.id; });
     barList($('d-losses'), losses.map(function (c) {
       return { label: c.name, value: c.losses, text: plural(c.losses, 'loss', 'losses') + ' · ' + percent(ratio(c.losses, completedOf(c))) };
-    }), 'No completed fights in this range.');
+    }).slice(0, TOP), 'No completed fights in this range.');
   }
 
   function characterTable(characters) {
@@ -710,7 +730,7 @@ export const ADMIN_JS = String.raw`(function () {
       tr.appendChild(el('td', '', m.fights_started === null ? '–' : plural(m.fights_started, 'fight', 'fights')));
       tr.appendChild(el('td', '', m.fights_completed === null ? '–' : fmt(m.fights_completed) + ' completed'));
       tr.appendChild(el('td', '', TRANSPORTS[m.transport] || 'Unknown'));
-      tr.appendChild(el('td', '', BUILDS[m.guest] || m.guest));
+      tr.appendChild(el('td', '', buildText(m.guest)));
       tr.appendChild(el('td', '', m.platforms));
       tr.appendChild(el('td', 'state-' + m.state, m.state));
       body.appendChild(tr);
@@ -792,7 +812,7 @@ export const ADMIN_JS = String.raw`(function () {
     var list = live.list || [];
     $('matches-empty').textContent = list.length ? '' : 'No matches running.';
     if (!list.length) return;
-    var cols = ['Match', 'State', 'Transport', 'Relay', 'Endpoints', 'Seats', 'Age'];
+    var cols = ['Match', 'State', 'Game build', 'Transport', 'Relay', 'Endpoints', 'Seats', 'Age'];
     var head = el('tr');
     cols.forEach(function (c) { head.appendChild(el('th', '', c)); });
     var thead = el('thead');
@@ -803,6 +823,7 @@ export const ADMIN_JS = String.raw`(function () {
       var tr = el('tr');
       tr.appendChild(el('td', '', m.id));
       tr.appendChild(el('td', '', STATES[m.state] || m.state));
+      tr.appendChild(el('td', '', buildText(m.guest)));
       var cell = el('td');
       cell.appendChild(el('span', 'pill ' + m.transport, TRANSPORTS[m.transport] || m.transport));
       tr.appendChild(cell);
@@ -907,9 +928,10 @@ export const ADMIN_JS = String.raw`(function () {
       rows(node, 'Fights · last ' + history.days + ' days', items, name);
     };
     fightRows('d-fplatform', history.dimensions.fight_platform);
-    fightRows('d-fbuild', history.dimensions.fight_guest, function (v) { return BUILDS[v] || v; });
+    fightRows('d-fbuild', history.dimensions.fight_guest, buildText);
     fightRows('d-ftransport', history.dimensions.fight_transport, function (v) { return TRANSPORTS[v] || v; });
     characterPanels(history.characters);
+    matchupPanel(history.matchups);
     characterTable(history.characters);
     dailyTable(history.daily);
     rejects(history);

@@ -36,24 +36,33 @@ void FightReporter::Emit(const FightReport& report) {
   if (!sink_ || !sink_(report)) ++dropped_;
 }
 
-void FightReporter::Begin(uint32_t generation, uint32_t fight, const FightSnapshot& snapshot) {
+void FightReporter::Begin(uint32_t generation, uint32_t fight) {
   if (has_last_ && generation == last_generation_ && fight == last_fight_) return;
-  if (active_) End();
-  if (!snapshot.valid || !IsCharacterId(snapshot.character[0]) || !IsCharacterId(snapshot.character[1])) {
-    ++skipped_;
-    return;
-  }
+  if (active_) End(FightSnapshot{}, false);
   has_last_ = true;
   last_generation_ = generation;
   last_fight_ = fight;
   active_ = true;
+  started_ = false;
+  confirmed_result_ = false;
+  result_ = FightResult::kNone;
   generation_ = generation;
   fight_ = fight;
+  character_[0] = character_[1] = -1;
+  candidate_ = FightResult::kNone;
+  candidate_frame_ = 0;
+  final_ = FightResult::kNone;
+}
+
+bool FightReporter::TryStart(const FightSnapshot& snapshot, bool identity_ready) {
+  if (started_) return true;
+  if (!identity_ready || !snapshot.valid || !IsCharacterId(snapshot.character[0]) ||
+      !IsCharacterId(snapshot.character[1])) {
+    return false;
+  }
+  started_ = true;
   character_[0] = snapshot.character[0];
   character_[1] = snapshot.character[1];
-  candidate_ = FightResult::kNone;
-  stable_ = 0;
-  final_ = FightResult::kNone;
   ++starts_;
   FightReport report;
   report.kind = FightEventKind::kStart;
@@ -62,25 +71,33 @@ void FightReporter::Begin(uint32_t generation, uint32_t fight, const FightSnapsh
   report.p1 = character_[0];
   report.p2 = character_[1];
   Emit(report);
+  return true;
 }
 
-void FightReporter::Observe(const FightSnapshot& snapshot) {
-  if (!active_ || final_ != FightResult::kNone) return;
-  const bool same = snapshot.valid && snapshot.character[0] == character_[0] && snapshot.character[1] == character_[1];
-  const FightResult result = same ? ResultOf(snapshot) : FightResult::kNone;
-  if (result == FightResult::kNone || result != candidate_) {
+void FightReporter::Observe(const FightSnapshot& snapshot, bool identity_ready, uint32_t frame, uint32_t confirmed) {
+  if (!active_ || !TryStart(snapshot, identity_ready) || final_ != FightResult::kNone) return;
+  const FightResult result = ResultOf(snapshot);
+  if (result != candidate_) {
     candidate_ = result;
-    stable_ = result == FightResult::kNone ? 0 : 1;
-  } else {
-    ++stable_;
+    candidate_frame_ = frame;
+    final_ = FightResult::kNone;
   }
-  if (candidate_ != FightResult::kNone && stable_ >= kStableObservations) final_ = candidate_;
+  if (candidate_ != FightResult::kNone && confirmed >= candidate_frame_) {
+    final_ = candidate_;
+    confirmed_result_ = true;
+  }
 }
 
-void FightReporter::End() {
+void FightReporter::End(const FightSnapshot& last, bool identity_ready) {
   if (!active_) return;
   active_ = false;
-  if (final_ == FightResult::kNone) return;
+  if (!TryStart(last, identity_ready)) {
+    ++skipped_;
+    return;
+  }
+  const FightResult result = final_ != FightResult::kNone ? final_ : candidate_;
+  if (result == FightResult::kNone) return;
+  result_ = result;
   ++completions_;
   FightReport report;
   report.kind = FightEventKind::kComplete;
@@ -88,7 +105,7 @@ void FightReporter::End() {
   report.fight = fight_;
   report.p1 = character_[0];
   report.p2 = character_[1];
-  report.result = final_;
+  report.result = result;
   Emit(report);
 }
 

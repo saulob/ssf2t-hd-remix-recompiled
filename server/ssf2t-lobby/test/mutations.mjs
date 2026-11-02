@@ -15,7 +15,8 @@ const repo = join(lobby, '..', '..');
 const file = (path) => join(repo, path);
 const sha = (text) => createHash('sha256').update(text).digest('hex');
 
-const WORKER_TESTS = ['test/fights.test.js', 'test/recent.test.js', 'test/dashboard.test.js', 'test/admin.test.js', 'test/wire.test.js'];
+const WORKER_TESTS = ['test/fights.test.js', 'test/recent.test.js', 'test/dashboard.test.js', 'test/admin.test.js', 'test/wire.test.js',
+  'test/analytics.test.js'];
 
 const NODE_MUTATIONS = [
   { id: 'remove Base013 telemetry', file: 'server/ssf2t-lobby/src/protocol.js',
@@ -31,8 +32,8 @@ const NODE_MUTATIONS = [
     find: "if (fight.completed) return { counted: false, reason: 'duplicate' };",
     replace: "if (fight.completed) { this.track(() => this.metrics.count('fights_completed')); return { counted: true }; }" },
   { id: 'invert winner/loser', file: 'server/ssf2t-lobby/src/metrics.js',
-    find: "this.character(day, result === 'p1' ? p1 : p2, 'wins');\n    this.character(day, result === 'p1' ? p2 : p1, 'losses');",
-    replace: "this.character(day, result === 'p1' ? p2 : p1, 'wins');\n    this.character(day, result === 'p1' ? p1 : p2, 'losses');" },
+    find: "const winner = result === 'p1' ? p1 : p2;",
+    replace: "const winner = result === 'p1' ? p2 : p1;" },
   { id: 'remove character mapping', file: 'server/ssf2t-lobby/src/characters.js',
     find: 'export const characterName = (id) => CHARACTERS[id] ??', replace: 'export const characterName = (id) => undefined ??' },
   { id: 'accept unknown match', file: 'server/ssf2t-lobby/src/hub.js',
@@ -53,6 +54,25 @@ const NODE_MUTATIONS = [
   { id: 'remove recent-history retention limit', file: 'server/ssf2t-lobby/src/metrics.js',
     find: "    this.sql.run(`DELETE FROM recent_matches WHERE seq NOT IN\n      (SELECT seq FROM recent_matches ORDER BY seq DESC LIMIT ?)`, RECENT_MATCHES_MAX);\n",
     replace: '' },
+  { id: 'leaving with no fight is Abandoned', file: 'server/ssf2t-lobby/src/hub.js',
+    find: "else if (!reported || !tele.fights_started) state = 'Ended';", replace: "else if (!reported) state = 'Ended';" },
+  { id: 'matchup pair is not canonical', file: 'server/ssf2t-lobby/src/metrics.js',
+    find: 'day, Math.min(p1, p2), Math.max(p1, p2));', replace: 'day, p1, p2);' },
+  { id: 'duplicate start increments matchup', file: 'server/ssf2t-lobby/src/hub.js',
+    find: "if (fight) return { counted: false, reason: 'duplicate' };\n      if (tele.fights_started",
+    replace: "if (fight) { this.track(() => this.metrics.fightStarted({ p1: event.p1, p2: event.p2, transport: 'direct', guest: row.guest, platforms: [] })); return { counted: false, reason: 'duplicate' }; }\n      if (tele.fights_started" },
+  { id: 'duplicate completion increments matchup winner', file: 'server/ssf2t-lobby/src/hub.js',
+    find: "if (fight.completed) return { counted: false, reason: 'duplicate' };",
+    replace: "if (fight.completed) { this.track(() => this.metrics.fightCompleted({ p1: event.p1, p2: event.p2, result: event.result })); return { counted: false, reason: 'duplicate' }; }" },
+  { id: 'most played shows 9 instead of 10', file: 'server/ssf2t-lobby/src/admin_page.js',
+    find: 'var TOP = 10;', replace: 'var TOP = 9;' },
+  { id: 'matchup sort reversed', file: 'server/ssf2t-lobby/src/metrics.js',
+    find: 'ORDER BY fights DESC, a, b`', replace: 'ORDER BY fights ASC, a, b`' },
+  { id: 'matchup win mapping inverted', file: 'server/ssf2t-lobby/src/metrics.js',
+    find: "winner === Math.min(p1, p2) ? 'a_wins' : 'b_wins'", replace: "winner === Math.min(p1, p2) ? 'b_wins' : 'a_wins'" },
+  { id: 'matchup selected range ignored', file: 'server/ssf2t-lobby/src/metrics.js',
+    find: 'FROM metrics_daily_matchups WHERE day >= ? AND day <= ? GROUP BY a, b',
+    replace: 'FROM metrics_daily_matchups WHERE day >= ? AND day <= ? OR 1 GROUP BY a, b' },
   { id: 'expose forbidden player-identifying field in recent matches', file: 'server/ssf2t-lobby/src/hub.js',
     find: 'platforms: `${tele.host_platform} x ${tele.join_platform}`,',
     replace: 'platforms: `${tele.host_platform} x ${tele.join_platform} ${row.id}`,' },
@@ -74,7 +94,14 @@ const CPP_MUTATIONS = [
   { id: 'report offline fights (client)', file: 'src/online/fight_telemetry.h',
     find: 'return online_driven && game_mode == online_mode;', replace: 'return true;' },
   { id: 'report an unfinished fight as complete (client)', file: 'src/online/fight_telemetry.cpp',
-    find: '  if (final_ == FightResult::kNone) return;\n  ++completions_;', replace: '  ++completions_;' },
+    find: '  if (result == FightResult::kNone) return;\n  result_ = result;', replace: '  result_ = result;' },
+  { id: 'require the end characters to equal the start (client)', file: 'src/online/fight_telemetry.cpp',
+    find: 'const FightResult result = ResultOf(snapshot);',
+    replace: 'const FightResult result = snapshot.character[0] == character_[0] && snapshot.character[1] == character_[1] ? ResultOf(snapshot) : FightResult::kNone;' },
+  { id: 'report characters before the presentation (client)', file: 'src/online/fight_telemetry.cpp',
+    find: 'if (!identity_ready || !snapshot.valid ||', replace: 'if (!snapshot.valid ||' },
+  { id: 'accept an unconfirmed result as final (client)', file: 'src/online/fight_telemetry.cpp',
+    find: 'candidate_ != FightResult::kNone && confirmed >= candidate_frame_', replace: 'candidate_ != FightResult::kNone' },
 ];
 
 function snapshot(mutations) {

@@ -49,7 +49,7 @@ $Areas = @(
     'Launcher controls', 'Local multiplayer', 'Overlays / hotkeys', 'Settings', 'Display / Graphics', 'Achievements',
     'Saves / user data', 'Updates', 'Packaging structure', 'Core runtime', 'Global feature parity',
     'Windows/Base013 feature set', 'Windows/TU023 feature set', 'Localization pt-BR', 'Online parity', 'Fight telemetry', 'Worker',
-    'Dashboard', 'Recent matches'
+    'Dashboard', 'Recent matches', 'Abuse protection', 'Character analytics', 'Matchup analytics'
 )
 $AreaLabels = @{
     'Base013' = 'Windows Base013 structural parity'
@@ -147,6 +147,14 @@ if ($node) {
         Push-Location (Join-Path $Root 'server\ssf2t-lobby')
         try { & $node.Source --test test/recent.test.js } finally { Pop-Location }
     }
+    Invoke-Check 'abuse protection (Worker, Node)' @('Abuse protection', 'Worker') {
+        Push-Location (Join-Path $Root 'server\ssf2t-lobby')
+        try { & $node.Source --test test/abuse.test.js } finally { Pop-Location }
+    }
+    Invoke-Check 'character and matchup analytics (Worker, Node)' @('Character analytics', 'Matchup analytics', 'Worker') {
+        Push-Location (Join-Path $Root 'server\ssf2t-lobby')
+        try { & $node.Source --test test/analytics.test.js } finally { Pop-Location }
+    }
     Invoke-Check 'dashboard (page and admin API, Node)' @('Dashboard', 'Worker') {
         Push-Location (Join-Path $Root 'server\ssf2t-lobby')
         try { & $node.Source --test test/dashboard.test.js test/admin.test.js } finally { Pop-Location }
@@ -162,6 +170,7 @@ if ($node) {
 } else {
     Skip-Check 'online service (Worker, Node)' @('Online protocol', 'Direct / Relay') 'node not found'
     foreach ($what in 'fight telemetry (Worker, Node)', 'recent matches (Worker, Node)', 'dashboard (page and admin API, Node)',
+        'abuse protection (Worker, Node)', 'character and matchup analytics (Worker, Node)',
         'fight telemetry mutations (Worker and dashboard)', 'fight telemetry mutations (client, C++ compiler)') {
         Skip-Check $what @('Fight telemetry', 'Worker') 'node not found'
     }
@@ -524,7 +533,8 @@ if ($SkipLinux) {
 $RequiredWindows = @(
     'codegen scanner self-test', 'codegen scanner verify (TU023 image)', 'guest symbol prefix (base013_/tu023_)',
     'release folder check cases', 'online instance script', 'online service (Worker, Node)', 'fight telemetry (Worker, Node)',
-    'recent matches (Worker, Node)', 'dashboard (page and admin API, Node)', 'fight telemetry mutations (Worker and dashboard)',
+    'recent matches (Worker, Node)', 'dashboard (page and admin API, Node)', 'abuse protection (Worker, Node)',
+    'character and matchup analytics (Worker, Node)', 'fight telemetry mutations (Worker and dashboard)',
     'fight telemetry mutations (client, C++ compiler)'
 ) + @($Suites | ForEach-Object { $_[0] }) + @(
     $Suites | Where-Object { $_[1] -like 'global_feature_parity *' } | ForEach-Object { $name = $_[0]; $TargetAreas.Values | ForEach-Object { "$name ($_)" } }

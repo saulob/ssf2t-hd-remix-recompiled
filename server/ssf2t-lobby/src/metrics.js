@@ -41,6 +41,9 @@ export const METRICS_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS metrics_daily_characters (day TEXT NOT NULL, character INTEGER NOT NULL,
      picks INTEGER NOT NULL DEFAULT 0, wins INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0,
      draws INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, character))`,
+  `CREATE TABLE IF NOT EXISTS metrics_daily_matchups (day TEXT NOT NULL, a INTEGER NOT NULL, b INTEGER NOT NULL,
+     fights INTEGER NOT NULL DEFAULT 0, a_wins INTEGER NOT NULL DEFAULT 0, b_wins INTEGER NOT NULL DEFAULT 0,
+     draws INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, a, b))`,
   `CREATE TABLE IF NOT EXISTS recent_matches (seq INTEGER PRIMARY KEY AUTOINCREMENT, ended INTEGER NOT NULL,
      duration_ms INTEGER NOT NULL, fights_started INTEGER, fights_completed INTEGER, transport TEXT NOT NULL,
      guest TEXT NOT NULL, platforms TEXT NOT NULL, state TEXT NOT NULL)`,
@@ -147,6 +150,7 @@ export class Metrics {
     this.addDimension(day, 'fight_guest', guest);
     for (const platform of platforms) this.addDimension(day, 'fight_platform', platformCategory(platform));
     for (const character of [p1, p2]) this.character(day, character, 'picks');
+    this.matchup(day, p1, p2, 'fights');
   }
 
   // `result`: p1, p2 or draw.
@@ -155,11 +159,19 @@ export class Metrics {
     this.count('fights_completed', day);
     if (result === 'draw') {
       this.count('fight_draws', day);
+      this.matchup(day, p1, p2, 'draws');
       for (const character of [p1, p2]) this.character(day, character, 'draws');
       return;
     }
-    this.character(day, result === 'p1' ? p1 : p2, 'wins');
+    const winner = result === 'p1' ? p1 : p2;
+    this.matchup(day, p1, p2, winner === Math.min(p1, p2) ? 'a_wins' : 'b_wins');
+    this.character(day, winner, 'wins');
     this.character(day, result === 'p1' ? p2 : p1, 'losses');
+  }
+
+  matchup(day, p1, p2, column) {
+    this.sql.run(`INSERT INTO metrics_daily_matchups (day, a, b, ${column}) VALUES (?, ?, ?, 1)
+      ON CONFLICT(day, a, b) DO UPDATE SET ${column} = ${column} + 1`, day, Math.min(p1, p2), Math.max(p1, p2));
   }
 
   character(day, id, column) {
@@ -290,11 +302,14 @@ export class Metrics {
     const characters = this.sql.all(`SELECT character AS id, SUM(picks) AS picks, SUM(wins) AS wins, SUM(losses) AS losses,
       SUM(draws) AS draws FROM metrics_daily_characters WHERE day >= ? AND day <= ? GROUP BY character
       ORDER BY picks DESC, id`, first, last).map((r) => ({ ...r, name: characterName(r.id) }));
+    const matchups = this.sql.all(`SELECT a, b, SUM(fights) AS fights, SUM(a_wins) AS a_wins, SUM(b_wins) AS b_wins,
+      SUM(draws) AS draws FROM metrics_daily_matchups WHERE day >= ? AND day <= ? GROUP BY a, b
+      ORDER BY fights DESC, a, b`, first, last).map((r) => ({ ...r, a_name: characterName(r.a), b_name: characterName(r.b) }));
     const since = Math.max(now - days * DAY_MS, now - SAMPLE_DAYS * DAY_MS);
     const samples = this.sql.all('SELECT bucket, online, in_matches, advertised FROM metrics_samples WHERE bucket >= ? ORDER BY bucket',
       sampleBucket(since));
     return { generated: now, time_zone: METRICS_TIME_ZONE, days, first, last, sample_ms: SAMPLE_MS, daily, dimensions,
-      samples, totals: totalsOf(daily, characters), characters, recent: this.recent(first, recentLimit) };
+      samples, totals: totalsOf(daily, characters), characters, matchups, recent: this.recent(first, recentLimit) };
   }
 }
 

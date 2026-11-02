@@ -71,12 +71,17 @@ struct Collected {
   }
 };
 
-// Plays one fight through the reporter the way the fight runtime does: begin, a stretch of frames, the end.
+// Plays one fight through the reporter the way the fight runtime does: armed at the logical start, the fighters still
+// at their default values through the setup, then the real characters from the presentation on, then the end.
 void PlayFight(FightReporter& reporter, uint32_t generation, uint32_t fight, int p1, int p2, int wins1, int wins2,
                int frames = 60) {
-  reporter.Begin(generation, fight, Fight(p1, p2));
-  for (int i = 0; i < frames; ++i) reporter.Observe(Fight(p1, p2, wins1, wins2));
-  reporter.End();
+  reporter.Begin(generation, fight);
+  for (uint32_t i = 0; i < 10; ++i) reporter.Observe(Fight(0, 0), false, i, 0);
+  for (int i = 0; i < frames; ++i) {
+    const uint32_t frame = 10 + uint32_t(i);
+    reporter.Observe(Fight(p1, p2, wins1, wins2), true, frame, frame);
+  }
+  reporter.End(Fight(p1, p2, wins1, wins2), true);
 }
 
 // ---- the result -------------------------------------------------------------------------------------------------
@@ -110,9 +115,66 @@ void TestAnOnlineFightStartsAndCompletesOnce() {
   CHECK(out.reports[0].generation == 3 && out.reports[0].fight == 0);
   CHECK(out.reports[1].kind == FightEventKind::kComplete && out.reports[1].result == FightResult::kPlayer1);
   CHECK(out.reports[1].generation == 3 && out.reports[1].fight == 0 && out.reports[1].p1 == 0 && out.reports[1].p2 == 4);
-  reporter.End();
-  reporter.End();
+  reporter.End(Fight(0, 4, 2, 1), true);
+  reporter.End(Fight(0, 4, 2, 1), true);
   CHECK(out.reports.size() == 2);  // ending again reports nothing
+}
+
+void TestCharactersAreTheOnesHeldWhenTheyBecomeAuthoritative() {
+  Collected out;
+  FightReporter reporter(out.Sink());
+  reporter.Begin(1, 0);
+  for (uint32_t i = 0; i < 50; ++i) reporter.Observe(Fight(0, 0), false, i, i);  // default values during the setup
+  CHECK(out.reports.empty() && reporter.active() && !reporter.started());
+  reporter.Observe(Fight(15, 6), true, 50, 50);
+  CHECK(out.Count(FightEventKind::kStart) == 1 && out.reports[0].p1 == 15 && out.reports[0].p2 == 6);
+  for (uint32_t i = 51; i < 120; ++i) reporter.Observe(Fight(15, 6), true, i, i);
+  CHECK(out.Count(FightEventKind::kStart) == 1);  // sent once
+}
+
+void TestRyuIsAValidCharacterAndNotAMissingOne() {
+  Collected out;
+  FightReporter reporter(out.Sink());
+  PlayFight(reporter, 1, 0, 0, 4, 2, 0);  // Ryu vs Ken
+  PlayFight(reporter, 1, 1, 4, 0, 0, 2);  // Ken vs Ryu
+  PlayFight(reporter, 1, 2, 0, 0, 2, 0);  // a real mirror
+  CHECK(out.reports[0].p1 == 0 && out.reports[0].p2 == 4);
+  CHECK(out.reports[2].p1 == 4 && out.reports[2].p2 == 0);
+  CHECK(out.reports[4].p1 == 0 && out.reports[4].p2 == 0);
+  CHECK(out.Count(FightEventKind::kStart) == 3);
+}
+
+void TestDefaultZerosBeforeThePresentationAreNeverReported() {
+  Collected out;
+  FightReporter reporter(out.Sink());
+  reporter.Begin(1, 0);
+  for (uint32_t i = 0; i < 300; ++i) reporter.Observe(Fight(0, 0, 0, 0), false, i, i);
+  CHECK(out.reports.empty());
+  reporter.Observe(Fight(0, 4), true, 300, 300);  // Ryu vs Ken, not Ryu vs Ryu
+  CHECK(out.reports.size() == 1 && out.reports[0].p1 == 0 && out.reports[0].p2 == 4);
+}
+
+void TestAFightEndedBeforeTheCharactersWereReadyReportsNothing() {
+  Collected out;
+  FightReporter reporter(out.Sink());
+  reporter.Begin(1, 0);
+  for (uint32_t i = 0; i < 20; ++i) reporter.Observe(Fight(0, 0), false, i, i);
+  reporter.End(Fight(0, 0), false);
+  CHECK(out.reports.empty() && reporter.skipped() == 1 && !reporter.active());
+}
+
+void TestTheEndGivesAWaitingStartOneLastAttemptWithoutDuplicating() {
+  Collected out;
+  FightReporter reporter(out.Sink());
+  reporter.Begin(1, 0);
+  reporter.Observe(Fight(0, 0), false, 1, 1);
+  reporter.End(Fight(11, 2, 0, 0), true);
+  CHECK(out.Count(FightEventKind::kStart) == 1 && out.reports[0].p1 == 11 && out.reports[0].p2 == 2);
+  CHECK(out.Count(FightEventKind::kComplete) == 0);
+  Collected again;
+  FightReporter normal(again.Sink());
+  PlayFight(normal, 1, 0, 11, 2, 0, 0);
+  CHECK(again.Count(FightEventKind::kStart) == 1);
 }
 
 void TestWinnerAndLoserAreTheSidesTheyAre() {
@@ -125,6 +187,17 @@ void TestWinnerAndLoserAreTheSidesTheyAre() {
   CHECK(out.reports[3].result == FightResult::kPlayer2 && out.reports[3].p1 == 12 && out.reports[3].p2 == 9);
 }
 
+void TestEveryFinishedScoreIsACompletedFight() {
+  Collected out;
+  FightReporter reporter(out.Sink());
+  PlayFight(reporter, 1, 0, 15, 0, 2, 0);  // observed in the real test: 2:0 with 1 to beat
+  PlayFight(reporter, 1, 1, 1, 0, 2, 1);   // observed in the real test: 2:1 with 1 to beat
+  PlayFight(reporter, 1, 2, 1, 0, 1, 2);
+  CHECK(out.Count(FightEventKind::kComplete) == 3);
+  CHECK(out.reports[1].result == FightResult::kPlayer1 && out.reports[3].result == FightResult::kPlayer1);
+  CHECK(out.reports[5].result == FightResult::kPlayer2);
+}
+
 void TestADrawIsReportedAsADraw() {
   Collected out;
   FightReporter reporter(out.Sink());
@@ -132,44 +205,85 @@ void TestADrawIsReportedAsADraw() {
   CHECK(out.reports.size() == 2 && out.reports[1].result == FightResult::kDraw);
 }
 
-void TestFramesBeforeAFinalResultReportNoCompletion() {
+void TestAnAbandonedFightIsStartedButNotCompleted() {
   Collected out;
   FightReporter reporter(out.Sink());
-  PlayFight(reporter, 1, 0, 0, 4, 2, 0, FightReporter::kStableObservations - 1);
-  CHECK(out.Count(FightEventKind::kStart) == 1 && out.Count(FightEventKind::kComplete) == 0);
-  Collected exact;
-  FightReporter again(exact.Sink());
-  PlayFight(again, 1, 0, 0, 4, 2, 0, FightReporter::kStableObservations);
-  CHECK(exact.Count(FightEventKind::kComplete) == 1);
+  PlayFight(reporter, 1, 0, 6, 10, 0, 0);  // observed in the real test: left at 0:0
+  PlayFight(reporter, 1, 1, 6, 10, 1, 0);
+  CHECK(out.Count(FightEventKind::kStart) == 2 && out.Count(FightEventKind::kComplete) == 0);
+  CHECK(!reporter.active());
+}
+
+void TestAResultIsConfirmedOnlyOnceBothPeersAgreeOnItsFrame() {
+  Collected out;
+  FightReporter reporter(out.Sink());
+  reporter.Begin(1, 0);
+  reporter.Observe(Fight(0, 4), true, 100, 100);
+  reporter.Observe(Fight(0, 4, 2, 0), true, 200, 190);
+  CHECK(!reporter.confirmed_result());
+  reporter.Observe(Fight(0, 4, 2, 0), true, 210, 199);
+  CHECK(!reporter.confirmed_result());
+  reporter.Observe(Fight(0, 4, 2, 0), true, 215, 200);
+  CHECK(reporter.confirmed_result());
+  reporter.End(Fight(0, 4, 2, 0), true);
+  CHECK(out.Count(FightEventKind::kComplete) == 1);
 }
 
 void TestARollbackThatRewritesTheResultDoesNotDuplicateOrMisreport() {
   Collected out;
   FightReporter reporter(out.Sink());
-  reporter.Begin(1, 0, Fight(0, 4));
+  reporter.Begin(1, 0);
+  reporter.Observe(Fight(0, 4), true, 100, 100);
+  uint32_t frame = 200;
   for (int round = 0; round < 6; ++round) {  // a speculative win that rollbacks keep taking back
-    for (int i = 0; i < 5; ++i) reporter.Observe(Fight(0, 4, 2, 0));
-    for (int i = 0; i < 3; ++i) reporter.Observe(Fight(0, 4, 1, 0));
+    reporter.Observe(Fight(0, 4, 2, 0), true, frame, frame - 20);
+    reporter.Observe(Fight(0, 4, 1, 0), true, frame + 1, frame - 15);
+    frame += 5;
   }
-  for (int i = 0; i < 4; ++i) reporter.Observe(Fight(0, 4, 0, 2));  // corrected to the other side
-  for (int i = 0; i < 40; ++i) reporter.Observe(Fight(0, 4, 0, 2));
-  reporter.End();
+  CHECK(!reporter.confirmed_result());
+  reporter.Observe(Fight(0, 4, 0, 2), true, frame, frame - 10);  // corrected to the other side
+  reporter.Observe(Fight(0, 4, 0, 2), true, frame + 12, frame + 2);
+  reporter.End(Fight(0, 4, 0, 2), true);
   CHECK(out.reports.size() == 2);
   CHECK(out.reports[1].result == FightResult::kPlayer2);
+}
+
+void TestATransientResultTakenBackBeforeTheEndIsNotCounted() {
+  Collected out;
+  FightReporter reporter(out.Sink());
+  reporter.Begin(1, 0);
+  reporter.Observe(Fight(0, 4), true, 100, 100);
+  reporter.Observe(Fight(0, 4, 2, 0), true, 200, 150);
+  reporter.Observe(Fight(0, 4, 1, 0), true, 201, 150);
+  reporter.End(Fight(0, 4, 1, 0), true);
+  CHECK(out.Count(FightEventKind::kStart) == 1 && out.Count(FightEventKind::kComplete) == 0);
+}
+
+void TestAFightThatLeavesRightAfterItsResultStillCounts() {
+  Collected out;
+  FightReporter reporter(out.Sink());
+  reporter.Begin(1, 0);
+  reporter.Observe(Fight(1, 0), true, 100, 100);
+  reporter.Observe(Fight(1, 0, 2, 1), true, 400, 380);
+  reporter.End(Fight(1, 0, 2, 1), true);
+  CHECK(out.Count(FightEventKind::kComplete) == 1 && out.reports[1].result == FightResult::kPlayer1);
+  CHECK(!reporter.confirmed_result());
 }
 
 void TestARollbackThatReentersTheStartDoesNotDuplicateIt() {
   Collected out;
   FightReporter reporter(out.Sink());
-  reporter.Begin(1, 0, Fight(0, 4));
-  reporter.Begin(1, 0, Fight(0, 4));
-  reporter.Begin(1, 0, Fight(0, 4));
+  reporter.Begin(1, 0);
+  reporter.Begin(1, 0);
+  reporter.Observe(Fight(0, 4), true, 100, 100);
+  reporter.Begin(1, 0);
+  reporter.Observe(Fight(0, 4), true, 101, 101);
   CHECK(out.Count(FightEventKind::kStart) == 1);
-  for (int i = 0; i < 40; ++i) reporter.Observe(Fight(0, 4, 2, 0));
-  reporter.Begin(1, 0, Fight(0, 4));  // a Frame Zero retry after the fight is running
-  reporter.End();
-  reporter.Begin(1, 0, Fight(0, 4));  // and after it ended
-  reporter.End();
+  for (uint32_t i = 0; i < 40; ++i) reporter.Observe(Fight(0, 4, 2, 0), true, 200 + i, 200 + i);
+  reporter.Begin(1, 0);  // a Frame Zero retry after the fight is running
+  reporter.End(Fight(0, 4, 2, 0), true);
+  reporter.Begin(1, 0);  // and after it ended
+  reporter.End(Fight(0, 4, 2, 0), true);
   CHECK(out.Count(FightEventKind::kStart) == 1 && out.Count(FightEventKind::kComplete) == 1);
 }
 
@@ -202,47 +316,78 @@ void TestAnotherMatchStartsFightZeroAgain() {
   CHECK(out.Count(FightEventKind::kStart) == 2 && out.reports[2].generation == 2);
 }
 
-void TestADisconnectBeforeCompletionKeepsTheStartOnly() {
-  Collected out;
-  FightReporter reporter(out.Sink());
-  reporter.Begin(1, 0, Fight(0, 4));
-  for (int i = 0; i < 100; ++i) reporter.Observe(Fight(0, 4, 1, 0));
-  reporter.End();
-  CHECK(out.Count(FightEventKind::kStart) == 1 && out.Count(FightEventKind::kComplete) == 0);
-  CHECK(!reporter.active());
-}
-
 void TestABeginWhileAnotherFightRunsEndsThatFightFirst() {
   Collected out;
   FightReporter reporter(out.Sink());
-  reporter.Begin(1, 0, Fight(0, 4));
-  for (int i = 0; i < 30; ++i) reporter.Observe(Fight(0, 4, 2, 0));
-  reporter.Begin(1, 1, Fight(1, 2));
-  CHECK(out.Count(FightEventKind::kStart) == 2 && out.Count(FightEventKind::kComplete) == 1);
+  reporter.Begin(1, 0);
+  reporter.Observe(Fight(0, 4), true, 100, 100);
+  for (uint32_t i = 0; i < 30; ++i) reporter.Observe(Fight(0, 4, 2, 0), true, 200 + i, 200 + i);
+  reporter.Begin(1, 1);
+  CHECK(out.Count(FightEventKind::kStart) == 1 && out.Count(FightEventKind::kComplete) == 1);
   CHECK(out.reports[1].kind == FightEventKind::kComplete && out.reports[1].fight == 0);
 }
 
-void TestAnInvalidCharacterReportsNothing() {
+void TestAnInvalidCharacterPairCreatesNoStart() {
   Collected out;
   FightReporter reporter(out.Sink());
+  uint32_t fight = 0;
   for (const int bad : {-1, 17, 255, 1000}) {
-    reporter.Begin(1, 0, Fight(bad, 4));
-    reporter.Begin(1, 1, Fight(0, bad));
+    reporter.Begin(1, fight++);
+    reporter.Observe(Fight(bad, 4), true, 10, 10);
+    reporter.End(Fight(bad, 4), true);
+    reporter.Begin(1, fight++);
+    reporter.Observe(Fight(0, bad), true, 10, 10);
+    reporter.End(Fight(0, bad), true);
   }
   FightSnapshot unread;
-  reporter.Begin(1, 2, unread);
+  reporter.Begin(1, fight);
+  reporter.Observe(unread, true, 10, 10);
+  reporter.End(unread, true);
   CHECK(out.reports.empty() && !reporter.active() && reporter.skipped() == 9);
-  reporter.Begin(1, 0, Fight(0, 4));  // the same fight is still reportable once its characters are real
-  CHECK(out.Count(FightEventKind::kStart) == 1);
 }
 
-void TestFightersThatChangeAfterTheStartAreNotAResult() {
+void TestTheStartCharactersStayAuthoritativeWhenTheFightersAreReset() {
   Collected out;
   FightReporter reporter(out.Sink());
-  reporter.Begin(1, 0, Fight(0, 4));
-  for (int i = 0; i < 60; ++i) reporter.Observe(Fight(7, 8, 2, 0));
-  reporter.End();
-  CHECK(out.Count(FightEventKind::kComplete) == 0);
+  reporter.Begin(1, 0);
+  reporter.Observe(Fight(0, 1), true, 100, 100);
+  for (uint32_t i = 0; i < 30; ++i) reporter.Observe(Fight(0, 1, 2, 1), true, 200 + i, 200 + i);
+  reporter.Observe(Fight(0, 0, 2, 1), true, 240, 240);  // the transition back to the menus has reset the fighters
+  reporter.End(Fight(0, 0, 2, 1), true);
+  CHECK(out.Count(FightEventKind::kStart) == 1 && out.Count(FightEventKind::kComplete) == 1);
+  CHECK(out.reports[1].result == FightResult::kPlayer1 && out.reports[1].p1 == 0 && out.reports[1].p2 == 1);
+  CHECK(reporter.character(0) == 0 && reporter.character(1) == 1 && reporter.result() == FightResult::kPlayer1);
+}
+
+void TestAFightLeavingWithResetFightersAndNoCleanObservationStillCounts() {
+  Collected out;
+  FightReporter reporter(out.Sink());
+  reporter.Begin(1, 0);
+  reporter.Observe(Fight(13, 0), true, 100, 100);
+  reporter.Observe(Fight(0, 0, 2, 0), true, 300, 280);
+  reporter.End(Fight(0, 0, 2, 0), true);
+  CHECK(out.Count(FightEventKind::kComplete) == 1 && out.reports[1].p1 == 13 && out.reports[1].p2 == 0);
+}
+
+void TestAConfirmedResultSurvivesTheScoresBeingReset() {
+  Collected out;
+  FightReporter reporter(out.Sink());
+  reporter.Begin(1, 0);
+  reporter.Observe(Fight(6, 10), true, 100, 100);
+  reporter.Observe(Fight(6, 10, 2, 1), true, 200, 200);
+  reporter.Observe(Fight(6, 10, 0, 0), true, 210, 210);
+  reporter.End(Fight(6, 10, 0, 0), true);
+  CHECK(out.Count(FightEventKind::kComplete) == 1 && out.reports[1].result == FightResult::kPlayer1);
+}
+
+void TestAFightLeftBeforeAnyWinnerIsStartedOnly() {
+  Collected out;
+  FightReporter reporter(out.Sink());
+  reporter.Begin(1, 0);
+  reporter.Observe(Fight(6, 10), true, 100, 100);
+  reporter.Observe(Fight(6, 10, 1, 0), true, 300, 300);
+  reporter.End(Fight(6, 10, 1, 0), true);
+  CHECK(out.Count(FightEventKind::kStart) == 1 && out.Count(FightEventKind::kComplete) == 0);
 }
 
 void TestAFailingSinkNeverDisturbsTheFight() {
@@ -779,17 +924,28 @@ int main() {
   std::printf("fight telemetry tests\n");
   TestResultOfTheFight();
   TestAnOnlineFightStartsAndCompletesOnce();
+  TestCharactersAreTheOnesHeldWhenTheyBecomeAuthoritative();
+  TestRyuIsAValidCharacterAndNotAMissingOne();
+  TestDefaultZerosBeforeThePresentationAreNeverReported();
+  TestAFightEndedBeforeTheCharactersWereReadyReportsNothing();
+  TestTheEndGivesAWaitingStartOneLastAttemptWithoutDuplicating();
   TestWinnerAndLoserAreTheSidesTheyAre();
+  TestEveryFinishedScoreIsACompletedFight();
   TestADrawIsReportedAsADraw();
-  TestFramesBeforeAFinalResultReportNoCompletion();
+  TestAnAbandonedFightIsStartedButNotCompleted();
+  TestAResultIsConfirmedOnlyOnceBothPeersAgreeOnItsFrame();
   TestARollbackThatRewritesTheResultDoesNotDuplicateOrMisreport();
+  TestATransientResultTakenBackBeforeTheEndIsNotCounted();
+  TestAFightThatLeavesRightAfterItsResultStillCounts();
   TestARollbackThatReentersTheStartDoesNotDuplicateIt();
   TestManyFightsInOneMatchAreManyStarts();
   TestAnotherMatchStartsFightZeroAgain();
-  TestADisconnectBeforeCompletionKeepsTheStartOnly();
   TestABeginWhileAnotherFightRunsEndsThatFightFirst();
-  TestAnInvalidCharacterReportsNothing();
-  TestFightersThatChangeAfterTheStartAreNotAResult();
+  TestAnInvalidCharacterPairCreatesNoStart();
+  TestTheStartCharactersStayAuthoritativeWhenTheFightersAreReset();
+  TestAFightLeavingWithResetFightersAndNoCleanObservationStillCounts();
+  TestAConfirmedResultSurvivesTheScoresBeingReset();
+  TestAFightLeftBeforeAnyWinnerIsStartedOnly();
   TestAFailingSinkNeverDisturbsTheFight();
   TestOnlyAnOnlineFightIsReportable();
   TestTheQueueIsBoundedAndDropsTheNewest();

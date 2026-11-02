@@ -45,7 +45,7 @@ test('live cards say now and the accumulated cards say today', () => {
 test('the sections follow the documented page order', () => {
   const order = ['Live now', 'Today', 'Selected range', 'Current matches', 'Last matches', 'Usage over time', 'Fights by day',
     'Matches by day', '<h2>Platform</h2>', '<h2>Transport</h2>', 'Fights by platform', 'Most played characters', 'Most wins',
-    'Most losses', '<h2>Characters</h2>', 'Daily totals', 'Diagnostics'];
+    'Most losses', 'Most played matchups', '<h2>Characters</h2>', 'Daily totals', 'Diagnostics'];
   let at = -1;
   for (const marker of order) {
     const next = ADMIN_HTML.indexOf(marker);
@@ -110,7 +110,7 @@ test('current matches stay a live table with a short id only', async () => {
   const page = await open(env);
   const rows = page.rows('matches');
   assert.equal(rows.length, 2);
-  assert.deepEqual(rows[1].slice(0, 3), [two.match.slice(0, 6), 'Connecting', 'Relay']);
+  assert.deepEqual(rows[1].slice(0, 4), [two.match.slice(0, 6), 'Connecting', 'Original \u00b7 0.0.1.3', 'Relay']);
   assert.ok(!page.all().includes(two.match));
 });
 
@@ -134,7 +134,7 @@ test('last matches with one row reads showing 1 match', async () => {
   const [head, row] = page.rows('recent');
   assert.deepEqual(head, ['Date and time', 'Duration', 'Fights started', 'Fights completed', 'Transport', 'Game build', 'Platforms',
     'Final state']);
-  assert.deepEqual(row.slice(1), ['12m 34s', '7 fights', '7 completed', 'Direct', 'Base013', 'Windows x Windows', 'Completed']);
+  assert.deepEqual(row.slice(1), ['12m 34s', '7 fights', '7 completed', 'Direct', 'Original \u00b7 0.0.1.3', 'Windows x Windows', 'Completed']);
 });
 
 test('last matches lists several matches with their fight counts, newest first', async () => {
@@ -144,8 +144,8 @@ test('last matches lists several matches with their fight counts, newest first',
   const page = await open(env);
   const rows = page.rows('recent').slice(1);
   assert.equal(rows.length, 2);
-  assert.deepEqual(rows[0].slice(1), ['4m 12s', '2 fights', '1 completed', 'Relay', 'Base013', 'Windows x Linux', 'Disconnected']);
-  assert.deepEqual(rows[1].slice(1), ['7m 0s', '4 fights', '3 completed', 'Direct', 'TU023', 'Windows x Linux', 'Abandoned']);
+  assert.deepEqual(rows[0].slice(1), ['4m 12s', '2 fights', '1 completed', 'Relay', 'Original \u00b7 0.0.1.3', 'Windows x Linux', 'Disconnected']);
+  assert.deepEqual(rows[1].slice(1), ['7m 0s', '4 fights', '3 completed', 'Direct', 'Title Update #1 \u00b7 0.0.2.3', 'Windows x Linux', 'Abandoned']);
 });
 
 test('a match from a client without telemetry shows dashes for its fights', async () => {
@@ -238,10 +238,32 @@ test('direct and relay totals show in the transport panels', async () => {
 test('fights by platform and by game build are listed', async () => {
   const { env } = scenario();
   const page = await open(env);
-  assert.match(page.text('d-fbuild'), /TU023.*4/);
-  assert.match(page.text('d-fbuild'), /Base013.*2/);
+  assert.match(page.text('d-fbuild'), /Title Update #1 \u00b7 0.0.2.3.*4/);
+  assert.match(page.text('d-fbuild'), /Original \u00b7 0.0.1.3.*2/);
   assert.match(page.text('d-fplatform'), /Windows/);
   assert.match(page.text('d-fplatform'), /Linux/);
+});
+
+test('game builds show their friendly names with the executable version', async () => {
+  const { env } = scenario();
+  const page = await open(env);
+  const live = page.rows('matches');
+  assert.equal(live[0][2], 'Game build');
+  assert.deepEqual(live.slice(1).map((r) => r[2]), ['Original \u00b7 0.0.1.3']);
+  assert.ok(page.rows('recent').some((r) => r.includes('Title Update #1 \u00b7 0.0.2.3')));
+  assert.ok(!/Base013|TU023|base013|tu023/.test(page.all()));
+});
+
+test('a historical or future build value still has a readable label and storage is unchanged', async () => {
+  const { env } = scenario();
+  const history = env.hub.metricsHistory(30, 20);
+  history.dimensions.fight_guest = [{ value: 'tu024', count: 3 }, { value: 'base013', count: 1 }];
+  history.recent.matches[0].guest = 'tu099';
+  const page = await open(env, { history });
+  assert.match(page.text('d-fbuild'), /tu024.*3/);
+  assert.match(page.text('d-fbuild'), /Original \u00b7 0\.0\.1\.3.*1/);
+  assert.ok(page.rows('recent')[1].includes('tu099'));
+  assert.deepEqual(env.hub.metricsHistory(30, 20).dimensions.fight_guest.map((d) => d.value).sort(), ['base013', 'tu023']);
 });
 
 test('the daily table has the fight columns and per-day values', async () => {

@@ -674,8 +674,8 @@ export class Hub {
     if (reason === 'disconnect') state = 'Disconnected';
     else if (reason === 'expired') state = 'Timeout';
     else if (!settled && !tele.fights_started) state = 'Failed';
-    else if (!reported) state = 'Ended';
-    else if (tele.fights_started > 0 && tele.fights_completed === tele.fights_started) state = 'Completed';
+    else if (!reported || !tele.fights_started) state = 'Ended';
+    else if (tele.fights_completed === tele.fights_started) state = 'Completed';
     else state = 'Abandoned';
     this.track(() => this.metrics.recordMatch({
       duration_ms: Math.max(0, this.host.now() - (tele.established ?? row.created)),

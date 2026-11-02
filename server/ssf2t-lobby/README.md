@@ -107,6 +107,7 @@ each side's platform), and per character picks, wins, losses and draws. Per open
 and fight counts, and one row per fight for the dedupe; both go when the match closes. A closed match leaves one row in
 `recent_matches` (end time, duration, fight counts, transport, build, platform pair, final state: Completed,
 Abandoned, Disconnected, Timeout, Failed or Ended), kept for the latest 50 matches or 30 days, whichever drops it first.
+Matchups are the unordered pair of characters, one row per day and pair in `metrics_daily_matchups` (fights started, wins of the lower and the higher character id, draws); the dashboard ranks the top 10 of the selected range by fights started. Matchup analytics start from the Worker version that introduced the table; earlier fights are not reconstructed.
 Never stored: names, Friend Codes, addresses, tokens, the match id, inputs, game memory or chat.
 
 ## Abuse protection
