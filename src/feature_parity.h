@@ -244,6 +244,11 @@ inline constexpr Feature kFeatures[] = {
      "Netplay::kFightWork,Netplay::kOnlineStage,Netplay::kButtonConfigFlag,Netplay::kButtonConfigA,"
      "Netplay::kButtonConfigB,Netplay::kGameMode",
      "", "", "", "", "", "", "src/netplay/frame_zero.cpp", "", "", "", "", "tests/netplay_session_tests.cpp"},
+    {"Online fight telemetry",
+     "Netplay::kFighterBlockPointer,Netplay::kRoundWinPlayer1,Netplay::kRoundWinPlayer2,Netplay::kFightCharacterInit",
+     "", "", "", "", "", "",
+     "src/online/fight_telemetry.cpp,src/online/fight_telemetry.h,src/netplay/fight_snapshot.h", "", "", "", "",
+     "tests/fight_telemetry_tests.cpp"},
     {"Multiple fights, multiple matches and host/join reversal", "", "", "", "", "", "", "",
      "src/netplay/session.cpp,src/netplay_runtime.h,src/online/establishment.h", "", "", "", "",
      "tests/netplay_session_tests.cpp,tests/online_service_tests.cpp"},

@@ -151,6 +151,7 @@ void OnlineService::Update(double now) {
   if (step_ == Step::kIdle && !channel_ && now >= retry_at_) OpenChannel(now);
   PumpChannel(now);
   PumpRelay(now);
+  FlushFightReports();
   const bool opening = step_ == Step::kOpening || step_ == Step::kGreeting;
   if (opening && now > step_deadline_) OnLinkLost("timeout", now);
   if (step_ != Step::kOnline) return;
@@ -195,7 +196,7 @@ void OnlineService::OnEvent(const ChannelEvent& event, double now) {
       step_deadline_ = now + kStepTimeoutSeconds;
       Send(Purpose::kHello, [this](int seq) {
         return EncodeHello(seq, {config_.guest, config_.build, identity_.player_id, identity_.token, SessionName(),
-                                 config_.version, config_.platform, true, config_.relay && config_.game_socket});
+                                 config_.version, config_.platform, true, config_.relay && config_.game_socket, config_.fight_telemetry});
       });
       break;
     case ChannelEvent::Kind::kText:
@@ -336,6 +337,9 @@ void OnlineService::OnResponse(const ServerMessage& message, double now) {
       break;
     case Purpose::kTransportDirect:
       if (!ok) Log("transport choice failed code=" + message.code);
+      break;
+    case Purpose::kFightReport:
+      if (!ok && ++fight_reports_failed_ <= 3) Log("fight telemetry refused code=" + message.code);
       break;
     case Purpose::kInviteDecline:
     case Purpose::kPlayerMatchCancel:
@@ -803,7 +807,10 @@ void OnlineService::OnMatchEnded(const std::string& reason) {
 }
 
 void OnlineService::ClearMatch() {
-  if (match_) LogTransportSummary();
+  if (match_) {
+    FlushFightReports();
+    LogTransportSummary();
+  }
   match_.reset();
   peer_.reset();
   assignment_.reset();
@@ -924,6 +931,7 @@ void OnlineService::RemoveFriend(const std::string& player) {
 void OnlineService::LeaveMatch() {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!match_) return;
+  FlushFightReports();
   const std::string id = match_->match;
   if (Connected()) Send(Purpose::kLeave, [&id](int seq) { return EncodeMatchLeave(seq, id); });
   ClearMatch();
@@ -957,6 +965,45 @@ void OnlineService::Send(Purpose purpose, const std::function<std::string(int)>&
 
 void OnlineService::SendLocked(const std::string& text) {
   if (channel_) channel_->Send(text);
+}
+
+bool OnlineService::ReportFight(const FightReport& report) {
+  if (!config_.fight_telemetry) return false;
+  std::lock_guard<std::mutex> lock(fight_mutex_);
+  return fight_queue_.Push(report);
+}
+
+void OnlineService::FlushFightReports() {
+  std::vector<FightReport> batch;
+  {
+    std::lock_guard<std::mutex> lock(fight_mutex_);
+    while (const std::optional<FightReport> report = fight_queue_.Pop()) batch.push_back(*report);
+  }
+  for (const FightReport& report : batch) SendFightReport(report);
+}
+
+// Only the match's host reports, on the transport the fight session was handed; anything else is dropped.
+void OnlineService::SendFightReport(const FightReport& report) {
+  const bool kind_start = report.kind == FightEventKind::kStart;
+  if (!Connected() || !capabilities_.fight_telemetry || !match_ || match_->role != "host" || !assignment_ ||
+      assignment_->generation != report.generation) {
+    Log(std::string("fight telemetry dropped kind=") + (kind_start ? "start" : "complete") +
+        " fight=" + std::to_string(report.fight));
+    return;
+  }
+  FightEventFields event;
+  event.kind = kind_start ? "start" : "complete";
+  event.fight = report.fight;
+  event.p1 = report.p1;
+  event.p2 = report.p2;
+  event.build = config_.guest;
+  event.transport = FightTransportOf(*assignment_);
+  event.platform = config_.platform;
+  event.result = FightResultName(report.result);
+  const std::string id = match_->match;
+  Send(Purpose::kFightReport, [&](int seq) { return EncodeTelemetryFight(seq, id, event); });
+  ++fight_reports_sent_;
+  Log("fight telemetry sent kind=" + event.kind + " fight=" + std::to_string(report.fight) + " transport=" + event.transport);
 }
 
 void OnlineService::TestConnection() {

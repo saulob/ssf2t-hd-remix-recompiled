@@ -92,10 +92,13 @@ A_RPATH="Linux RPATH/RUNPATH"
 A_DEPS="Linux dynamic dependencies"
 A_CORE="Linux core runtime"
 A_LOC="Linux localization pt-BR"
+A_FIGHT="Linux fight telemetry"
+A_DASH="Linux dashboard"
+A_RECENT="Linux recent matches"
 A_GATE="Linux test.sh gate"
 AREAS=("$A_ENV" "$A_BDIR" "$A_PROD" "$A_B13" "$A_TU" "$A_PAIR" "$A_HOOK" "$A_GFP" "$A_T_B13" "$A_T_TU" "$A_PLAT" "$A_WS" "$A_NET"
   "$A_RELAY" "$A_PM" "$A_RB" "$A_FZ" "$A_MULTI" "$A_WORKER" "$A_WIRE" "$A_CTRL" "$A_SET" "$A_KEYS" "$A_DISP" "$A_GPU"
-  "$A_ACH" "$A_CLIP" "$A_CRASH" "$A_DATA" "$A_UPD" "$A_PKG" "$A_GLIBC" "$A_RPATH" "$A_DEPS" "$A_CORE" "$A_LOC" "$A_GATE")
+  "$A_ACH" "$A_CLIP" "$A_CRASH" "$A_DATA" "$A_UPD" "$A_PKG" "$A_GLIBC" "$A_RPATH" "$A_DEPS" "$A_CORE" "$A_LOC" "$A_FIGHT" "$A_DASH" "$A_RECENT" "$A_GATE")
 TARGETS=("linux/base013|$A_T_B13" "linux/tu023|$A_T_TU")
 
 A_CROSS="Windows/Linux wire compatibility"
@@ -230,6 +233,14 @@ check "packaging scripts parse (package-linux.sh, test.sh, AppRun)" "$A_PKG" \
 check "AppImage release pins (runtime source, patch and SHA-256, appimagetool, --runtime-file, wrong inputs refused)" "$A_PKG"   bash "$SRC/tools/test-appimage-release.sh" "$SRC"
 check "online service (Worker, Node $($NODE --version))" "$A_WORKER;$A_NET;$A_RELAY;$A_PM;$A_MULTI" \
   bash -c "cd '$SRC/server/ssf2t-lobby' && '$NODE' --test 'test/*.test.js'"
+check "fight telemetry (Worker, Node)" "$A_FIGHT;$A_WORKER;$A_NET;$A_MULTI" \
+  bash -c "cd '$SRC/server/ssf2t-lobby' && '$NODE' --test test/fights.test.js test/wire.test.js"
+check "recent matches (Worker, Node)" "$A_RECENT;$A_WORKER" \
+  bash -c "cd '$SRC/server/ssf2t-lobby' && '$NODE' --test test/recent.test.js"
+check "dashboard (page and admin API, Node)" "$A_DASH;$A_WORKER" \
+  bash -c "cd '$SRC/server/ssf2t-lobby' && '$NODE' --test test/dashboard.test.js test/admin.test.js"
+check "fight telemetry mutations (Worker and dashboard)" "$A_FIGHT;$A_WORKER;$A_DASH;$A_RECENT" \
+  bash -c "cd '$SRC/server/ssf2t-lobby' && '$NODE' test/mutations.mjs node"
 
 # ---- C++ suites --------------------------------------------------------------------------------------------------
 
@@ -260,6 +271,7 @@ SUITES=(
   "netplay rollback|ssf2t_netplay_rollback_tests|$A_RB"
   "netplay session|ssf2t_netplay_session_tests|$A_RB;$A_FZ;$A_MULTI"
   "netplay guest|ssf2t_netplay_guest_tests|$A_RB;$A_FZ;$A_B13;$A_TU"
+  "fight telemetry (reporter, guest reads on both images, queue, wire)|ssf2t_fight_telemetry_tests|$A_FIGHT;$A_B13;$A_TU;$A_NET;$A_RELAY;$A_MULTI;$A_HOOK"
   "netplay input|ssf2t_netplay_input_tests|$A_RB"
   "netplay state|ssf2t_netplay_state_tests|$A_RB;$A_FZ"
   "netplay online game socket (UDP loopback)|ssf2t_netplay_online_game_socket_tests|$A_RELAY;$A_NET"

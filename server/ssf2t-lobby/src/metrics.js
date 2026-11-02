@@ -1,12 +1,16 @@
 // Aggregate service metrics for the private dashboard (README.md, Telemetry): daily counters, daily counts of sessions
-// per platform, version and country, daily counts of the transport each match chose, and 15-minute usage samples. No row
-// names a player, an address or a match, and nothing here keeps per-session state: live numbers come from the hub's
-// sockets and tables.
+// per platform, version and country, daily counts of the transport each match chose, daily fight and character counts,
+// 15-minute usage samples and a bounded list of recently closed matches. No row names a player, an address or a match,
+// and nothing here keeps per-session state: live numbers come from the hub's sockets and tables.
+import { characterName } from './characters.js';
+
+
 export const METRICS_TIME_ZONE = 'America/Sao_Paulo';
 export const SAMPLE_MS = 15 * 60 * 1000;
 export const SAMPLE_DAYS = 90;
 export const HISTORY_MAX_DAYS = 365;
-export const DIMENSIONS = ['platform', 'version', 'country', 'reject', 'transport', 'abuse'];
+export const DIMENSIONS = ['platform', 'version', 'country', 'reject', 'transport', 'fight_transport', 'fight_guest',
+  'fight_platform', 'abuse'];
 export const DIAGNOSTICS = new Set(['ws_upgrade_accepted', 'ws_upgrade_limited', 'ws_upgrade_ip_cap', 'hello_accepted',
   'hello_reconnect_deduped', 'hello_limited', 'pm_host_accepted', 'pm_host_limited', 'pm_join_limited', 'invite_limited',
   'match_resume_limited', 'relay_abuse_closed']);
@@ -16,7 +20,14 @@ const DAY_MS = 24 * 3600 * 1000;
 // Bounds what a client can add to the table: further new versions in a day count as Other.
 const VALUES_PER_DIMENSION_PER_DAY = 64;
 const CLEANUP_ROWS = 500;
-const COUNTERS = new Set(['sessions', 'advertised', 'matches_started', 'incompatible_rejects']);
+const COUNTERS = new Set(['sessions', 'advertised', 'matches_started', 'incompatible_rejects', 'fights_started',
+  'fights_completed', 'fight_draws']);
+export const RECENT_MATCHES_MAX = 50;
+export const RECENT_MATCHES_DAYS = 30;
+export const RECENT_MATCHES_DEFAULT = 20;
+const DAILY_COLUMNS = `sessions, advertised, matches_started, incompatible_rejects, peak_online, peak_in_matches,
+  peak_advertised, fights_started, fights_completed, fight_draws`;
+const ADDED_DAILY_COLUMNS = ['fights_started', 'fights_completed', 'fight_draws'];
 
 export const METRICS_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS metrics_daily (day TEXT PRIMARY KEY, sessions INTEGER NOT NULL DEFAULT 0,
@@ -27,6 +38,12 @@ export const METRICS_SCHEMA = [
      count INTEGER NOT NULL, PRIMARY KEY (day, dimension, value))`,
   `CREATE TABLE IF NOT EXISTS metrics_samples (bucket INTEGER PRIMARY KEY, online INTEGER NOT NULL,
      in_matches INTEGER NOT NULL, advertised INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS metrics_daily_characters (day TEXT NOT NULL, character INTEGER NOT NULL,
+     picks INTEGER NOT NULL DEFAULT 0, wins INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0,
+     draws INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, character))`,
+  `CREATE TABLE IF NOT EXISTS recent_matches (seq INTEGER PRIMARY KEY AUTOINCREMENT, ended INTEGER NOT NULL,
+     duration_ms INTEGER NOT NULL, fights_started INTEGER, fights_completed INTEGER, transport TEXT NOT NULL,
+     guest TEXT NOT NULL, platforms TEXT NOT NULL, state TEXT NOT NULL)`,
 ];
 
 const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: METRICS_TIME_ZONE, year: 'numeric', month: '2-digit',
@@ -64,6 +81,9 @@ export class Metrics {
     this.sql = sql;
     this.now = now;
     for (const statement of METRICS_SCHEMA) sql.run(statement);
+    for (const column of ADDED_DAILY_COLUMNS) {
+      try { sql.run(`ALTER TABLE metrics_daily ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 0`); } catch { /* already there */ }
+    }
     this.peaks = null;
     this.sample = null;
     this.pending = new Map();
@@ -120,6 +140,48 @@ export class Metrics {
     this.addDimension(metricsDay(this.now()), 'transport', choice);
   }
 
+  fightStarted({ p1, p2, transport, guest, platforms }) {
+    const day = metricsDay(this.now());
+    this.count('fights_started', day);
+    this.addDimension(day, 'fight_transport', transport);
+    this.addDimension(day, 'fight_guest', guest);
+    for (const platform of platforms) this.addDimension(day, 'fight_platform', platformCategory(platform));
+    for (const character of [p1, p2]) this.character(day, character, 'picks');
+  }
+
+  // `result`: p1, p2 or draw.
+  fightCompleted({ p1, p2, result }) {
+    const day = metricsDay(this.now());
+    this.count('fights_completed', day);
+    if (result === 'draw') {
+      this.count('fight_draws', day);
+      for (const character of [p1, p2]) this.character(day, character, 'draws');
+      return;
+    }
+    this.character(day, result === 'p1' ? p1 : p2, 'wins');
+    this.character(day, result === 'p1' ? p2 : p1, 'losses');
+  }
+
+  character(day, id, column) {
+    this.sql.run(`INSERT INTO metrics_daily_characters (day, character, ${column}) VALUES (?, ?, 1)
+      ON CONFLICT(day, character) DO UPDATE SET ${column} = ${column} + 1`, day, id);
+  }
+
+  // A closed match; the fight counts are null when its host reported no fight telemetry.
+  recordMatch(match) {
+    const now = this.now();
+    this.sql.run(`INSERT INTO recent_matches (ended, duration_ms, fights_started, fights_completed, transport, guest,
+      platforms, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, now, match.duration_ms, match.fights_started,
+    match.fights_completed, match.transport, match.guest, match.platforms, match.state);
+    this.trimRecent(now);
+  }
+
+  trimRecent(now) {
+    this.sql.run('DELETE FROM recent_matches WHERE ended < ?', now - RECENT_MATCHES_DAYS * DAY_MS);
+    this.sql.run(`DELETE FROM recent_matches WHERE seq NOT IN
+      (SELECT seq FROM recent_matches ORDER BY seq DESC LIMIT ?)`, RECENT_MATCHES_MAX);
+  }
+
   reject(reason) {
     const day = metricsDay(this.now());
     this.count('incompatible_rejects', day);
@@ -147,6 +209,7 @@ export class Metrics {
       const row = this.sql.get('SELECT online, in_matches, advertised FROM metrics_samples WHERE bucket = ?', bucket);
       this.sample = row ? { bucket, ...row } : { bucket, online: -1, in_matches: -1, advertised: -1 };
       this.dropOldSamples(now);
+      this.trimRecent(now);
     }
     if (grew(this.sample, live)) {
       this.sql.run(`INSERT INTO metrics_samples (bucket, online, in_matches, advertised) VALUES (?, ?, ?, ?)
@@ -167,8 +230,8 @@ export class Metrics {
   summary(live) {
     const now = this.now();
     const day = metricsDay(now);
-    const today = this.sql.get(`SELECT sessions, advertised, matches_started, incompatible_rejects, peak_online,
-      peak_in_matches, peak_advertised FROM metrics_daily WHERE day = ?`, day) ?? emptyDay();
+    const today = { ...emptyDay(), ...this.sql.get(`SELECT ${DAILY_COLUMNS} FROM metrics_daily WHERE day = ?`, day),
+      ...this.transportCounts(day, day).get(day) };
     return {
       generated: now,
       time_zone: METRICS_TIME_ZONE,
@@ -180,34 +243,75 @@ export class Metrics {
     };
   }
 
-  history(days) {
+  // Per day, the matches and fights each transport carried.
+  transportCounts(first, last) {
+    const days = new Map();
+    for (const r of this.sql.all(`SELECT day, dimension, value, count FROM metrics_daily_dimensions
+      WHERE day >= ? AND day <= ? AND dimension IN ('transport', 'fight_transport')`, first, last)) {
+      const entry = days.get(r.day) ?? { direct_matches: 0, relay_matches: 0, direct_fights: 0, relay_fights: 0 };
+      const column = `${r.value}_${r.dimension === 'transport' ? 'matches' : 'fights'}`;
+      if (column in entry) entry[column] = r.count;
+      days.set(r.day, entry);
+    }
+    return days;
+  }
+
+  // The closed matches of the range, newest first, with how many the range holds in all.
+  recent(first, limit) {
+    const since = Math.max(Date.parse(`${first}T00:00:00Z`) - DAY_MS, this.now() - RECENT_MATCHES_DAYS * DAY_MS);
+    const rows = this.sql.all(`SELECT ended, duration_ms, fights_started, fights_completed, transport, guest, platforms,
+      state FROM recent_matches WHERE ended >= ? ORDER BY seq DESC`, since)
+      .filter((r) => metricsDay(r.ended) >= first);
+    return { limit, retention: { matches: RECENT_MATCHES_MAX, days: RECENT_MATCHES_DAYS }, total: rows.length,
+      matches: rows.slice(0, limit) };
+  }
+
+  history(days, recentLimit = RECENT_MATCHES_DEFAULT) {
     if (!Number.isInteger(days) || days < 1 || days > HISTORY_MAX_DAYS) throw new RangeError('days out of range');
+    if (!Number.isInteger(recentLimit) || recentLimit < 1 || recentLimit > RECENT_MATCHES_MAX) {
+      throw new RangeError('recent out of range');
+    }
     const now = this.now();
     const last = metricsDay(now);
     const first = daysBefore(last, days - 1);
-    const rows = new Map(this.sql.all(`SELECT day, sessions, advertised, matches_started, incompatible_rejects, peak_online,
-      peak_in_matches, peak_advertised FROM metrics_daily WHERE day >= ? AND day <= ? ORDER BY day`, first, last)
-      .map((r) => [r.day, r]));
+    const rows = new Map(this.sql.all(`SELECT day, ${DAILY_COLUMNS} FROM metrics_daily WHERE day >= ? AND day <= ? ORDER BY day`,
+      first, last).map((r) => [r.day, r]));
+    const transports = this.transportCounts(first, last);
     const daily = [];
     for (let i = days - 1; i >= 0; i--) {
       const day = daysBefore(last, i);
-      daily.push(rows.get(day) ?? { day, ...emptyDay() });
+      daily.push({ day, ...emptyDay(), ...rows.get(day), ...transports.get(day) });
     }
     const dimensions = Object.fromEntries(DIMENSIONS.map((d) => [d, []]));
     for (const r of this.sql.all(`SELECT dimension, value, SUM(count) AS count FROM metrics_daily_dimensions
       WHERE day >= ? AND day <= ? GROUP BY dimension, value ORDER BY count DESC, value`, first, last)) {
       dimensions[r.dimension]?.push({ value: r.value, count: r.count });
     }
+    const characters = this.sql.all(`SELECT character AS id, SUM(picks) AS picks, SUM(wins) AS wins, SUM(losses) AS losses,
+      SUM(draws) AS draws FROM metrics_daily_characters WHERE day >= ? AND day <= ? GROUP BY character
+      ORDER BY picks DESC, id`, first, last).map((r) => ({ ...r, name: characterName(r.id) }));
     const since = Math.max(now - days * DAY_MS, now - SAMPLE_DAYS * DAY_MS);
     const samples = this.sql.all('SELECT bucket, online, in_matches, advertised FROM metrics_samples WHERE bucket >= ? ORDER BY bucket',
       sampleBucket(since));
     return { generated: now, time_zone: METRICS_TIME_ZONE, days, first, last, sample_ms: SAMPLE_MS, daily, dimensions,
-      samples };
+      samples, totals: totalsOf(daily, characters), characters, recent: this.recent(first, recentLimit) };
   }
 }
 
 const emptyDay = () => ({ sessions: 0, advertised: 0, matches_started: 0, incompatible_rejects: 0, peak_online: 0,
-  peak_in_matches: 0, peak_advertised: 0 });
+  peak_in_matches: 0, peak_advertised: 0, fights_started: 0, fights_completed: 0, fight_draws: 0, direct_matches: 0,
+  relay_matches: 0, direct_fights: 0, relay_fights: 0 });
+
+const SUMMED = ['sessions', 'advertised', 'matches_started', 'incompatible_rejects', 'fights_started', 'fights_completed',
+  'fight_draws', 'direct_matches', 'relay_matches', 'direct_fights', 'relay_fights'];
+
+function totalsOf(daily, characters) {
+  const totals = Object.fromEntries(SUMMED.map((k) => [k, daily.reduce((sum, d) => sum + (d[k] ?? 0), 0)]));
+  for (const key of ['picks', 'wins', 'losses', 'draws']) {
+    totals[`character_${key}`] = characters.reduce((sum, c) => sum + c[key], 0);
+  }
+  return totals;
+}
 
 const grew = (seen, live) => live.online > seen.online || live.in_matches > seen.in_matches || live.advertised > seen.advertised;
 

@@ -69,7 +69,7 @@ export class SSF2TLobby extends DurableObject {
   async fetch(request) {
     const metrics = internalMetricsRoute(request);
     if (metrics?.kind === 'summary') return Response.json(this.hub.metricsSummary());
-    if (metrics?.kind === 'history') return Response.json(this.hub.metricsHistory(metrics.days));
+    if (metrics?.kind === 'history') return Response.json(this.hub.metricsHistory(metrics.days, metrics.recent));
     if (metrics) return new Response('Bad request', { status: 400 });
     this.hub.edgeLimited(limitedCount(request.headers));
     const first = this.hub.admit(request.headers.get('CF-Connecting-IP') ?? '', request.headers.get(COUNTRY_HEADER));
@@ -124,7 +124,7 @@ export default {
       });
       return handleAdmin(request, env, {
         summary: () => internal('/metrics/summary'),
-        history: (days) => internal(`/metrics/history?days=${days}`),
+        history: (days, recent) => internal(`/metrics/history?days=${days}&recent=${recent}`),
       }, (text) => console.log(text));
     }
     if (request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {

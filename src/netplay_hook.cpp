@@ -19,6 +19,7 @@
 #include "guest_memory.h"
 #include "match_input.h"
 #include "netplay/determinism.h"
+#include "netplay/fight_snapshot.h"
 #include "netplay/guest_netplay.h"
 #include "netplay/guest_simulation.h"
 #include "netplay/input_model.h"
@@ -28,6 +29,7 @@
 #include "netplay/session.h"
 #include "netplay_runtime.h"
 #include "netplay_setting.h"
+#include "online/fight_telemetry.h"
 #include "online_runtime.h"
 #include "online_setting.h"
 #include "player_match_guest.h"
@@ -363,6 +365,7 @@ class FightRuntime {
                     fight_stats_.max_depth);
       }
     }
+    ObserveFight(base);
     LogTransitions();
     if (status == np::TickStatus::kFault) {
       REXLOG_INFO("netplay fault frame={}", session_->core() ? session_->core()->current_frame() : 0);
@@ -542,6 +545,7 @@ class FightRuntime {
   void ResetFight() {
     live_sim_.reset();
     EnterPhase(FightPhase::kIdle);
+    FinishFightReport();
     logged_tail_override_ = false;
     logged_pump_tail_ = false;
     logged_modes_ = {};
@@ -587,8 +591,47 @@ class FightRuntime {
     if (online_driven_) {
       REXLOG_INFO("player_match rollback takeover guest={}", G::kName);
       LogInputRoute(base);
+      ReportFightStart(base);
     }
     return true;
+  }
+
+  bool FightTelemetryReady(const uint8_t* base) {
+    if (telemetry_code_ == TelemetryCode::kUnchecked) {
+      const bool matches = np::FightTelemetryCodeMatches<G>(np::GuestMemory{base});
+      telemetry_code_ = matches ? TelemetryCode::kMatches : TelemetryCode::kDiffers;
+      if (!matches) REXLOG_INFO("fight telemetry off reason=code_differs guest={}", G::kName);
+    }
+    return telemetry_code_ == TelemetryCode::kMatches;
+  }
+
+  void ReportFightStart(const uint8_t* base) {
+    if (!ssf2t::online::FightReportable(online_driven_, base[G::kGameMode], kOnlineGameMode) ||
+        !FightTelemetryReady(base)) {
+      return;
+    }
+    last_snapshot_ = np::ReadFightSnapshot<G>(np::GuestMemory{base});
+    const uint32_t starts = fight_reporter_.starts();
+    fight_reporter_.Begin(generation_, session_->fight_index(), last_snapshot_);
+    if (fight_reporter_.starts() != starts) {
+      REXLOG_INFO("fight telemetry start generation={} fight={} p1={} p2={} guest={}", generation_,
+                  session_->fight_index(), last_snapshot_.character[0], last_snapshot_.character[1], G::kName);
+    }
+  }
+
+  void ObserveFight(const uint8_t* base) {
+    if (!fight_reporter_.active() || telemetry_code_ != TelemetryCode::kMatches) return;
+    last_snapshot_ = np::ReadFightSnapshot<G>(np::GuestMemory{base});
+    fight_reporter_.Observe(last_snapshot_);
+  }
+
+  void FinishFightReport() {
+    if (!fight_reporter_.active()) return;
+    const uint32_t completions = fight_reporter_.completions();
+    fight_reporter_.End();
+    REXLOG_INFO("DEBUG_SAULO fight telemetry end completed={} wins={}:{} to_beat={} p1={} p2={} guest={}",
+                fight_reporter_.completions() != completions, last_snapshot_.wins[0], last_snapshot_.wins[1],
+                last_snapshot_.wins_to_beat, last_snapshot_.character[0], last_snapshot_.character[1], G::kName);
   }
 
   void OfferFrameZero(PPCContext& ctx, uint8_t* base, const GuestCalls& calls) {
@@ -870,6 +913,11 @@ class FightRuntime {
   std::unique_ptr<np::GuestSimulation<G>> live_sim_;
   bool faulted_ = false;
   bool online_driven_ = false;
+  enum class TelemetryCode { kUnchecked, kMatches, kDiffers };
+  TelemetryCode telemetry_code_ = TelemetryCode::kUnchecked;
+  ssf2t::online::FightSnapshot last_snapshot_;
+  ssf2t::online::FightReporter fight_reporter_{
+      [](const ssf2t::online::FightReport& report) { return ssf2t::Online().ReportFight(report); }};
   uint32_t generation_ = 0;
   uint32_t frames_outside_fight_ = 0;
   FightPhase phase_ = FightPhase::kIdle;

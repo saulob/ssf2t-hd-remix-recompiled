@@ -215,3 +215,14 @@ code=...`, `player_match ...`, `XSession...`.
 - A relayed match does not survive a lost service connection: it ends instead of moving to a new connection.
 - Friend Player Matches only: no public matchmaking, Ranked Match, Tournament Match or Quarter Match. Because Ranked
   Match is not offered, the four achievements that need online ranked matches cannot be earned.
+
+## Fight telemetry
+
+From v0.3.1 the host of an online match reports, anonymously, each fight to the lobby service: the two internal character
+ids, who won, the transport and the game build. The client only reads the running fight (the fighters' character and round
+wins, and the fight work object's rounds to beat) and queues the report; it never waits, and a failure changes nothing in
+the fight, the rollback or the connection. A fight is reported once when it becomes authoritative and once when a result
+has held for twenty frames; a fight cut short by a disconnect counts as started only. The lobby protocol stays 3: the
+client announces `telemetry` in its hello and sends reports only to a service that announces `fight_telemetry`, so v0.3.0
+clients and an undeployed Worker keep working and simply add no fight numbers. Local Match, Arcade and Training never
+report. Storage and privacy are described in `server/ssf2t-lobby/README.md`.

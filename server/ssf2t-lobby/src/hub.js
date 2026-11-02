@@ -9,7 +9,7 @@ import { Metrics, SAMPLE_MS, countryCode, platformCategory, sampleBucket, versio
 import { sha256Hex, toHex } from './sha256.js';
 import {
   BUCKETS, CAPABILITIES, LIMITS, ProtocolError, RELAY, compatibleGuests, fail, ipGroup, isLocalAddress,
-  normalizeFriendCode, parseEndpoint, parseHello, parseRelayFrame,
+  normalizeFriendCode, parseEndpoint, parseFightEvent, parseHello, parseRelayFrame,
 } from './protocol.js';
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -46,6 +46,12 @@ const SCHEMA = [
      host_lan TEXT NOT NULL DEFAULT '[]', join_lan TEXT NOT NULL DEFAULT '[]',
      host_ready INTEGER NOT NULL DEFAULT 0, join_ready INTEGER NOT NULL DEFAULT 0,
      relay_token INTEGER NOT NULL DEFAULT 0, transport TEXT NOT NULL DEFAULT '')`,
+  `CREATE TABLE IF NOT EXISTS match_telemetry (match TEXT PRIMARY KEY, guest TEXT NOT NULL, host_platform TEXT NOT NULL,
+     join_platform TEXT NOT NULL, reporting INTEGER NOT NULL, transport TEXT NOT NULL DEFAULT '',
+     transport_counted INTEGER NOT NULL DEFAULT 0, established INTEGER, fights_started INTEGER NOT NULL DEFAULT 0,
+     fights_completed INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE TABLE IF NOT EXISTS match_fights (match TEXT NOT NULL, fight INTEGER NOT NULL, p1 INTEGER NOT NULL,
+     p2 INTEGER NOT NULL, completed INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (match, fight))`,
 ];
 // Added after the table first shipped: CREATE TABLE above only runs on a fresh database.
 const ADDED_COLUMNS = [
@@ -387,8 +393,8 @@ export class Hub {
     return this.metrics.summary(this.liveMetrics());
   }
 
-  metricsHistory(days) {
-    return this.metrics.history(days);
+  metricsHistory(days, recent) {
+    return this.metrics.history(days, recent);
   }
 
   // ---- helpers ----
@@ -600,6 +606,9 @@ export class Hub {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, host.att.player, joiner.att.player, joiner.att.guest, joiner.att.build,
       this.host.now(), host.att.cid, joiner.att.cid, token);
     this.track(() => this.metrics.count('matches_started'));
+    this.host.sql.run(`INSERT INTO match_telemetry (match, guest, host_platform, join_platform, reporting) VALUES (?, ?, ?, ?, ?)`,
+      id, joiner.att.guest, platformCategory(host.att.platform), platformCategory(joiner.att.platform),
+      host.att.telemetry || joiner.att.telemetry ? 1 : 0);
     joiner.att.match = id;
     host.att.match = id;
     host.conn.setAttachment(host.att);
@@ -650,7 +659,47 @@ export class Hub {
     s.conn.setAttachment(s.att);
   }
 
+  telemetryOf(id) {
+    return this.host.sql.get('SELECT * FROM match_telemetry WHERE match = ?', id) ?? null;
+  }
+
+  // The closed match as the recent-matches list keeps it: no id, no player, no address.
+  closeTelemetry(row, reason) {
+    const tele = this.telemetryOf(row.id);
+    if (!tele) return;
+    const known = transportOf(row);
+    const reported = tele.reporting === 1;
+    const settled = tele.established !== null;
+    let state;
+    if (reason === 'disconnect') state = 'Disconnected';
+    else if (reason === 'expired') state = 'Timeout';
+    else if (!settled && !tele.fights_started) state = 'Failed';
+    else if (!reported) state = 'Ended';
+    else if (tele.fights_started > 0 && tele.fights_completed === tele.fights_started) state = 'Completed';
+    else state = 'Abandoned';
+    this.track(() => this.metrics.recordMatch({
+      duration_ms: Math.max(0, this.host.now() - (tele.established ?? row.created)),
+      fights_started: reported ? tele.fights_started : null,
+      fights_completed: reported ? tele.fights_completed : null,
+      transport: tele.transport || (known === 'pending' ? 'unknown' : known),
+      guest: row.guest,
+      platforms: `${tele.host_platform} x ${tele.join_platform}`,
+      state,
+    }));
+    this.host.sql.run('DELETE FROM match_fights WHERE match = ?', row.id);
+    this.host.sql.run('DELETE FROM match_telemetry WHERE match = ?', row.id);
+  }
+
+  // The match's transport counts once, whichever of the host's choice and its first fight names it first.
+  countTransport(row, transport) {
+    const tele = this.telemetryOf(row.id);
+    if (!tele || tele.transport_counted) return;
+    this.host.sql.run('UPDATE match_telemetry SET transport = ?, transport_counted = 1 WHERE match = ?', transport, row.id);
+    this.track(() => this.metrics.transport(transport));
+  }
+
   endMatch(row, reason, actor = null) {
+    this.closeTelemetry(row, reason);
     if (row.relay_token) this.host.log(`relay close match=${row.id} reason=${reason}`);
     this.forgetRelayMatch(row.id);
     this.host.sql.run('DELETE FROM matches WHERE id = ?', row.id);
@@ -840,7 +889,8 @@ const HANDLERS = {
     }
     const wasOnline = hello.presence && this.presentSockets(hello.player).length > 0;
     Object.assign(att, { hello: true, player: hello.player, name: hello.name, presence: hello.presence, guest: hello.guest,
-      build: hello.build, version: hello.version, platform: hello.platform, relay: hello.relay, match: null });
+      build: hello.build, version: hello.version, platform: hello.platform, relay: hello.relay, telemetry: hello.telemetry,
+      match: null });
     if (newSession) this.track(() => this.metrics.session(att));
     else if (hello.presence) this.diagnose('hello_reconnect_deduped');
     this.diagnose('hello_accepted');
@@ -1067,6 +1117,10 @@ const HANDLERS = {
     const role = this.roleOf(row, att.player);
     if (row[`${role}_ready`] !== (msg.ready ? 1 : 0)) {
       this.host.sql.run(`UPDATE matches SET ${role}_ready = ? WHERE id = ?`, msg.ready ? 1 : 0, row.id);
+      if (msg.ready && row[`${this.otherRole(role)}_ready`]) {
+        this.host.sql.run('UPDATE match_telemetry SET established = COALESCE(established, ?) WHERE match = ?',
+          this.host.now(), row.id);
+      }
     }
     this.later(() => {
       this.sendToRole(row, this.otherRole(role), { ev: 'match.ready', match: row.id, ready: msg.ready });
@@ -1090,10 +1144,41 @@ const HANDLERS = {
     } else {
       fail('bad_request', 'transport expected');
     }
-    if (!row.transport) this.track(() => this.metrics.transport(msg.transport));
+    if (!row.transport) this.countTransport(row, msg.transport);
     if (row.transport !== msg.transport) this.host.sql.run('UPDATE matches SET transport = ? WHERE id = ?', msg.transport, row.id);
     this.later(() => this.sendToRole(row, 'join', { ev: 'match.transport', match: row.id, transport: msg.transport }));
     return {};
+  },
+
+  // The host's passive account of its fights; a retry, a resend or the joiner's copy of an event changes nothing.
+  'telemetry.fight'(att, msg) {
+    const row = att.match && this.matchRow(att.match);
+    if (!row || row.id !== msg.match) fail('not_found');
+    const tele = this.telemetryOf(row.id);
+    if (!tele) fail('not_found');
+    const event = parseFightEvent(msg);
+    if (event.build !== row.guest) fail('bad_request', 'build does not match the match');
+    const fight = this.host.sql.get('SELECT * FROM match_fights WHERE match = ? AND fight = ?', row.id, event.fight);
+    if (event.kind === 'start') {
+      if (fight) return { counted: false, reason: 'duplicate' };
+      if (tele.fights_started >= LIMITS.fightsPerMatch) fail('limit', 'too many fights');
+      const known = transportOf(row);
+      const transport = known === 'pending' ? event.transport : known;
+      this.host.sql.run('INSERT INTO match_fights (match, fight, p1, p2) VALUES (?, ?, ?, ?)', row.id, event.fight, event.p1,
+        event.p2);
+      this.host.sql.run('UPDATE match_telemetry SET fights_started = fights_started + 1, reporting = 1 WHERE match = ?', row.id);
+      this.countTransport(row, transport);
+      this.track(() => this.metrics.fightStarted({ p1: event.p1, p2: event.p2, transport, guest: row.guest,
+        platforms: [tele.host_platform, tele.join_platform] }));
+      return { counted: true };
+    }
+    if (!fight) fail('bad_request', 'fight not started');
+    if (fight.completed) return { counted: false, reason: 'duplicate' };
+    if (fight.p1 !== event.p1 || fight.p2 !== event.p2) fail('bad_request', 'characters differ from the start');
+    this.host.sql.run('UPDATE match_fights SET completed = 1 WHERE match = ? AND fight = ?', row.id, event.fight);
+    this.host.sql.run('UPDATE match_telemetry SET fights_completed = fights_completed + 1 WHERE match = ?', row.id);
+    this.track(() => this.metrics.fightCompleted({ p1: event.p1, p2: event.p2, result: event.result }));
+    return { counted: true };
   },
 
   'match.leave'(att, msg) {

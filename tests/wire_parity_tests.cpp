@@ -19,6 +19,7 @@
 #include "netplay/guest_netplay.h"
 #include "netplay/packet.h"
 #include "netplay/relay_frame.h"
+#include "online/protocol.h"
 #include "online/rendezvous.h"
 #include "online/stun.h"
 #include "online/websocket_frame.h"
@@ -146,6 +147,23 @@ std::map<std::string, Bytes> Produce() {
   v["relay.data"] = EncodeRelayFrame(0x89ABCDEF, 0x00000007, payload.data(), payload.size());
   const Bytes rollback = Packet(header, Checksum{0x00000E10, 0xDEADBEEF});
   v["relay.rollback"] = EncodeRelayFrame(0x00000001, 0xFFFFFFFF, rollback.data(), rollback.size());
+
+  const auto text = [](const std::string& s) { return Bytes(s.begin(), s.end()); };
+  online::FightEventFields start;
+  start.kind = "start";
+  start.fight = 2;
+  start.p1 = 0;
+  start.p2 = 4;
+  start.build = "tu023";
+  start.transport = "relay";
+  start.platform = "Windows";
+  v["telemetry.fight.start"] = text(online::EncodeTelemetryFight(7, "0123456789abcdef", start));
+  online::FightEventFields complete = start;
+  complete.kind = "complete";
+  complete.p2 = 16;
+  complete.transport = "direct";
+  complete.result = "p2";
+  v["telemetry.fight.complete"] = text(online::EncodeTelemetryFight(8, "0123456789abcdef", complete));
 
   v["punch.punch.host"] = online::EncodePunch({online::PunchKind::kPunch, 1, 0x0123456789ABCDEFull});
   v["punch.ack.join"] = online::EncodePunch({online::PunchKind::kAck, 2, 0xFEDCBA9876543210ull});

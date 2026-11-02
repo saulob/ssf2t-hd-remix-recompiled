@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-import { PROTOCOL, RELAY, encodeRelayFrame, parseRelayFrame } from '../src/protocol.js';
+import { PROTOCOL, RELAY, encodeRelayFrame, parseFightEvent, parseRelayFrame } from '../src/protocol.js';
 
 // The relay frames and constants the game clients use (tests/wire-vectors.txt, src/netplay/relay_frame.h,
 // src/online/protocol.h), so the Worker and every client platform agree on one layout.
@@ -46,4 +46,15 @@ test('relay and lobby protocol constants match the client', () => {
   assert.equal(RELAY.headerBytes, cppConstant('src/netplay/relay_frame.h', 'kRelayHeaderBytes'));
   assert.equal(RELAY.maxPayload, cppConstant('src/netplay/relay_frame.h', 'kRelayMaxPayload'));
   assert.equal(PROTOCOL, cppConstant('src/online/protocol.h', 'kLobbyProtocol'));
+});
+
+test('the Worker accepts the fight telemetry messages every client platform sends', () => {
+  const read = (name) => JSON.parse(new TextDecoder().decode(vectors.get(name)));
+  const start = parseFightEvent(read('telemetry.fight.start'));
+  assert.deepEqual(start, { kind: 'start', match: '0123456789abcdef', fight: 2, p1: 0, p2: 4, build: 'tu023', transport: 'relay',
+    result: '' });
+  const complete = parseFightEvent(read('telemetry.fight.complete'));
+  assert.deepEqual(complete, { kind: 'complete', match: '0123456789abcdef', fight: 2, p1: 0, p2: 16, build: 'tu023',
+    transport: 'direct', result: 'p2' });
+  assert.equal(read('telemetry.fight.start').op, 'telemetry.fight');
 });

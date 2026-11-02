@@ -48,7 +48,8 @@ $Areas = @(
     'Online protocol', 'Direct / Relay', 'Player Match', 'Rollback', 'Frame Zero', 'Multiple fights / matches',
     'Launcher controls', 'Local multiplayer', 'Overlays / hotkeys', 'Settings', 'Display / Graphics', 'Achievements',
     'Saves / user data', 'Updates', 'Packaging structure', 'Core runtime', 'Global feature parity',
-    'Windows/Base013 feature set', 'Windows/TU023 feature set', 'Localization pt-BR'
+    'Windows/Base013 feature set', 'Windows/TU023 feature set', 'Localization pt-BR', 'Online parity', 'Fight telemetry', 'Worker',
+    'Dashboard', 'Recent matches'
 )
 $AreaLabels = @{
     'Base013' = 'Windows Base013 structural parity'
@@ -134,12 +135,36 @@ Invoke-Check 'online instance script' @('Online protocol') { & (Join-Path $PSScr
 
 $node = Get-Command node -ErrorAction SilentlyContinue
 if ($node) {
-    Invoke-Check 'online service (Worker, Node)' @('Online protocol', 'Direct / Relay', 'Player Match', 'Multiple fights / matches') {
+    Invoke-Check 'online service (Worker, Node)' @('Online protocol', 'Direct / Relay', 'Player Match', 'Multiple fights / matches', 'Online parity', 'Worker') {
         Push-Location (Join-Path $Root 'server\ssf2t-lobby')
         try { & $node.Source --test 'test/*.test.js' } finally { Pop-Location }
     }
+    Invoke-Check 'fight telemetry (Worker, Node)' @('Fight telemetry', 'Worker', 'Online parity', 'Multiple fights / matches') {
+        Push-Location (Join-Path $Root 'server\ssf2t-lobby')
+        try { & $node.Source --test test/fights.test.js test/wire.test.js } finally { Pop-Location }
+    }
+    Invoke-Check 'recent matches (Worker, Node)' @('Recent matches', 'Worker') {
+        Push-Location (Join-Path $Root 'server\ssf2t-lobby')
+        try { & $node.Source --test test/recent.test.js } finally { Pop-Location }
+    }
+    Invoke-Check 'dashboard (page and admin API, Node)' @('Dashboard', 'Worker') {
+        Push-Location (Join-Path $Root 'server\ssf2t-lobby')
+        try { & $node.Source --test test/dashboard.test.js test/admin.test.js } finally { Pop-Location }
+    }
+    Invoke-Check 'fight telemetry mutations (Worker and dashboard)' @('Fight telemetry', 'Worker', 'Dashboard', 'Recent matches') {
+        Push-Location (Join-Path $Root 'server\ssf2t-lobby')
+        try { & $node.Source test/mutations.mjs node } finally { Pop-Location }
+    }
+    Invoke-Check 'fight telemetry mutations (client, C++ compiler)' @('Fight telemetry', 'Base013', 'TU023') {
+        Push-Location (Join-Path $Root 'server\ssf2t-lobby')
+        try { & $node.Source test/mutations.mjs cpp } finally { Pop-Location }
+    }
 } else {
     Skip-Check 'online service (Worker, Node)' @('Online protocol', 'Direct / Relay') 'node not found'
+    foreach ($what in 'fight telemetry (Worker, Node)', 'recent matches (Worker, Node)', 'dashboard (page and admin API, Node)',
+        'fight telemetry mutations (Worker and dashboard)', 'fight telemetry mutations (client, C++ compiler)') {
+        Skip-Check $what @('Fight telemetry', 'Worker') 'node not found'
+    }
 }
 
 # ---- C++ suites ------------------------------------------------------------------------------------------------
@@ -162,7 +187,7 @@ $Suites = @(
     @('fight area', 'fight_area', 'Hooks and patches', 'Display / Graphics'),
     @('infinite time', 'infinite_time', 'Hooks and patches', 'Overlays / hotkeys', 'Settings'),
     # Platforms and wire formats
-    @('wire bytes (tests/wire-vectors.txt)', 'wire_parity', 'Online protocol', 'Direct / Relay', 'Windows platform paths', 'Linux platform paths'),
+    @('wire bytes (tests/wire-vectors.txt)', 'wire_parity', 'Online protocol', 'Direct / Relay', 'Windows platform paths', 'Linux platform paths', 'Online parity'),
     @('platform parity', 'platform_parity', 'Windows platform paths', 'Linux platform paths', 'Packaging structure', 'Launcher controls'),
     @('user data', 'user_data', 'Saves / user data', 'Linux platform paths'),
     @('relaunch', 'relaunch', 'Windows platform paths', 'Linux platform paths'),
@@ -177,7 +202,8 @@ $Suites = @(
     @('netplay setting', 'netplay_setting', 'Settings'),
     @('online protocol', 'online_protocol', 'Online protocol'),
     @('online identity', 'online_identity', 'Online protocol', 'Saves / user data'),
-    @('online service', 'online_service', 'Online protocol', 'Direct / Relay', 'Player Match', 'Multiple fights / matches'),
+    @('online service', 'online_service', 'Online protocol', 'Direct / Relay', 'Player Match', 'Multiple fights / matches', 'Online parity'),
+    @('fight telemetry (reporter, guest reads on both images, queue, wire)', 'fight_telemetry', 'Fight telemetry', 'Base013', 'TU023', 'Online protocol', 'Direct / Relay', 'Multiple fights / matches', 'Hooks and patches', 'Online parity'),
     @('online rendezvous', 'online_rendezvous', 'Direct / Relay'),
     @('online connection test', 'online_connection', 'Online protocol', 'Direct / Relay'),
     @('friend code field', 'friend_field', 'Online protocol'),
@@ -497,7 +523,9 @@ if ($SkipLinux) {
 
 $RequiredWindows = @(
     'codegen scanner self-test', 'codegen scanner verify (TU023 image)', 'guest symbol prefix (base013_/tu023_)',
-    'release folder check cases', 'online instance script', 'online service (Worker, Node)'
+    'release folder check cases', 'online instance script', 'online service (Worker, Node)', 'fight telemetry (Worker, Node)',
+    'recent matches (Worker, Node)', 'dashboard (page and admin API, Node)', 'fight telemetry mutations (Worker and dashboard)',
+    'fight telemetry mutations (client, C++ compiler)'
 ) + @($Suites | ForEach-Object { $_[0] }) + @(
     $Suites | Where-Object { $_[1] -like 'global_feature_parity *' } | ForEach-Object { $name = $_[0]; $TargetAreas.Values | ForEach-Object { "$name ($_)" } }
 )
