@@ -32,6 +32,7 @@
 #include "trg/platform.h"
 
 #include "aspect_ratio.h"
+#include "character/akuma.h"
 #include "dpi.h"
 #include "fight_area.h"
 #include "game_files.h"
@@ -908,6 +909,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
               "ssf2t_show_render_resolution", false, "Off", "On");
     ui.Toggle("Frame counter", "Shows the game's frame rate in the corner. F2 switches it while playing.",
               "ssf2t_show_frame_counter", false, "Hidden", "Shown");
+    ui.Toggle(character::kEnableAkumaLabel, character::kEnableAkumaHelp, character::kEnableAkumaSetting,
+              character::kDefaultEnableAkuma, "Off", "On");
     if (ui.settings().GetBool(kOnlineEnabledSetting, kDefaultOnlineEnabled)) {
       ui.Info(kInfiniteTimeLabel, kInfiniteTimeOnlineNotice);
     } else {

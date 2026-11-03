@@ -180,6 +180,11 @@ set(SSF2T_SOURCES
     src/achievements_overlay.cpp
     src/active_log.cpp
     src/aspect_render.cpp
+    src/character/akuma.cpp
+    src/character/akuma_select.cpp
+    src/character/akuma_navigation.cpp
+    src/character/akuma_overlay.cpp
+    src/character/akuma_portrait.cpp
     src/crash_report.cpp
     src/diagnostics.cpp
     src/fight_area_hook.cpp
@@ -403,6 +408,11 @@ endforeach()
 add_executable(ssf2t_window_placement_tests EXCLUDE_FROM_ALL tests/window_placement_tests.cpp)
 target_include_directories(ssf2t_window_placement_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_window_placement_tests)
+
+add_executable(ssf2t_akuma_setting_tests EXCLUDE_FROM_ALL tests/akuma_setting_tests.cpp
+    src/character/akuma_select.cpp src/character/akuma_portrait.cpp src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_akuma_setting_tests PRIVATE src "${SSF2T_SDK_DIR}/include" "${_trg_dir}/include")
+add_dependencies(ssf2t_runtime_tests ssf2t_akuma_setting_tests)
 
 # Launcher and window behaviour that needs no window: keyboard remapping, Escape not quitting, per-monitor DPI
 # helpers, the input-aware cursor and the window title.

@@ -26,6 +26,7 @@
 #include "achievements_overlay.h"
 #include "active_log.h"
 #include "aspect_ratio.h"
+#include "character/akuma_overlay.h"
 #include "diagnostics.h"
 #include "frame_counter.h"
 #include "invite_ui.h"
@@ -282,6 +283,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
     }
     if (window() && imgui_drawer()) {
       CreateFrameCounter(imgui_drawer());
+      character::CreateAkumaOverlay(imgui_drawer(), immediate_drawer(), game_data_root());
       CreatePingDisplay(imgui_drawer());
       CreateInviteUi(imgui_drawer(),
                      [this](std::function<void()> work) { app_context().CallInUIThreadDeferred(std::move(work)); });

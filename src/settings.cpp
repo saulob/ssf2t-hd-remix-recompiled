@@ -23,6 +23,7 @@
 #include "trg/settings.h"
 
 #include "aspect_ratio.h"
+#include "character/akuma.h"
 #include "crash_report.h"
 #include "diagnostics.h"
 #include "fight_area.h"
@@ -95,6 +96,7 @@ std::vector<std::string> GameSettingKeys() {
       kLetterboxSetting,
       kFightAreaSetting,
       kInfiniteTimeSetting,
+      ssf2t::character::kEnableAkumaSetting,
       kNetplayDeterminismSetting,
       kNetplayRoleSetting,
       kNetplayPeerAddressSetting,
