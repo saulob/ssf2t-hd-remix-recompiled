@@ -127,8 +127,9 @@ struct Base013Fight {
   };
   static constexpr uint32_t kMainModeTableWords[] = {0x82238EA0, kGameModeDispatch};
   static constexpr uint32_t kGameModeTableWords[] = {0x82238FD0, 0x82239088, kMatchStepDispatch};
-  // Step 4 shows the win counts, then starts the fight.
-  static constexpr uint32_t kMatchStepTableWords[] = {0x822390C0, 0x82239150, 0x82239230};
+  // Step 4 is VS, step 6 the fight and step 18 the winner screen.
+  static constexpr uint32_t kMatchStepTableWords[] = {0x822390C0, 0x82239150, 0x82239230, 0x8223BB28, 0x82239AD0,
+                                                      0x8223D260, 0x82239B20, 0x82239B50, 0x8223D4E8, 0x8223D550};
   static constexpr uint32_t kHdBackgroundDraw = 0x8217A088;
 
   // Each background is one 4-vertex quad submitted through kQuadDraw; these are its two call sites.
@@ -261,7 +262,8 @@ struct TitleUpdate023Fight {
   };
   static constexpr uint32_t kMainModeTableWords[] = {0x82238FC8, kGameModeDispatch};
   static constexpr uint32_t kGameModeTableWords[] = {0x822390F8, 0x822391B0, kMatchStepDispatch};
-  static constexpr uint32_t kMatchStepTableWords[] = {0x822391E8, 0x82239278, 0x82239358};
+  static constexpr uint32_t kMatchStepTableWords[] = {0x822391E8, 0x82239278, 0x82239358, 0x8223BC50, 0x82239BF8,
+                                                      0x8223D388, 0x82239C48, 0x82239C78, 0x8223D610, 0x8223D678};
   static constexpr uint32_t kHdBackgroundDraw = 0x8217A0A8;
 
   static constexpr uint32_t kQuadDraw = 0x823F7D48;
@@ -410,6 +412,7 @@ inline constexpr uint32_t kMatchStepOffset = 0x8;
 inline constexpr uint16_t kMainModeRunning = 2;
 inline constexpr uint16_t kGameModeMatch = 4;
 inline constexpr uint16_t kMatchStepVersus = 4;
+inline constexpr uint16_t kMatchStepVictory = 18;
 
 struct MatchFlow {
   uint16_t main_mode;
@@ -431,9 +434,14 @@ constexpr bool IsCharacterSelectBackground(uint8_t hd_background_enabled, uint32
          (hd_background == kCharacterSelectBackground || hd_background == kCharacterSelectBackgroundAlt);
 }
 
+constexpr bool IsVictory(MatchFlow flow) {
+  return flow.main_mode == kMainModeRunning && flow.game_mode == kGameModeMatch && flow.match_step == kMatchStepVictory;
+}
+
 struct PreFightScene {
   bool character_select;
   bool versus;
+  bool victory;
 };
 
 constexpr bool WidescreenOutsideFight(uint8_t widescreen_display, uint32_t widescreen_mode, uint8_t fight_active,
@@ -444,14 +452,14 @@ constexpr bool WidescreenOutsideFight(uint8_t widescreen_display, uint32_t wides
 constexpr bool PreFightFillActive(bool fill, uint8_t widescreen_display, uint32_t widescreen_mode, uint8_t fight_active,
                                   float aspect, PreFightScene scene) {
   return fill && WidescreenOutsideFight(widescreen_display, widescreen_mode, fight_active, aspect) &&
-         (scene.character_select || scene.versus);
+         (scene.character_select || scene.versus || scene.victory);
 }
 
-// VS wins when both hold, so VS never draws the Character Select background wider.
+// VS and the winner screen win when they hold too, so they never draw the Character Select background wider.
 constexpr bool CharacterSelectFillActive(bool fill, uint8_t widescreen_display, uint32_t widescreen_mode,
                                          uint8_t fight_active, float aspect, PreFightScene scene) {
   return fill && WidescreenOutsideFight(widescreen_display, widescreen_mode, fight_active, aspect) &&
-         scene.character_select && !scene.versus;
+         scene.character_select && !scene.versus && !scene.victory;
 }
 
 inline MatchFlow ReadMatchFlow(const uint8_t* ram) {
@@ -472,8 +480,9 @@ inline bool LoadMatchFlow(const uint8_t* base, MatchFlow& flow) {
 template <typename G>
 inline PreFightScene LoadPreFightScene(const uint8_t* base) {
   MatchFlow flow{};
+  const bool known = LoadMatchFlow<G>(base, flow);
   return {IsCharacterSelectBackground(base[kHdBackgroundEnabled], LoadBE32(base, kHdBackground)),
-          LoadMatchFlow<G>(base, flow) && IsVersus(flow)};
+          known && IsVersus(flow), known && IsVictory(flow)};
 }
 
 template <typename G>
@@ -493,6 +502,21 @@ inline bool VersusFillActive(bool fill, const uint8_t* base) {
   return fill && VersusFillActive(true, base[G::kWidescreenDisplayFlag], LoadBE32(base, G::kWidescreenMode),
                                   base[G::kFightActiveFlag], std::bit_cast<float>(LoadBE32(base, kWidescreenAspect)),
                                   LoadPreFightScene<G>(base));
+}
+
+// The scrolling background is shared by VS and the winner screen.
+constexpr bool ScrollingBackgroundFillActive(bool fill, uint8_t widescreen_display, uint32_t widescreen_mode,
+                                             uint8_t fight_active, float aspect, PreFightScene scene) {
+  return fill && WidescreenOutsideFight(widescreen_display, widescreen_mode, fight_active, aspect) &&
+         (scene.versus || scene.victory);
+}
+
+template <typename G>
+inline bool ScrollingBackgroundFillActive(bool fill, const uint8_t* base) {
+  return fill && ScrollingBackgroundFillActive(true, base[G::kWidescreenDisplayFlag],
+                                               LoadBE32(base, G::kWidescreenMode), base[G::kFightActiveFlag],
+                                               std::bit_cast<float>(LoadBE32(base, kWidescreenAspect)),
+                                               LoadPreFightScene<G>(base));
 }
 
 template <typename G>
@@ -943,5 +967,6 @@ inline bool LoadCharacterSelectTextureSize(const uint8_t* base, TextureSize& siz
 }
 
 void SetFightAreaFill(bool fill);
+void DebugSauloArmVictoryCapture();  // DEBUG_SAULO: F9 victory-screen capture
 
 }  // namespace ssf2t

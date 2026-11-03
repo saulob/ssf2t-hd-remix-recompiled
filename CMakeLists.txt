@@ -182,6 +182,7 @@ set(SSF2T_SOURCES
     src/aspect_render.cpp
     src/crash_report.cpp
     src/diagnostics.cpp
+    src/debug_saulo_f9.cpp
     src/fight_area_hook.cpp
     src/frame_counter.cpp
     src/game_files.cpp
