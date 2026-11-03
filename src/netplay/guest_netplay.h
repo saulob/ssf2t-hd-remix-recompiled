@@ -79,6 +79,10 @@ struct Base013Netplay {
   static constexpr uint32_t kFrameTailNetCheck = 0x823EDF04;
   static constexpr uint32_t kFramePump = 0x82252B90;
   static constexpr uint32_t kFightWork = 0x83CD52DC;
+  static constexpr uint32_t kFighterBlockPointer = 0x83E09CC0;
+  static constexpr uint32_t kRoundWinPlayer1 = 0x8224B340;
+  static constexpr uint32_t kRoundWinPlayer2 = 0x8224B6F0;
+  static constexpr uint32_t kFightCharacterInit = 0x822392F0;
   static constexpr uint32_t kOnlineStage = 0x83C24D98;
   static constexpr uint32_t kButtonConfigFlag = 0x83CA6D66;
   static constexpr uint32_t kButtonConfigA = 0x83CA6D2C;
@@ -156,6 +160,10 @@ struct TitleUpdate023Netplay {
   static constexpr uint32_t kFrameTailNetCheck = 0x823EE670;
   static constexpr uint32_t kFramePump = 0x82252BD8;
   static constexpr uint32_t kFightWork = 0x83CD57F4;
+  static constexpr uint32_t kFighterBlockPointer = 0x83E0A1D8;
+  static constexpr uint32_t kRoundWinPlayer1 = 0x8224B388;
+  static constexpr uint32_t kRoundWinPlayer2 = 0x8224B738;
+  static constexpr uint32_t kFightCharacterInit = 0x82239418;
   static constexpr uint32_t kOnlineStage = 0x83C25110;
   static constexpr uint32_t kButtonConfigFlag = 0x83CA727E;
   static constexpr uint32_t kButtonConfigA = 0x83CA7244;

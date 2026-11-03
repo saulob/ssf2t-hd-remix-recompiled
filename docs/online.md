@@ -8,7 +8,7 @@ The launcher only handles friends and presence. A match starts from the game its
 The Multiplayer menu lists only Local Match and Online Match. Online Match is the game's own Player Match, one against
 one with an online friend; Ranked Match, Tournament Match and the larger lobbies (Quarter Match) are not offered.
 
-Status (v0.3.0): the friend and Player Match flow, the XNet / QoS / VDP bridge and rollback netplay work on the original
+Status (v0.3.1): the friend and Player Match flow, the XNet / QoS / VDP bridge and rollback netplay work on the original
 Base013 and Title Update 1 (TU023) game images. Direct UDP between two PCs on different internet connections has been
 tested with real players: Online Match, Invite, several fights in one session and agreeing frame-zero state, with no
 gameplay desync observed. The relay fallback is implemented, tested by script (Node and C++ wire tests) and selected
@@ -215,3 +215,14 @@ code=...`, `player_match ...`, `XSession...`.
 - A relayed match does not survive a lost service connection: it ends instead of moving to a new connection.
 - Friend Player Matches only: no public matchmaking, Ranked Match, Tournament Match or Quarter Match. Because Ranked
   Match is not offered, the four achievements that need online ranked matches cannot be earned.
+
+## Fight telemetry
+
+From v0.3.1 the host of an online match reports, anonymously, each fight to the lobby service: the two internal character
+ids, who won, the transport and the game build. The client only reads the running fight (the fighters' character and round
+wins, and the fight work object's rounds to beat) and queues the report; it never waits, and a failure changes nothing in
+the fight, the rollback or the connection. A fight is reported once when it becomes authoritative and once when a result
+has held for twenty frames; a fight cut short by a disconnect counts as started only. The lobby protocol stays 3: the
+client announces `telemetry` in its hello and sends reports only to a service that announces `fight_telemetry`, so v0.3.0
+clients and an undeployed Worker keep working and simply add no fight numbers. Local Match, Arcade and Training never
+report. Storage and privacy are described in `server/ssf2t-lobby/README.md`.

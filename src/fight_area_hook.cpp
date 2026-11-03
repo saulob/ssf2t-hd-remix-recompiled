@@ -57,9 +57,9 @@ bool CharacterSelectFillActive(const uint8_t* base) {
 }
 
 template <typename G>
-bool VersusFillActive(const uint8_t* base) {
+bool ScrollingBackgroundFillActive(const uint8_t* base) {
   return g_fill.load(std::memory_order_relaxed) && PreFightPathMatches<G>(base) &&
-         ssf2t::VersusFillActive<G>(true, base);
+         ssf2t::ScrollingBackgroundFillActive<G>(true, base);
 }
 
 template <typename G>
@@ -157,9 +157,10 @@ void DrawCharacterSelectSidePanel(PPCContext& ctx, uint8_t* base, const DrawCall
   }
 }
 
-// The VS background quad itself is drawn exactly as the game built it; Fill surrounds it with edge extensions.
+// The VS and winner screen background quad is drawn exactly as the game built it; Fill surrounds it with edge
+// extensions.
 template <typename G>
-void DrawVersusBackground(PPCContext& ctx, uint8_t* base, const DrawCalls& calls) {
+void DrawScrollingBackground(PPCContext& ctx, uint8_t* base, const DrawCalls& calls) {
   const bool quad_call = IsQuadCall(ctx);
   ssf2t::QuadVertices center{};
   ssf2t::BackgroundExtensions extensions{};
@@ -167,7 +168,7 @@ void DrawVersusBackground(PPCContext& ctx, uint8_t* base, const DrawCalls& calls
   if (quad_call) {
     center = ReadQuad(base, ctx.r5.u32);
     const float aspect = std::bit_cast<float>(ssf2t::LoadBE32(base, ssf2t::kWidescreenAspect));
-    extend = VersusFillActive<G>(base) && ssf2t::BackgroundExtensionPieces(center, aspect, extensions);
+    extend = ScrollingBackgroundFillActive<G>(base) && ssf2t::BackgroundExtensionPieces(center, aspect, extensions);
   }
   const uint32_t caller = uint32_t(ctx.lr);
   calls.quad_draw(ctx, base);
@@ -205,7 +206,7 @@ void Ortho(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   original(ctx, base);
 }
 
-// Draws the black side quads of the fight, Character Select and VS; Fill 16:9 leaves them out.
+// Draws the black side quads of the fight, Character Select, VS and the winner screen; Fill 16:9 leaves them out.
 template <typename G>
 void MaskDrawer(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const bool pre_fight = PreFightFillActive<G>(base);
@@ -216,14 +217,14 @@ void MaskDrawer(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
 }
 
 // Draws one quad from user vertices; Fill warps the Character Select background, drops its side panels and extends
-// the VS background here.
+// the VS and winner screen background here.
 template <typename G>
 void QuadDraw(PPCContext& ctx, uint8_t* base, const DrawCalls& calls) {
   const uint32_t caller = uint32_t(ctx.lr);
   if (caller == G::kCharacterSelectQuadReturn) {
     DrawCharacterSelectBackground<G>(ctx, base, calls);
   } else if (caller == G::kScrollingQuadReturn) {
-    DrawVersusBackground<G>(ctx, base, calls);
+    DrawScrollingBackground<G>(ctx, base, calls);
   } else if (ssf2t::SidePanelAt<G>(caller) != ssf2t::SidePanel::kNone) {
     DrawCharacterSelectSidePanel<G>(ctx, base, calls, caller);
   } else {

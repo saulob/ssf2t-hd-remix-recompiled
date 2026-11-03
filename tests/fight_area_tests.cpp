@@ -131,12 +131,13 @@ void TestFillReadsGuestGlobals() {
   CheckFillReadsGuestGlobals<Base013Fight>();
 }
 
-constexpr PreFightScene kSelectScene{true, false};
-constexpr PreFightScene kVersusScene{false, true};
-constexpr PreFightScene kNoScene{false, false};
+constexpr PreFightScene kSelectScene{true, false, false};
+constexpr PreFightScene kVersusScene{false, true, false};
+constexpr PreFightScene kVictoryScene{false, false, true};
+constexpr PreFightScene kNoScene{false, false, false};
 
 void TestOriginalNeverActsBeforeFights() {
-  for (const PreFightScene scene : {kSelectScene, kVersusScene}) {
+  for (const PreFightScene scene : {kSelectScene, kVersusScene, kVictoryScene}) {
     for (int fight = 0; fight <= 1; ++fight) {
       CHECK(!PreFightFillActive(false, 1, 1, uint8_t(fight), kAspect, scene));
       CHECK(!CharacterSelectFillActive(false, 1, 1, uint8_t(fight), kAspect, scene));
@@ -150,6 +151,15 @@ void TestPreFightScenes() {
                                MatchFlow{2, 8, 4}, MatchFlow{0, 4, 4}}) {
     CHECK(!IsVersus(flow));
   }
+  CHECK(IsVictory(MatchFlow{2, 4, 18}));
+  CHECK(kMatchStepVictory == 18);
+  for (const MatchFlow flow : {MatchFlow{2, 4, 0}, MatchFlow{2, 4, 4}, MatchFlow{2, 4, 6}, MatchFlow{2, 4, 10},
+                               MatchFlow{2, 4, 8}, MatchFlow{2, 4, 16}, MatchFlow{2, 4, 20}, MatchFlow{2, 0, 18},
+                               MatchFlow{2, 8, 18}, MatchFlow{0, 4, 18}, MatchFlow{1, 4, 18}}) {
+    CHECK(!IsVictory(flow));
+  }
+  CHECK(!IsVictory(MatchFlow{2, 4, 4}) && !IsVersus(MatchFlow{2, 4, 18}));
+  CHECK(!IsVictory(MatchFlow{2, 4, 2}) && !IsVictory(MatchFlow{2, 4, 6}));
   CHECK(IsCharacterSelectBackground(1, 2));
   CHECK(IsCharacterSelectBackground(1, 9));
   for (const uint32_t background : {0u, 1u, 3u, 4u, 5u, 6u, 7u, 8u, 10u, 0xFFFFFFFFu}) {
@@ -169,13 +179,110 @@ void TestPreFightFillActiveOnlyInSelectAndVersus() {
   CHECK(!PreFightFillActive(true, 1, 1, 0, 1.0f, kVersusScene));
   CHECK(CharacterSelectFillActive(true, 1, 1, 0, kAspect, kSelectScene));
   CHECK(!CharacterSelectFillActive(true, 1, 1, 0, kAspect, kVersusScene));
-  CHECK(!CharacterSelectFillActive(true, 1, 1, 0, kAspect, PreFightScene{true, true}));
+  CHECK(!CharacterSelectFillActive(true, 1, 1, 0, kAspect, PreFightScene{true, true, false}));
   CHECK(!CharacterSelectFillActive(true, 1, 1, 0, kAspect, kNoScene));
+}
+
+void TestVictoryFill() {
+  CHECK(PreFightFillActive(true, 1, 1, 0, kAspect, kVictoryScene));
+  CHECK(!PreFightFillActive(false, 1, 1, 0, kAspect, kVictoryScene));
+  CHECK(!PreFightFillActive(true, 0, 1, 0, kAspect, kVictoryScene));
+  CHECK(!PreFightFillActive(true, 1, 0, 0, kAspect, kVictoryScene));
+  CHECK(!PreFightFillActive(true, 1, 1, 1, kAspect, kVictoryScene));
+  CHECK(!PreFightFillActive(true, 1, 1, 0, 1.0f, kVictoryScene));
+  CHECK(!CharacterSelectFillActive(true, 1, 1, 0, kAspect, PreFightScene{true, false, true}));
+  CHECK(!VersusFillActive(true, 1, 1, 0, kAspect, kVictoryScene));
+  CHECK(VersusFillActive(true, 1, 1, 0, kAspect, kVersusScene));
+  for (const PreFightScene scene : {kVersusScene, kVictoryScene}) {
+    CHECK(ScrollingBackgroundFillActive(true, 1, 1, 0, kAspect, scene));
+    CHECK(!ScrollingBackgroundFillActive(false, 1, 1, 0, kAspect, scene));
+    CHECK(!ScrollingBackgroundFillActive(true, 1, 1, 1, kAspect, scene));
+    CHECK(!ScrollingBackgroundFillActive(true, 1, 1, 0, 1.0f, scene));
+  }
+  CHECK(!ScrollingBackgroundFillActive(true, 1, 1, 0, kAspect, kSelectScene));
+  CHECK(!ScrollingBackgroundFillActive(true, 1, 1, 0, kAspect, kNoScene));
+}
+
+template <typename G>
+void CheckVictoryFlow() {
+  static uint8_t memory[0x440000] = {};
+  uint8_t* base = memory - 0x83A00000u;
+  constexpr uint32_t kRam = 0x83E20000;
+  StoreBE32(base, G::kWidescreenMode, 1);
+  base[G::kWidescreenDisplayFlag] = 1;
+  base[G::kFightActiveFlag] = 0;
+  StoreBE32(base, kWidescreenAspect, std::bit_cast<uint32_t>(kAspect));
+  StoreBE32(base, G::kGameRam, kRam);
+  base[kHdBackgroundEnabled] = 1;
+  StoreBE32(base, kHdBackground, 5);
+  StoreBE16(base, kRam + kMainModeOffset, 2);
+  StoreBE16(base, kRam + kGameModeOffset, 4);
+  StoreBE16(base, kRam + kMatchStepOffset, 18);
+  CHECK(PreFightFillActive<G>(true, base));
+  CHECK(ScrollingBackgroundFillActive<G>(true, base));
+  CHECK(!VersusFillActive<G>(true, base));
+  CHECK(!CharacterSelectFillActive<G>(true, base));
+  CHECK(!PreFightFillActive<G>(false, base));
+  CHECK(!ScrollingBackgroundFillActive<G>(false, base));
+  for (const uint16_t step : {0, 2, 6, 8, 10, 12, 16, 20, 24, 32}) {
+    StoreBE16(base, kRam + kMatchStepOffset, step);
+    CHECK(!PreFightFillActive<G>(true, base));
+    CHECK(!ScrollingBackgroundFillActive<G>(true, base));
+  }
+  StoreBE16(base, kRam + kMatchStepOffset, 18);
+  base[G::kFightActiveFlag] = 1;
+  CHECK(!PreFightFillActive<G>(true, base));
+  base[G::kFightActiveFlag] = 0;
+  StoreBE16(base, kRam + kGameModeOffset, 2);
+  CHECK(!PreFightFillActive<G>(true, base));
+  StoreBE16(base, kRam + kGameModeOffset, 4);
+  StoreBE32(base, G::kGameRam, 0);
+  CHECK(!PreFightFillActive<G>(true, base));
+  CHECK(!ScrollingBackgroundFillActive<G>(true, base));
+}
+
+void TestVictoryFlowReadsGuestGlobals() {
+  CheckVictoryFlow<TitleUpdate023Fight>();
+  CheckVictoryFlow<Base013Fight>();
+}
+
+template <typename G>
+void CheckVictoryStepTable(uint32_t victory_step, uint32_t fight_step) {
+  CHECK(std::size(G::kMatchStepTableWords) == kMatchStepVictory / 2 + 1);
+  CHECK(G::kMatchStepTableWords[6 / 2] == fight_step);
+  CHECK(G::kMatchStepTableWords[kMatchStepVictory / 2] == victory_step);
+  bool listed = false;
+  for (const FightRenderFunction& function : G::kPreFightFunctions) {
+    listed |= function.address == kMatchStepTable && function.words.data() == G::kMatchStepTableWords;
+  }
+  CHECK(listed);
+}
+
+void TestVictoryNeedsNoBackgroundExtension() {
+  const Span visible = NonFightVisibleX(kAspect);
+  const float left = float(visible.start);
+  const float right = float(visible.end);
+  const QuadVertices full{{
+      {left, 16.0f, 0.0f, 0xFFFFFFFF, 0.0f, 1.25f},
+      {right, 16.0f, 0.0f, 0xFFFFFFFF, 1.0f, 1.25f},
+      {left, 464.0f, 0.0f, 0xFFFFFFFF, 0.0f, 0.25f},
+      {right, 464.0f, 0.0f, 0xFFFFFFFF, 1.0f, 0.25f},
+  }};
+  BackgroundExtensions out{};
+  CHECK(!BackgroundExtensionPieces(full, kAspect, out));
+  CHECK(out.count == 0);
+  CHECK(PreFightFillActive(true, 1, 1, 0, kAspect, kVictoryScene));
+  CHECK(!PreFightFillActive(false, 1, 1, 0, kAspect, kVictoryScene));
+}
+
+void TestVictoryStepTablePerVersion() {
+  CheckVictoryStepTable<Base013Fight>(0x8223D550, 0x8223BB28);
+  CheckVictoryStepTable<TitleUpdate023Fight>(0x8223D678, 0x8223BC50);
 }
 
 void TestFightAndPreFightNeverOverlap() {
   for (int fight = 0; fight <= 1; ++fight) {
-    for (const PreFightScene scene : {kSelectScene, kVersusScene, kNoScene}) {
+    for (const PreFightScene scene : {kSelectScene, kVersusScene, kVictoryScene, kNoScene}) {
       const bool in_fight = FightFillActive(true, 1, 1, uint8_t(fight), kAspect, 0.5f);
       CHECK(!(in_fight && PreFightFillActive(true, 1, 1, uint8_t(fight), kAspect, scene)));
       CHECK(!(in_fight && CharacterSelectFillActive(true, 1, 1, uint8_t(fight), kAspect, scene)));
@@ -866,7 +973,7 @@ void TestCharacterSelectWarpFailsClosed() {
   CHECK(!Warp(kSelectQuad, SelectFill(true, 1, kSelectScene), out));
   CHECK(!Warp(kSelectQuad, SelectFill(true, 0, kVersusScene), out));
   CHECK(!Warp(kSelectQuad, SelectFill(true, 0, kNoScene), out));
-  CHECK(!Warp(kSelectQuad, SelectFill(true, 0, PreFightScene{true, true}), out));
+  CHECK(!Warp(kSelectQuad, SelectFill(true, 0, PreFightScene{true, true, false}), out));
   for (const float aspect : kInvalidAspects) {
     CHECK(!Warp(kSelectQuad, true, out, kSelectTexture, aspect));
   }
@@ -945,7 +1052,7 @@ void TestCharacterSelectSidePanels() {
     CHECK(!SkipsSidePanel<G>(SelectFill(true, 1, kSelectScene), true, caller));
     CHECK(!SkipsSidePanel<G>(SelectFill(true, 0, kVersusScene), true, caller));
     CHECK(!SkipsSidePanel<G>(SelectFill(true, 0, kNoScene), true, caller));
-    CHECK(!SkipsSidePanel<G>(SelectFill(true, 0, PreFightScene{true, true}), true, caller));
+    CHECK(!SkipsSidePanel<G>(SelectFill(true, 0, PreFightScene{true, true, false}), true, caller));
     CHECK(!SkipsSidePanel<G>(SelectFill(true, 0, kSelectScene), false, caller));
     CHECK(!SkipsSidePanel<G>(CharacterSelectFillActive(true, 0, 1, 0, kAspect, kSelectScene), true, caller));
     CHECK(!SkipsSidePanel<G>(CharacterSelectFillActive(true, 1, 1, 0, 1.0f, kSelectScene), true, caller));
@@ -1005,9 +1112,11 @@ void TestCharacterSelectTextureSize() {
 
 void TestBackgroundExtensionsStayOffElsewhere() {
   CHECK(!SelectFill(true, 0, kVersusScene));
-  CHECK(!SelectFill(true, 0, PreFightScene{true, true}));
+  CHECK(!SelectFill(true, 0, PreFightScene{true, true, false}));
   CHECK(!VersusFill(true, 0, kSelectScene));
-  for (const PreFightScene scene : {kSelectScene, kVersusScene, kNoScene}) {
+  CHECK(!SelectFill(true, 0, kVictoryScene));
+  CHECK(!VersusFill(true, 0, kVictoryScene));
+  for (const PreFightScene scene : {kSelectScene, kVersusScene, kVictoryScene, kNoScene}) {
     CHECK(!SelectFill(true, 1, scene));
     CHECK(!VersusFill(true, 1, scene));
   }
@@ -1193,8 +1302,8 @@ void TestWiring() {
   CHECK(hook.find("if (caller == G::kCharacterSelectQuadReturn) {") != std::string::npos);
   CHECK(hook.find("} else if (caller == G::kScrollingQuadReturn) {") != std::string::npos);
   CHECK(hook.find("    DrawCharacterSelectBackground<G>(ctx, base, calls);") != std::string::npos);
-  CHECK(hook.find("    DrawVersusBackground<G>(ctx, base, calls);") != std::string::npos);
-  CHECK(hook.find("extend = VersusFillActive<G>(base) && ssf2t::BackgroundExtensionPieces(center, aspect, extensions);") !=
+  CHECK(hook.find("    DrawScrollingBackground<G>(ctx, base, calls);") != std::string::npos);
+  CHECK(hook.find("extend = ScrollingBackgroundFillActive<G>(base) && ssf2t::BackgroundExtensionPieces(center, aspect, extensions);") !=
         std::string::npos);
   const size_t select_start = hook.find("void DrawCharacterSelectBackground(");
   const std::string select = hook.substr(select_start, hook.find("\n}\n", select_start) - select_start);
@@ -1225,7 +1334,7 @@ void TestWiring() {
   CHECK(hook.find("ssf2t::BackgroundExtensionPieces(center, aspect, extensions)") != std::string::npos);
   CHECK(hook.find("PreFightPathMatches<G>(base) &&\n         ssf2t::CharacterSelectFillActive<G>(true, base)") !=
         std::string::npos);
-  CHECK(hook.find("PreFightPathMatches<G>(base) &&\n         ssf2t::VersusFillActive<G>(true, base)") !=
+  CHECK(hook.find("PreFightPathMatches<G>(base) &&\n         ssf2t::ScrollingBackgroundFillActive<G>(true, base)") !=
         std::string::npos);
   CHECK(hook.find("kBackgroundRect") == std::string::npos);
   CHECK(hook.find("sub_823F5948") == std::string::npos);
@@ -1593,6 +1702,10 @@ int main() {
   TestPreFightScenes();
   TestPreFightFillActiveOnlyInSelectAndVersus();
   TestFightAndPreFightNeverOverlap();
+  TestVictoryFill();
+  TestVictoryFlowReadsGuestGlobals();
+  TestVictoryStepTablePerVersion();
+  TestVictoryNeedsNoBackgroundExtension();
   TestPreFightReadsGuestGlobals();
   TestGameRamInPhysicalHeap();
   TestNonFightWindowIsTheGamesOwn();

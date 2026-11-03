@@ -1,7 +1,7 @@
 // The Worker's edge: the private dashboard under /admin (SSF2T_DASHBOARD_TOKEN as a Bearer header) and the country and
 // refused-upgrade count the lobby may use, which only the edge sets. No Cloudflare import, so Node runs it in the tests.
 import { ADMIN_CSS, ADMIN_HTML, ADMIN_JS } from './admin_page.js';
-import { HISTORY_MAX_DAYS, countryCode } from './metrics.js';
+import { HISTORY_MAX_DAYS, RECENT_MATCHES_DEFAULT, RECENT_MATCHES_MAX, countryCode } from './metrics.js';
 import { sha256Hex } from './sha256.js';
 
 export const COUNTRY_HEADER = 'X-SSF2T-Edge-Country';
@@ -56,7 +56,16 @@ export function historyDays(params) {
   return days <= HISTORY_MAX_DAYS ? days : null;
 }
 
-// metrics: { summary(): Promise<object>, history(days): Promise<object> }, read only after the token matched.
+// recent=N for 1..RECENT_MATCHES_MAX closed matches, else null; no parameter is the default list.
+export function recentLimit(params) {
+  const text = params.get('recent');
+  if (text === null) return RECENT_MATCHES_DEFAULT;
+  if (!/^[1-9][0-9]?$/.test(text)) return null;
+  const limit = Number(text);
+  return limit <= RECENT_MATCHES_MAX ? limit : null;
+}
+
+// metrics: { summary(): Promise<object>, history(days, recent): Promise<object> }, read only after the token matched.
 export async function handleAdmin(request, env, metrics, log = () => {}) {
   const url = new URL(request.url);
   if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { Allow: 'GET' });
@@ -71,12 +80,15 @@ export async function handleAdmin(request, env, metrics, log = () => {}) {
     return json({ error: 'unauthorized' }, 401, { 'WWW-Authenticate': 'Bearer' });
   }
   let days = null;
+  let recent = null;
   if (api === 'history') {
     days = historyDays(url.searchParams);
     if (days === null) return json({ error: 'bad_request', detail: `days must be 1 to ${HISTORY_MAX_DAYS}` }, 400);
+    recent = recentLimit(url.searchParams);
+    if (recent === null) return json({ error: 'bad_request', detail: `recent must be 1 to ${RECENT_MATCHES_MAX}` }, 400);
   }
   try {
-    return json(api === 'summary' ? await metrics.summary() : await metrics.history(days));
+    return json(api === 'summary' ? await metrics.summary() : await metrics.history(days, recent));
   } catch (error) {
     log(`admin: metrics unavailable: ${error?.message ?? error}`);
     return json({ error: 'unavailable' }, 502);
@@ -90,7 +102,8 @@ export function internalMetricsRoute(request) {
   if (url.pathname === '/metrics/summary') return { kind: 'summary' };
   if (url.pathname === '/metrics/history') {
     const days = historyDays(url.searchParams);
-    return days === null ? { kind: 'bad_request' } : { kind: 'history', days };
+    const recent = recentLimit(url.searchParams);
+    return days === null || recent === null ? { kind: 'bad_request' } : { kind: 'history', days, recent };
   }
   return null;
 }

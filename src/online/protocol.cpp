@@ -145,6 +145,7 @@ ServiceCapabilities ReadCapabilities(const json::Value& v) {
   caps.public_endpoints = BoolOf(v.Find("public_endpoints"), false);
   caps.relay_supported = BoolOf(v.Find("relay_supported"), false);
   caps.relay_max_payload = IntOf(v.Find("relay_max_payload"));
+  caps.fight_telemetry = BoolOf(v.Find("fight_telemetry"), false);
   return caps;
 }
 
@@ -292,7 +293,7 @@ std::string EncodeHello(int seq, const HelloFields& hello) {
                      ",\"player\":" + Quote(hello.player) + ",\"token\":" + Quote(hello.token) +
                      ",\"name\":" + Quote(hello.name) + ",\"version\":" + Quote(hello.version) +
                      ",\"platform\":" + Quote(hello.platform) + ",\"presence\":" + (hello.presence ? "true" : "false") +
-                     (hello.relay ? ",\"relay\":true" : ""));
+                     (hello.relay ? ",\"relay\":true" : "") + (hello.telemetry ? ",\"telemetry\":true" : ""));
 }
 
 std::string EncodePing(int seq) { return Envelope("ping", seq); }
@@ -343,6 +344,13 @@ std::string EncodeMatchTransport(int seq, const std::string& match, const std::s
   return WithMatch("match.transport", seq, match, ",\"transport\":" + Quote(transport));
 }
 std::string EncodeMatchResume(int seq, const std::string& match) { return WithMatch("match.resume", seq, match); }
+
+std::string EncodeTelemetryFight(int seq, const std::string& match, const FightEventFields& e) {
+  return WithMatch("telemetry.fight", seq, match,
+                   ",\"kind\":" + Quote(e.kind) + ",\"fight\":" + std::to_string(e.fight) + ",\"p1\":" + std::to_string(e.p1) +
+                       ",\"p2\":" + std::to_string(e.p2) + ",\"build\":" + Quote(e.build) + ",\"transport\":" + Quote(e.transport) +
+                       ",\"platform\":" + Quote(e.platform) + (e.result.empty() ? "" : ",\"result\":" + Quote(e.result)));
+}
 
 std::string HexOf(const std::vector<uint8_t>& bytes) {
   static constexpr char kHex[] = "0123456789abcdef";

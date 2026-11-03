@@ -73,6 +73,7 @@ struct ServiceCapabilities {
   bool public_endpoints = false;
   bool relay_supported = false;
   int relay_max_payload = 0;
+  bool fight_telemetry = false;  // the service takes passive fight reports (telemetry.fight)
 };
 
 struct PeerInfo {
@@ -147,6 +148,7 @@ struct HelloFields {
   std::string platform;
   bool presence = true;  // false: a short session that is not shown to friends (the connection test)
   bool relay = false;    // this client can play a match through the service's relay
+  bool telemetry = false;  // this client reports its online fights, anonymously
 };
 
 std::string EncodeHello(int seq, const HelloFields& hello);
@@ -172,6 +174,20 @@ std::string EncodeMatchLeave(int seq, const std::string& match);
 // The host's choice for the match, "direct" or "relay"; the service tells the joiner.
 std::string EncodeMatchTransport(int seq, const std::string& match, const std::string& transport);
 std::string EncodeMatchResume(int seq, const std::string& match);
+
+// One passive fight event of the match, from its host: kind "start" or "complete"; `result` ("p1", "p2" or "draw") only
+// for a completion. Characters are the game's internal ids.
+struct FightEventFields {
+  std::string kind;
+  uint32_t fight = 0;
+  int p1 = 0;
+  int p2 = 0;
+  std::string build;      // base013 or tu023
+  std::string transport;  // direct or relay
+  std::string platform;   // Windows or Linux
+  std::string result;
+};
+std::string EncodeTelemetryFight(int seq, const std::string& match, const FightEventFields& event);
 
 std::string HexOf(const std::vector<uint8_t>& bytes);
 std::vector<uint8_t> BytesOfHex(std::string_view hex);

@@ -62,8 +62,8 @@ One JSON object per text frame; the literal `ping` is answered `pong`. Requests 
 A friend row is `{player, name, online, state, platform, version, guest, build, compatible}`; `state` is `offline`,
 `online`, `player_match`, `connecting` or `in_game`.
 
-`capabilities` is `{protocol_version, worker_build, public_endpoints, relay_supported, relay_max_payload}`; an older
-service sends none, which clients read as no relay. `match.created` and the `pm.join` answer carry `relay_token` when
+`capabilities` is `{protocol_version, worker_build, public_endpoints, relay_supported, relay_max_payload, fight_telemetry}`; an older
+service sends none, which clients read as no relay and no fight telemetry. `match.created` and the `pm.join` answer carry `relay_token` when
 the match has a relay.
 
 Events: `friend.request`, `friend.added`, `friend.removed`, `friend.status`, `friend.offline`, `match.created`
@@ -90,6 +90,25 @@ Limits: 4 KB frames, 16-character names, 60 messages burst then 20/s per socket 
 Relay: 400 frames/s (burst 800) and 128 KB/s (burst 256 KB) per socket, twice that per match; 256 dropped frames in a
 match end its relay. All matches share the one Durable Object, so relayed traffic counts against its CPU and request
 budget.
+
+### Fight telemetry (optional, protocol 3 unchanged)
+
+A client that sets `telemetry: true` in `hello` reports its online fights with `telemetry.fight`:
+`{match, kind: start|complete, fight, p1, p2, build, transport: direct|relay, platform, result: p1|p2|draw}`. Characters
+are the game's internal ids 0 to 16 (`src/characters.js`). Only the match's host sends it; the service takes either
+seat's copy and counts each `(match, fight, kind)` once. It answers `ok` with `counted` (`false`, `reason: duplicate`
+for a repeat) or refuses an unknown match, an invalid character, build, platform, transport or fight index (0 to 199), a
+build other than the match's, a completion without a start or with other characters, and anything after the match
+ended. The Worker's own knowledge of the transport wins over the report. A v0.3.0 client sends none of this and plays,
+signs in and matches exactly as before; its matches add no fight numbers and show dashes under Last matches.
+
+Stored per day: fights started and completed, draws, fights per transport, build and platform (each fight counts once for
+each side's platform), and per character picks, wins, losses and draws. Per open match: its start, platforms, transport
+and fight counts, and one row per fight for the dedupe; both go when the match closes. A closed match leaves one row in
+`recent_matches` (end time, duration, fight counts, transport, build, platform pair, final state: Completed,
+Abandoned, Disconnected, Timeout, Failed or Ended), kept for the latest 50 matches or 30 days, whichever drops it first.
+Matchups are the unordered pair of characters, one row per day and pair in `metrics_daily_matchups` (fights started, wins of the lower and the higher character id, draws); the dashboard ranks the top 10 of the selected range by fights started. Matchup analytics start from the Worker version that introduced the table; earlier fights are not reconstructed.
+Never stored: names, Friend Codes, addresses, tokens, the match id, inputs, game memory or chat.
 
 ## Abuse protection
 
@@ -121,10 +140,11 @@ None of this changes the protocol, the wire format or what a released client see
 ## Admin dashboard
 
 `GET /admin` serves a static page (same shell as the Dragon's Crown Pro PC dashboard); its data comes from
-`/admin/api/summary` and `/admin/api/history?days=N`, which need `Authorization: Bearer <SSF2T_DASHBOARD_TOKEN>`
+`/admin/api/summary` and `/admin/api/history?days=N&recent=M` (the last M closed matches, 1 to 50, default 20), which need `Authorization: Bearer <SSF2T_DASHBOARD_TOKEN>`
 (a Worker secret of 16 or more characters; without it the API answers 503). The page is read-only. It shows players
-online, players in matches, advertised matches, the running matches as Direct, Relay or Pending, and daily counters
-and 15-minute samples kept in the object's `metrics_*` tables. No row names a player, an address or a match. The
+online, players in matches, advertised matches, the running matches as Direct, Relay or Pending (the "now" cards),
+the accumulated numbers for today and for the selected range (matches, fights, Direct and Relay, character picks, wins and
+losses), the last matches, and daily counters and 15-minute samples kept in the object's `metrics_*` and `recent_matches` tables. No row names a player, an address or a match. The
 match list is read live and shows a short id only; relay tokens, connection ids, friend codes and addresses never
 leave the hub.
 

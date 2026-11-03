@@ -247,7 +247,7 @@ test('metrics write nothing per match or player and never fail a hub operation',
   startMatch(env);
   const tables = env.host.sql.all("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'metrics_%'")
     .map((r) => r.name).sort();
-  assert.deepEqual(tables, ['metrics_daily', 'metrics_daily_dimensions', 'metrics_samples']);
+  assert.deepEqual(tables, ['metrics_daily', 'metrics_daily_characters', 'metrics_daily_dimensions', 'metrics_daily_matchups', 'metrics_samples']);
   env.hub.metrics.count = () => { throw new Error('metrics down'); };
   env.hub.metrics.observe = () => { throw new Error('metrics down'); };
   const c = env.connect(identity(20));
@@ -269,7 +269,9 @@ test('samples are written when counts grow and an alarm samples while anyone is 
 test('the Durable Object serves metrics only to the Worker, and /admin is routed before the WebSocket path', () => {
   const route = (path, headers = {}) => internalMetricsRoute(get(path, headers));
   assert.deepEqual(route('/metrics/summary'), { kind: 'summary' });
-  assert.deepEqual(route('/metrics/history?days=90'), { kind: 'history', days: 90 });
+  assert.deepEqual(route('/metrics/history?days=90'), { kind: 'history', days: 90, recent: 20 });
+  assert.deepEqual(route('/metrics/history?days=7&recent=50'), { kind: 'history', days: 7, recent: 50 });
+  assert.deepEqual(route('/metrics/history?days=7&recent=51'), { kind: 'bad_request' });
   assert.deepEqual(route('/metrics/history?days=9999'), { kind: 'bad_request' });
   assert.equal(route('/metrics/summary', { Upgrade: 'websocket' }), null);
   assert.equal(route('/'), null);

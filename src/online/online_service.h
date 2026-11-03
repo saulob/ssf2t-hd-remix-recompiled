@@ -12,6 +12,7 @@
 
 #include "online/connection_test.h"
 #include "online/establishment.h"
+#include "online/fight_telemetry.h"
 #include "online/identity.h"
 #include "online/lobby_link.h"
 #include "online/protocol.h"
@@ -51,6 +52,8 @@ struct ServiceConfig {
   bool synchronous_probes = false;
   // Tells the service this client can play through its relay (with a gameplay socket only).
   bool relay = true;
+  // Reports this client's online fights to the service, anonymously and best effort.
+  bool fight_telemetry = true;
 };
 
 struct UserSettings {
@@ -67,6 +70,9 @@ struct NetplayAssignment {
   uint32_t generation = 0;  // this process's count of matches; a session never outlives its match
   bool relay = false;       // the peer is netplay::kRelayPeer on the gameplay socket's relay
 };
+
+// The transport a fight report names: the one the fight session was handed.
+inline const char* FightTransportOf(const NetplayAssignment& assignment) { return assignment.relay ? "relay" : "direct"; }
 
 // What the game's WAIT_FOR_PLAYER_LIST timer should do while the match is being established.
 enum class GuestWait { kUnmanaged, kProgressing, kFailed };
@@ -206,6 +212,8 @@ class OnlineService {
   void LogLine(const std::string& line) { Log(line); }
   // From the fight runtime, every frame while it owns a session.
   void SetNetplayLink(NetplayLink link, std::optional<int> rtt_ms);
+  // A fight report from the fight's thread: queued at once, sent by Update, never waited for. False when it was dropped.
+  bool ReportFight(const FightReport& report);
 
   Snapshot snapshot() const;
   // The fight session's link and measured round trip, without the cost of a full snapshot.
@@ -219,7 +227,7 @@ class OnlineService {
   enum class Purpose {
     kHello, kFriends, kRequests, kAdd, kAccept, kDecline, kRemove, kPlayerMatchHost, kPlayerMatchCancel,
     kPlayerMatchSearch, kPlayerMatchJoin, kEndpoint, kReady, kLeave, kResume, kInviteSend, kInviteDecline,
-    kTransportDirect, kTransportRelay
+    kTransportDirect, kTransportRelay, kFightReport
   };
   struct Pending {
     Purpose purpose = Purpose::kHello;
@@ -252,6 +260,8 @@ class OnlineService {
   void Refresh();
   void Send(Purpose purpose, const std::function<std::string(int)>& encode, const std::string& player = {});
   void SendLocked(const std::string& text);
+  void FlushFightReports();
+  void SendFightReport(const FightReport& report);
   bool Connected() const { return step_ == Step::kOnline; }
   void Notice(const std::string& text);
   void Log(const std::string& line);
@@ -374,6 +384,12 @@ class OnlineService {
   double next_relay_stats_ = 0;
   std::optional<ActivePeer> failed_peer_;
   double failed_at_ = 0;
+
+  // Apart from mutex_ so the fight's thread never waits on the service.
+  mutable std::mutex fight_mutex_;
+  FightReportQueue fight_queue_;
+  int fight_reports_sent_ = 0;
+  int fight_reports_failed_ = 0;
 };
 
 }  // namespace ssf2t::online

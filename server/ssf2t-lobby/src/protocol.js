@@ -1,3 +1,5 @@
+import { isCharacterId } from './characters.js';
+import { PLATFORMS } from './metrics.js';
 import { sha256Hex } from './sha256.js';
 
 export const SERVICE = 'ssf2t-lobby';
@@ -23,6 +25,7 @@ export const LIMITS = {
   ruleFields: 8,
   searchResults: 20,
   matchMaxMs: 4 * 3600 * 1000,
+  fightsPerMatch: 200,
 };
 
 export const BUCKETS = {
@@ -30,7 +33,7 @@ export const BUCKETS = {
   social: { burst: 10, perSecond: 1 },
 };
 
-export const WORKER_BUILD = '2026-10-31-relay1';
+export const WORKER_BUILD = '2026-11-01-fights1';
 
 // Binary relay frames: magic "SR", version, type, token (u32), sequence (u32), payload length (u16), payload.
 export const RELAY = {
@@ -52,6 +55,7 @@ export const CAPABILITIES = {
   public_endpoints: true,
   relay_supported: true,
   relay_max_payload: RELAY.maxPayload,
+  fight_telemetry: true,
 };
 
 // The header of one relay frame, or the reason it is not one. The payload is never looked at.
@@ -146,6 +150,7 @@ export function parseHello(message) {
     platform: cleanLabel(message.platform, LIMITS.platformChars),
     presence: message.presence !== false,
     relay: message.relay === true,
+    telemetry: message.telemetry === true,
   };
 }
 
@@ -203,4 +208,24 @@ export const isLocalAddress = (ip) => ip === '::1' || ipv4Kind(ip) === 'loopback
 
 export function compatibleGuests(a, b) {
   return Boolean(a && b) && a.guest === b.guest && a.build === b.build;
+}
+
+const FIGHT_KINDS = ['start', 'complete'];
+export const FIGHT_TRANSPORTS = ['direct', 'relay'];
+export const FIGHT_RESULTS = ['p1', 'p2', 'draw'];
+
+// One passive fight event from the host: validated here, matched with its match and fight by the hub.
+export function parseFightEvent(message) {
+  if (!FIGHT_KINDS.includes(message.kind)) fail('bad_request', 'kind expected');
+  if (typeof message.match !== 'string') fail('bad_request', 'match expected');
+  if (!Number.isInteger(message.fight) || message.fight < 0 || message.fight >= LIMITS.fightsPerMatch) {
+    fail('bad_request', 'fight index expected');
+  }
+  if (!isCharacterId(message.p1) || !isCharacterId(message.p2)) fail('bad_request', 'character expected');
+  if (!GUESTS.includes(message.build)) fail('bad_request', 'build expected');
+  if (!FIGHT_TRANSPORTS.includes(message.transport)) fail('bad_request', 'transport expected');
+  if (message.platform !== undefined && !PLATFORMS.includes(message.platform)) fail('bad_request', 'platform expected');
+  if (message.kind === 'complete' && !FIGHT_RESULTS.includes(message.result)) fail('bad_request', 'result expected');
+  return { kind: message.kind, match: message.match, fight: message.fight, p1: message.p1, p2: message.p2,
+    build: message.build, transport: message.transport, result: message.kind === 'complete' ? message.result : '' };
 }

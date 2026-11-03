@@ -1,7 +1,7 @@
 # The recompiled game images and the SDK lookup live in cmake/ssf2t_guest_images.cmake.
 
 cmake_minimum_required(VERSION 3.25)
-project(ssf2t_hd_remix VERSION 0.3.0 LANGUAGES C CXX)
+project(ssf2t_hd_remix VERSION 0.3.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -139,6 +139,7 @@ set(SSF2T_ONLINE_SOURCES
     src/netplay/relay_frame.cpp
     src/netplay/udp_transport.cpp
     src/online/connection_test.cpp
+    src/online/fight_telemetry.cpp
     src/online/friend_view.cpp
     src/online/identity.cpp
     src/online/instance.cpp
@@ -498,6 +499,14 @@ foreach(_test protocol identity service rendezvous connection integration)
     target_link_libraries(${_name} PRIVATE ${SSF2T_ONLINE_LIBS})
     add_dependencies(ssf2t_runtime_tests ${_name})
 endforeach()
+
+# Online fight telemetry: the reporter, the guest reads on both images, the service queue and the wire message. Headless.
+add_executable(ssf2t_fight_telemetry_tests EXCLUDE_FROM_ALL tests/fight_telemetry_tests.cpp ${SSF2T_ONLINE_SOURCES})
+target_include_directories(ssf2t_fight_telemetry_tests PRIVATE src tests)
+target_compile_definitions(ssf2t_fight_telemetry_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(ssf2t_fight_telemetry_tests PRIVATE -Wall -Wextra)
+target_link_libraries(ssf2t_fight_telemetry_tests PRIVATE ${SSF2T_ONLINE_LIBS})
+add_dependencies(ssf2t_runtime_tests ssf2t_fight_telemetry_tests)
 
 if(NOT WIN32)
     add_executable(ssf2t_online_websocket_tls_tests EXCLUDE_FROM_ALL tests/online_websocket_tls_tests.cpp ${SSF2T_ONLINE_SOURCES})
