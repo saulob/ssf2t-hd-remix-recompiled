@@ -18,7 +18,6 @@
 #include <vector>
 
 #include "aspect_ratio.h"
-#include "debug_saulo_capture.h"
 #include "fight_area.h"
 #include "presentation_setting.h"
 
@@ -1268,16 +1267,16 @@ void TestWiring() {
   CHECK(hook.find("REX_EXTERN(__imp__tu023_sub_82173910)") != std::string::npos);
 
   // Each tree's hooks call that tree's own originals and traits.
-  CHECK(hook.find("InScene<ssf2t::Base013Fight>(ctx, base, __imp__base013_sub_82181AA8)") != std::string::npos);
-  CHECK(hook.find("InScene<ssf2t::Base013Fight>(ctx, base, __imp__base013_sub_823ED578)") != std::string::npos);
+  CHECK(hook.find("InScene(ctx, base, __imp__base013_sub_82181AA8)") != std::string::npos);
+  CHECK(hook.find("InScene(ctx, base, __imp__base013_sub_823ED578)") != std::string::npos);
   CHECK(hook.find("InProjectionSetup(ctx, base, __imp__base013_sub_823EBB28)") != std::string::npos);
   CHECK(hook.find("Ortho<ssf2t::Base013Fight>(ctx, base, __imp__base013_sub_823F5118)") != std::string::npos);
   CHECK(hook.find("MaskDrawer<ssf2t::Base013Fight>(ctx, base, __imp__base013_sub_82177590)") != std::string::npos);
   CHECK(hook.find("QuadDraw<ssf2t::Base013Fight>(") != std::string::npos);
   CHECK(hook.find("{__imp__base013_sub_823F75D8, __imp__base013_sub_821738A0, __imp__base013_sub_821738F0}") !=
         std::string::npos);
-  CHECK(hook.find("InScene<ssf2t::TitleUpdate023Fight>(ctx, base, __imp__tu023_sub_82181AB8)") != std::string::npos);
-  CHECK(hook.find("InScene<ssf2t::TitleUpdate023Fight>(ctx, base, __imp__tu023_sub_823EDC68)") != std::string::npos);
+  CHECK(hook.find("InScene(ctx, base, __imp__tu023_sub_82181AB8)") != std::string::npos);
+  CHECK(hook.find("InScene(ctx, base, __imp__tu023_sub_823EDC68)") != std::string::npos);
   CHECK(hook.find("InProjectionSetup(ctx, base, __imp__tu023_sub_823EC218)") != std::string::npos);
   CHECK(hook.find("Ortho<ssf2t::TitleUpdate023Fight>(ctx, base, __imp__tu023_sub_823F5888)") != std::string::npos);
   CHECK(hook.find("MaskDrawer<ssf2t::TitleUpdate023Fight>(ctx, base, __imp__tu023_sub_821775B0)") != std::string::npos);
@@ -1298,7 +1297,7 @@ void TestWiring() {
   CHECK(hook.find("PreFightPathMatches<G>(base) &&\n         ssf2t::PreFightFillActive<G>(true, base)") !=
         std::string::npos);
   CHECK(hook.find("const bool pre_fight = PreFightFillActive<G>(base);") != std::string::npos);
-  CHECK(hook.find("if (fill || pre_fight) {") != std::string::npos);
+  CHECK(hook.find("if (FillActive<G>(base) || pre_fight) {") != std::string::npos);
   CHECK(hook.find("  if (g_scene_depth > 0 && g_in_projection_setup && FillActive<G>(base)) {") != std::string::npos);
   CHECK(hook.find("if (caller == G::kCharacterSelectQuadReturn) {") != std::string::npos);
   CHECK(hook.find("} else if (caller == G::kScrollingQuadReturn) {") != std::string::npos);
@@ -1658,110 +1657,6 @@ void TestSidePanelCallersPerVersion() {
   CHECK(!SkipsSidePanel<B>(true, true, B::kCharacterSelectQuadReturn));
 }
 
-// DEBUG_SAULO victory_capture
-void TestDebugSauloCaptureHelpers() {
-  using namespace debug_saulo;
-  CHECK(!CaptureExpired(0, 0));
-  CHECK(!CaptureExpired(kCaptureNanos - 1, 0));
-  CHECK(CaptureExpired(kCaptureNanos, 0));
-  CHECK(kCaptureNanos > 0 && kCaptureNanos <= 2'000'000'000);
-
-  UniqueKeys<3> keys;
-  CHECK(keys.Add(1) && keys.Add(2) && !keys.Add(1) && keys.Add(3));
-  CHECK(!keys.Add(4) && keys.size() == 3);
-  keys.Clear();
-  CHECK(keys.size() == 0 && keys.Add(4));
-
-  using B = Base013Fight;
-  using T = TitleUpdate023Fight;
-  CHECK(ClassifyCaller<B>(B::kCharacterSelectQuadReturn) == CallerKind::kCharacterSelect);
-  CHECK(ClassifyCaller<B>(B::kScrollingQuadReturn) == CallerKind::kScrolling);
-  CHECK(ClassifyCaller<B>(B::kLeftSidePanelQuadReturn) == CallerKind::kLeftSidePanel);
-  CHECK(ClassifyCaller<B>(B::kRightSidePanelQuadReturn) == CallerKind::kRightSidePanel);
-  CHECK(ClassifyCaller<T>(T::kScrollingQuadReturn) == CallerKind::kScrolling);
-  CHECK(ClassifyCaller<B>(T::kScrollingQuadReturn) == CallerKind::kOther);
-  CHECK(ClassifyCaller<T>(B::kCharacterSelectQuadReturn) == CallerKind::kOther);
-  CHECK(ClassifyCaller<B>(0) == CallerKind::kOther);
-
-  const QuadExtent extent = ExtentOf(kVersusQuad);
-  CHECK(extent.min_x == -80.0f && extent.max_x == 720.0f && extent.min_y == 16.0f && extent.max_y == 464.0f);
-  CHECK(extent.min_u == 0.0f && extent.max_u == 1.0f && extent.min_v == 0.25f && extent.max_v == 1.25f);
-  CHECK(IsFiniteQuad(kVersusQuad));
-  QuadVertices bad = kVersusQuad;
-  bad[1].u = std::numeric_limits<float>::quiet_NaN();
-  CHECK(!IsFiniteQuad(bad));
-  bad = kVersusQuad;
-  bad[2].x = std::numeric_limits<float>::infinity();
-  CHECK(!IsFiniteQuad(bad));
-
-  const QuadExtent other = ExtentOf(kSelectQuad);
-  CHECK(QuadKey(1, 2, extent) == QuadKey(1, 2, extent));
-  CHECK(QuadKey(1, 2, extent) != QuadKey(3, 2, extent));
-  CHECK(QuadKey(1, 2, extent) != QuadKey(1, 4, extent));
-  CHECK(QuadKey(1, 2, extent) != QuadKey(1, 2, other));
-
-  CHECK(!PlausibleGuestPointer(0) && !PlausibleGuestPointer(0x1000) && !PlausibleGuestPointer(0x83E3D909));
-  CHECK(PlausibleGuestPointer(0x83E3D908) && PlausibleGuestPointer(0x40000000) && !PlausibleGuestPointer(0xC0000000));
-  CHECK(!PlausibleGuestPointer(0xFC2A0000) && !PlausibleGuestPointer(0xFFFFFFFC));
-  CHECK(InGuestImage(0x82174F0C) && !InGuestImage(0x81FFFFFC) && !InGuestImage(0x84000000));
-
-  const std::array<uint32_t, kBackgroundHolders> holders{0x40000100, 0x40000200, 0, 0x40000400};
-  CHECK(std::string_view(TextureTag(0x40000100 + kGameTextureD3D, holders)) == "char_select");
-  CHECK(std::string_view(TextureTag(0x40000200 + kGameTextureD3D, holders)) == "world_left");
-  CHECK(std::string_view(TextureTag(0x40000400 + kGameTextureD3D, holders)) == "scrolling");
-  CHECK(std::string_view(TextureTag(kGameTextureD3D, holders)) == "other");
-  CHECK(std::string_view(TextureTag(0, holders)) == "other");
-}
-
-void TestDebugSauloLogging() {
-  const std::string hook = ReadSource("fight_area_hook.cpp");
-  size_t lines = 0;
-  for (size_t at = hook.find("REXLOG_WARN("); at != std::string::npos; at = hook.find("REXLOG_WARN(", at + 1)) {
-    size_t next = at + std::string_view("REXLOG_WARN(").size();
-    while (next < hook.size() && (hook[next] == ' ' || hook[next] == '\n' || hook[next] == '\r')) {
-      ++next;
-    }
-    constexpr std::string_view kLead = "\"DEBUG_SAULO ";
-    CHECK(hook.compare(next, kLead.size(), kLead) == 0);
-    ++lines;
-  }
-  CHECK(lines == 6);
-  CHECK(hook.find("DEBUG_SAULO F9_ARMED ") != std::string::npos);
-  CHECK(hook.find("REXLOG_INFO") == std::string::npos);
-  for (const char* kind : {"BEGIN", "STATE", "MASK", "QUAD", "END"}) {
-    CHECK(hook.find(std::string("DEBUG_SAULO victory_capture ") + kind + " ") != std::string::npos);
-  }
-  CHECK(hook.find("g_debug_armed.exchange(false") != std::string::npos);
-  CHECK(hook.find("if (!DebugWatching()) {") != std::string::npos);
-
-  const std::string key = ReadSource("debug_saulo_f9.cpp");
-  CHECK(key.find("rex::ui::VirtualKey::kF9") != std::string::npos);
-  CHECK(key.find("IsFreshKeyPress(e.prev_state())") != std::string::npos);
-  CHECK(key.find("DebugSauloArmVictoryCapture();") != std::string::npos);
-  CHECK(key.find("set_handled") == std::string::npos);
-  const size_t keydown = key.find("REXLOG_WARN(\"DEBUG_SAULO F9_KEYDOWN ");
-  const size_t arm = key.find("DebugSauloArmVictoryCapture();");
-  CHECK(keydown != std::string::npos && arm != std::string::npos && keydown < arm);
-  CHECK(key.find("REXLOG_WARN(\"DEBUG_SAULO F9_MODULE_READY ") != std::string::npos);
-  CHECK(key.find("REXLOG_INFO") == std::string::npos);
-  std::ifstream cmake_file(std::filesystem::path(SSF2T_SOURCE_DIR) / "CMakeLists.txt", std::ios::binary);
-  std::ostringstream cmake_text;
-  cmake_text << cmake_file.rdbuf();
-  const std::string cmake = cmake_text.str();
-  const size_t sources = cmake.find("set(SSF2T_SOURCES");
-  const size_t sources_end = cmake.find("\n)", sources);
-  const size_t member = cmake.find("src/debug_saulo_f9.cpp");
-  CHECK(sources != std::string::npos && member > sources && member < sources_end);
-  CHECK(cmake.find("add_executable(ssf2t_hd_remix WIN32 ${SSF2T_SOURCES})") != std::string::npos);
-  const std::string app = ReadSource("ssf2t_hd_remix_app.h");
-  CHECK(app.find("AttachDebugSauloF9Key(window(), ") != std::string::npos);
-  CHECK(app.find("DetachDebugSauloF9Key();") != std::string::npos);
-  for (const char* file : {"settings.cpp", "launcher.cpp", "keybinds.h"}) {
-    const std::string text = ReadSource(file);
-    CHECK(text.find("DebugSaulo") == std::string::npos && text.find("debug_saulo") == std::string::npos);
-  }
-}
-
 template <typename G, typename Other>
 void CheckImage(const char* name) {
   const std::filesystem::path image = std::filesystem::path(SSF2T_SOURCE_DIR) / "game" / "analysis" / name;
@@ -1811,8 +1706,6 @@ int main() {
   TestVictoryFlowReadsGuestGlobals();
   TestVictoryStepTablePerVersion();
   TestVictoryNeedsNoBackgroundExtension();
-  TestDebugSauloCaptureHelpers();
-  TestDebugSauloLogging();
   TestPreFightReadsGuestGlobals();
   TestGameRamInPhysicalHeap();
   TestNonFightWindowIsTheGamesOwn();

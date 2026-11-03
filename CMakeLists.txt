@@ -1,7 +1,7 @@
 # The recompiled game images and the SDK lookup live in cmake/ssf2t_guest_images.cmake.
 
 cmake_minimum_required(VERSION 3.25)
-project(ssf2t_hd_remix VERSION 0.3.0 LANGUAGES C CXX)
+project(ssf2t_hd_remix VERSION 0.3.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -182,7 +182,6 @@ set(SSF2T_SOURCES
     src/aspect_render.cpp
     src/crash_report.cpp
     src/diagnostics.cpp
-    src/debug_saulo_f9.cpp
     src/fight_area_hook.cpp
     src/frame_counter.cpp
     src/game_files.cpp

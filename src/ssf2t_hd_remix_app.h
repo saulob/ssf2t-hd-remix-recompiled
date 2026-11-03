@@ -34,7 +34,6 @@
 #include "guest_functions.h"
 #include "guest_image.h"
 #include "infinite_time.h"
-#include "debug_saulo_f9.h"
 #include "infinite_time_ui.h"
 #include "online_runtime.h"
 #include "online_setting.h"
@@ -256,9 +255,6 @@ class SuperStreetFighterApp : public rex::ReXApp {
         ShowInfiniteTimeNotice(ToggleInfiniteTime(game_settings_), kInfiniteTimeToggleNoticeSeconds);
       });
     }
-    if (window()) {
-      AttachDebugSauloF9Key(window(), guest_ == GuestVersion::kBase013 ? "base013" : "tu023");  // DEBUG_SAULO
-    }
     QueueStartupInfiniteTimeNotice(
         InfiniteTimeActive(REXCVAR_GET(ssf2t_infinite_time), REXCVAR_GET(ssf2t_online_enabled)));
     ReXApp::LaunchModule();
@@ -309,7 +305,6 @@ class SuperStreetFighterApp : public rex::ReXApp {
     }
     ModalDialog::DetachEscapeKey();
     DetachInfiniteTimeKey();
-    DetachDebugSauloF9Key();  // DEBUG_SAULO
     delete achievements_;
     DetachWindowHost();
     REXLOG_INFO("{}", FormatCleanExit(ProcessUptimeText()));

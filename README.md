@@ -59,7 +59,7 @@ The launcher tells the two packages apart by their content type, checks the Titl
 
 ## Installing
 
-1. Download **SSF2THDRemix-v0.3.0-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
+1. Download **SSF2THDRemix-v0.3.1-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
 2. Run **ssf2t_hd_remix.exe**. The launcher opens.
 3. On the **Play** page click **Install Game** and pick your game package. It is one file with a long hexadecimal name and no extension. On an Xbox 360 drive it is in `Content\0000000000000000\584108A4\000D0000\`.
 4. Optional: click **Install Title Update** and pick the Title Update #1 package (`Content\0000000000000000\584108A4\000B0000\` on an Xbox 360 drive). The two packages are installed separately and either can go first. Installing one does not install the other, and each button refuses the other kind of package.
@@ -70,7 +70,7 @@ The launcher tells the two packages apart by their content type, checks the Titl
 
 ### Linux AppImage (experimental)
 
-Download **SSF2THDRemix-v0.3.0-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
+Download **SSF2THDRemix-v0.3.1-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
 
 ### Windows SmartScreen
 

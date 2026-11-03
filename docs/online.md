@@ -8,7 +8,7 @@ The launcher only handles friends and presence. A match starts from the game its
 The Multiplayer menu lists only Local Match and Online Match. Online Match is the game's own Player Match, one against
 one with an online friend; Ranked Match, Tournament Match and the larger lobbies (Quarter Match) are not offered.
 
-Status (v0.3.0): the friend and Player Match flow, the XNet / QoS / VDP bridge and rollback netplay work on the original
+Status (v0.3.1): the friend and Player Match flow, the XNet / QoS / VDP bridge and rollback netplay work on the original
 Base013 and Title Update 1 (TU023) game images. Direct UDP between two PCs on different internet connections has been
 tested with real players: Online Match, Invite, several fights in one session and agreeing frame-zero state, with no
 gameplay desync observed. The relay fallback is implemented, tested by script (Node and C++ wire tests) and selected

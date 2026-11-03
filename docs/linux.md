@@ -38,7 +38,7 @@ is older than GCC 13.
    order, and only `default.xexp` is taken from the update.
 6. Wait for **Ready to play**, then press **PLAY**. It is enabled as soon as the game package is installed (game version 0.0.1.3), or plays 0.0.2.3 when the Title Update is installed too.
 
-Steam Deck is not a tested target for v0.3.0. Adding the AppImage as a non-Steam game should work, but nobody has tried it.
+Steam Deck is not a tested target for v0.3.1. Adding the AppImage as a non-Steam game should work, but nobody has tried it.
 
 ### If the AppImage does not start
 
@@ -88,7 +88,7 @@ checks that the generated code matches `config/guest`:
 ```sh
 tools/package-linux.sh            # incremental Release build, then package
 tools/package-linux.sh --clean    # clean Release build first
-tools/package-linux.sh --verify-only dist/SSF2THDRemix-v0.3.0-x86_64.AppImage
+tools/package-linux.sh --verify-only dist/SSF2THDRemix-v0.3.1-x86_64.AppImage
 tools/test.sh                     # the headless Linux parity gate (tools/test.ps1 runs it in WSL)
 ```
 

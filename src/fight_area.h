@@ -967,6 +967,5 @@ inline bool LoadCharacterSelectTextureSize(const uint8_t* base, TextureSize& siz
 }
 
 void SetFightAreaFill(bool fill);
-void DebugSauloArmVictoryCapture();  // DEBUG_SAULO: F9 victory-screen capture
 
 }  // namespace ssf2t

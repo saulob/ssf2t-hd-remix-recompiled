@@ -618,30 +618,20 @@ class FightRuntime {
     if (!fight_reporter_.active() || telemetry_code_ != TelemetryCode::kMatches) return;
     last_snapshot_ = np::ReadFightSnapshot<G>(np::GuestMemory{base});
     identity_ready_ = identity_ready_ || IdentityReady(ReadModes(base));
-    const bool started = fight_reporter_.started();
     const auto* core = session_->core();
     fight_reporter_.Observe(last_snapshot_, identity_ready_, core ? core->current_frame() : 0,
                             core ? core->confirmed_frame() : 0);
-    if (!started && fight_reporter_.started()) {
-      REXLOG_INFO("DEBUG_SAULO fight telemetry start point=presentation_complete generation={} fight={} p1={} p2={} guest={}",
-                  generation_, session_->fight_index(), fight_reporter_.character(0), fight_reporter_.character(1),
-                  G::kName);
-    }
   }
 
   void FinishFightReport() {
     if (!fight_reporter_.active()) return;
     const uint32_t completions = fight_reporter_.completions();
-    const uint32_t starts = fight_reporter_.starts();
     fight_reporter_.End(last_snapshot_, identity_ready_);
     identity_ready_ = false;
     const bool completed = fight_reporter_.completions() != completions;
-    REXLOG_INFO("DEBUG_SAULO fight telemetry end started={} late_start={} completed={} winner={} source={} wins={}:{} to_beat={} start_p1={} start_p2={} raw_p1={} raw_p2={} guest={}",
-                fight_reporter_.started(), fight_reporter_.starts() != starts, completed,
-                ssf2t::online::FightResultName(fight_reporter_.result()),
-                fight_reporter_.confirmed_result() ? "confirmed" : "left", last_snapshot_.wins[0], last_snapshot_.wins[1],
-                last_snapshot_.wins_to_beat, fight_reporter_.character(0), fight_reporter_.character(1),
-                last_snapshot_.character[0], last_snapshot_.character[1], G::kName);
+    REXLOG_INFO("fight telemetry end started={} completed={} winner={} wins={}:{} guest={}", fight_reporter_.started(),
+                completed, ssf2t::online::FightResultName(fight_reporter_.result()), last_snapshot_.wins[0],
+                last_snapshot_.wins[1], G::kName);
   }
 
   void OfferFrameZero(PPCContext& ctx, uint8_t* base, const GuestCalls& calls) {
