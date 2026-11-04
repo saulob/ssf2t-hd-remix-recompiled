@@ -16,6 +16,7 @@
 #include "aspect_ratio.h"
 #include "character/akuma.h"
 #include "character/akuma_portrait.h"
+#include "character/ultra_fighters.h"
 #include "guest_memory.h"
 #include "presentation_setting.h"
 #include "title_update_image.h"
@@ -27,14 +28,18 @@ constexpr int64_t kStaleMilliseconds = 3000;
 
 struct Base013Select {
   static constexpr uint32_t kLive = 0x83CA6C9C;
+  static constexpr uint32_t kLayout = 0x83CA290E;
 };
 
 struct TitleUpdate023Select {
   static constexpr uint32_t kLive = 0x83CA71B4;
+  static constexpr uint32_t kLayout = 0x83CA2E26;
 };
 
 std::atomic<int64_t> g_last_touch_ms{0};
 std::atomic<uint32_t> g_live{0};
+std::atomic<uint32_t> g_session{0};
+std::atomic<SelectLayout> g_layout{SelectLayout::kArcade};
 
 int64_t NowMilliseconds() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
@@ -49,7 +54,10 @@ bool SelectActive() {
 template <typename S>
 void TouchSelect(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   original(ctx, base);
-  if (!AkumaEnabled()) return;
+  if (!AkumaEnabled() && !UltraFightersEnabled()) return;
+  if (!SelectActive()) g_session.fetch_add(1, std::memory_order_relaxed);
+  g_layout.store(*GuestHost(base, S::kLayout) != 0 ? SelectLayout::kVersus : SelectLayout::kArcade,
+                 std::memory_order_relaxed);
   g_live.store(*GuestHost(base, S::kLive) | (uint32_t(*GuestHost(base, S::kLive + 1)) << 8), std::memory_order_relaxed);
   g_last_touch_ms.store(NowMilliseconds(), std::memory_order_relaxed);
 }
@@ -115,6 +123,12 @@ class AkumaPortraitOverlay final : public rex::ui::ImGuiDialog {
 };
 
 }  // namespace
+
+bool CharacterSelectActive() { return SelectActive(); }
+
+uint32_t CharacterSelectSession() { return g_session.load(std::memory_order_relaxed); }
+
+SelectLayout CharacterSelectLayout() { return g_layout.load(std::memory_order_relaxed); }
 
 void CreateAkumaOverlay(rex::ui::ImGuiDrawer* drawer, rex::ui::ImmediateDrawer* immediate_drawer,
                         const std::filesystem::path& game_dir) {

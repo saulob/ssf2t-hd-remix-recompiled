@@ -185,6 +185,32 @@ set(SSF2T_SOURCES
     src/character/akuma_navigation.cpp
     src/character/akuma_overlay.cpp
     src/character/akuma_portrait.cpp
+    src/character/character_moves.cpp
+    src/character/character_moves_hook.cpp
+    src/character/fighter_identity.cpp
+    src/character/ultra_fighters.cpp
+    src/character/ultra_gameplay_hook.cpp
+    src/character/ultra_hd_palette_hook.cpp
+    src/character/ultra_hud_hook.cpp
+    src/character/evil_ryu_debug.cpp
+    src/character/evil_ryu_debug_keys.cpp
+    src/character/ultra_moves_hook.cpp
+    src/character/ultra_confirm_hook.cpp
+    src/character/ultra_cursor_hook.cpp
+    src/character/ultra_navigation.cpp
+    src/character/evil_ryu_actions.cpp
+    src/character/evil_ryu_assets.cpp
+    src/character/evil_ryu_moves.cpp
+    src/character/evil_ryu_sprites.cpp
+    src/character/evil_ryu_audio.cpp
+    src/character/evil_ryu_results.cpp
+    src/character/ultra_audio_hook.cpp
+    src/character/ultra_results_hook.cpp
+    src/character/ultra_winner_hook.cpp
+    src/character/evil_ryu_palette.cpp
+    src/character/ultra_palette_hook.cpp
+    src/character/ultra_portrait_overlay.cpp
+    src/character/ultra_portraits.cpp
     src/crash_report.cpp
     src/diagnostics.cpp
     src/fight_area_hook.cpp
@@ -413,6 +439,75 @@ add_executable(ssf2t_akuma_setting_tests EXCLUDE_FROM_ALL tests/akuma_setting_te
     src/character/akuma_select.cpp src/character/akuma_portrait.cpp src/updater/third_party/miniz/miniz.c)
 target_include_directories(ssf2t_akuma_setting_tests PRIVATE src "${SSF2T_SDK_DIR}/include" "${_trg_dir}/include")
 add_dependencies(ssf2t_runtime_tests ssf2t_akuma_setting_tests)
+
+add_executable(ssf2t_ultra_portraits_tests EXCLUDE_FROM_ALL tests/ultra_portraits_tests.cpp
+    src/character/ultra_portraits.cpp src/character/akuma_portrait.cpp src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_ultra_portraits_tests PRIVATE src "${SSF2T_SDK_DIR}/include" "${_trg_dir}/include")
+add_dependencies(ssf2t_runtime_tests ssf2t_ultra_portraits_tests)
+
+add_executable(ssf2t_fighter_identity_tests EXCLUDE_FROM_ALL tests/fighter_identity_tests.cpp
+    src/character/fighter_identity.cpp)
+target_include_directories(ssf2t_fighter_identity_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_fighter_identity_tests)
+
+add_executable(ssf2t_ultra_navigation_tests EXCLUDE_FROM_ALL tests/ultra_navigation_tests.cpp
+    src/character/ultra_navigation.cpp src/character/fighter_identity.cpp)
+target_include_directories(ssf2t_ultra_navigation_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_ultra_navigation_tests)
+
+add_executable(ssf2t_evil_ryu_assets_tests EXCLUDE_FROM_ALL tests/evil_ryu_assets_tests.cpp
+    src/character/evil_ryu_assets.cpp)
+target_include_directories(ssf2t_evil_ryu_assets_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_assets_tests)
+
+add_executable(ssf2t_evil_ryu_palette_tests EXCLUDE_FROM_ALL tests/evil_ryu_palette_tests.cpp
+    src/character/evil_ryu_palette.cpp)
+target_include_directories(ssf2t_evil_ryu_palette_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_palette_tests)
+
+add_executable(ssf2t_evil_ryu_actions_tests EXCLUDE_FROM_ALL tests/evil_ryu_actions_tests.cpp
+    src/character/evil_ryu_actions.cpp src/character/evil_ryu_sprites.cpp)
+target_include_directories(ssf2t_evil_ryu_actions_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_actions_tests)
+
+add_executable(ssf2t_evil_ryu_moves_tests EXCLUDE_FROM_ALL tests/evil_ryu_moves_tests.cpp
+    src/character/evil_ryu_moves.cpp)
+target_include_directories(ssf2t_evil_ryu_moves_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_moves_tests)
+
+add_executable(ssf2t_evil_ryu_hud_tests EXCLUDE_FROM_ALL tests/evil_ryu_hud_tests.cpp
+    src/character/evil_ryu_sprites.cpp src/character/fighter_identity.cpp)
+target_include_directories(ssf2t_evil_ryu_hud_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_hud_tests)
+
+add_executable(ssf2t_evil_ryu_debug_tests EXCLUDE_FROM_ALL tests/evil_ryu_debug_tests.cpp
+    src/character/evil_ryu_debug.cpp src/character/evil_ryu_moves.cpp)
+target_include_directories(ssf2t_evil_ryu_debug_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_debug_tests)
+
+add_executable(ssf2t_character_moves_tests EXCLUDE_FROM_ALL tests/character_moves_tests.cpp
+    src/character/character_moves.cpp src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_character_moves_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_character_moves_tests)
+
+add_executable(ssf2t_ultra_select_presentation_tests EXCLUDE_FROM_ALL tests/ultra_select_presentation_tests.cpp
+    src/character/ultra_navigation.cpp src/character/fighter_identity.cpp)
+target_include_directories(ssf2t_ultra_select_presentation_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_ultra_select_presentation_tests)
+
+add_executable(ssf2t_evil_ryu_audio_tests EXCLUDE_FROM_ALL tests/evil_ryu_audio_tests.cpp
+    src/character/evil_ryu_audio.cpp)
+target_include_directories(ssf2t_evil_ryu_audio_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_audio_tests)
+
+add_executable(ssf2t_evil_ryu_results_tests EXCLUDE_FROM_ALL tests/evil_ryu_results_tests.cpp
+    src/character/evil_ryu_results.cpp src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_evil_ryu_results_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_results_tests)
+
+add_executable(ssf2t_evil_ryu_fingerprint_tests EXCLUDE_FROM_ALL tests/evil_ryu_fingerprint_tests.cpp)
+target_include_directories(ssf2t_evil_ryu_fingerprint_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_fingerprint_tests)
 
 # Launcher and window behaviour that needs no window: keyboard remapping, Escape not quitting, per-monitor DPI
 # helpers, the input-aware cursor and the window title.

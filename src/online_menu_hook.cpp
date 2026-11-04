@@ -1,11 +1,15 @@
 #include <algorithm>
 #include <cstring>
+#include <string>
 #include <string_view>
 
 #include <rex/hook.h>
 #include <rex/logging.h>
 #include <rex/system/kernel_state.h>
 
+#include "character/character_moves.h"
+#include "character/evil_ryu_results.h"
+#include "character/ultra_fighters.h"
 #include "guest_memory.h"
 #include "online_menu.h"
 #include "player_match_guest.h"
@@ -34,6 +38,11 @@ bool StartsLikeScripts(const char* text) {
   return std::string_view(text, size).find("<scripts>") != std::string_view::npos;
 }
 
+bool StartsLikeDescriptors(const char* text) {
+  constexpr std::string_view kOpen = "<UIElementDescriptors>";
+  return std::strncmp(text, kOpen.data(), kOpen.size()) == 0;
+}
+
 void LogMultiplayerItems(const char* guest) {
   const int removed = g_multiplayer_patched ? 0 : 1;
   REXLOG_INFO("multiplayer menu items local=1 online=1 ranked={} tournament={} guest={}", removed, removed,
@@ -50,11 +59,18 @@ struct OnlineMenuHooks {
     const char* guest_text = text ? reinterpret_cast<const char*>(GuestPtr(base, text)) : nullptr;
     if (guest_text && StartsLikeScreenSet(guest_text)) {
       const auto patch = ssf2t::PatchScreenSet(guest_text);
-      if (!patch || !ParsePatched(ctx, base, original, patch->xml)) {
+      std::string moves_xml = patch ? patch->xml : std::string(guest_text);
+      const bool ultra = ssf2t::character::UltraFightersEnabled();
+      const bool moves = ultra && ssf2t::character::PatchCharacterMovesScreen(moves_xml);
+      if (moves) REXLOG_INFO("DEBUG_SAULO EVIL_RYU character-moves screen patched guest={}", G::kName);
+      const bool results = ultra && ssf2t::character::PatchResultsScreen(moves_xml);
+      if (results) REXLOG_INFO("DEBUG_SAULO EVIL_RYU results screen patched guest={}", G::kName);
+      if ((!patch && !moves && !results) || !ParsePatched(ctx, base, original, moves_xml)) {
         REXLOG_INFO("multiplayer menu layout original guest={}", G::kName);
         original(ctx, base);
         return;
       }
+      if (!patch) return;
       g_multiplayer_patched = patch->multiplayer;
       LogMultiplayerItems(G::kName);
       REXLOG_INFO("online_match menu items find=1 custom={} create=1 guest={}",
@@ -65,9 +81,27 @@ struct OnlineMenuHooks {
     }
     if (guest_text && StartsLikeScripts(guest_text)) {
       const auto patch = ssf2t::PatchLobbyScripts(guest_text);
-      if (patch && ParsePatched(ctx, base, original, patch->xml)) {
-        REXLOG_INFO("game_lobby actions removed gamer_card={} players_list={} slot_help={} guest={}",
-                    patch->gamer_card, patch->players_list, patch->slot_help, G::kName);
+      std::string scripts = patch ? patch->xml : std::string(guest_text);
+      const bool ultra = ssf2t::character::UltraFightersEnabled();
+      const bool moves = ultra && ssf2t::character::PatchCharacterMovesScripts(scripts);
+      const bool results = ultra && ssf2t::character::PatchResultsScripts(scripts);
+      if ((patch || moves || results) && ParsePatched(ctx, base, original, scripts)) {
+        if (patch) {
+          REXLOG_INFO("game_lobby actions removed gamer_card={} players_list={} slot_help={} guest={}",
+                      patch->gamer_card, patch->players_list, patch->slot_help, G::kName);
+        }
+        if (moves) REXLOG_INFO("DEBUG_SAULO EVIL_RYU character-moves scripts patched guest={}", G::kName);
+        if (results) REXLOG_INFO("DEBUG_SAULO EVIL_RYU results scripts patched guest={}", G::kName);
+        return;
+      }
+    }
+    if (guest_text && ssf2t::character::UltraFightersEnabled() && StartsLikeDescriptors(guest_text)) {
+      std::string descriptors = guest_text;
+      const bool grid = ssf2t::character::PatchResultsGrid(descriptors);
+      const bool animations = ssf2t::character::PatchResultsAnimations(descriptors);
+      if ((grid || animations) && ParsePatched(ctx, base, original, descriptors)) {
+        REXLOG_INFO("DEBUG_SAULO EVIL_RYU results descriptors patched grid={} animations={} guest={}", grid, animations,
+                    G::kName);
         return;
       }
     }

@@ -36,6 +36,17 @@ constexpr uint32_t GuestHostOffset(uint32_t addr) {
 
 // For guest pointers read at runtime; fixed image addresses are below the physical heap.
 inline const uint8_t* GuestHost(const uint8_t* base, uint32_t addr) { return base + addr + GuestHostOffset(addr); }
+inline uint8_t* GuestHost(uint8_t* base, uint32_t addr) { return base + addr + GuestHostOffset(addr); }
+
+// Stores for addresses read from guest pointers, which may be physical heap: the plain StoreBE* below miss it by
+// kPhysicalHeapHostOffset. Fighters, the fight work object and palette RAM all live there.
+inline void GuestStore8(uint8_t* base, uint32_t addr, uint8_t v) { *GuestHost(base, addr) = v; }
+inline void GuestStoreBE16(uint8_t* base, uint32_t addr, uint16_t v) {
+  StoreBE<uint16_t>(GuestHost(base, addr), 0, v);
+}
+inline void GuestStoreBE32(uint8_t* base, uint32_t addr, uint32_t v) {
+  StoreBE<uint32_t>(GuestHost(base, addr), 0, v);
+}
 
 inline void StoreBE16(uint8_t* base, uint32_t addr, uint16_t v) { StoreBE<uint16_t>(base, addr, v); }
 inline void StoreBE32(uint8_t* base, uint32_t addr, uint32_t v) { StoreBE<uint32_t>(base, addr, v); }

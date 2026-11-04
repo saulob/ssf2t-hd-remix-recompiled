@@ -1,7 +1,12 @@
 #include <array>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <iterator>
+#include <utility>
+#include <vector>
 #include <string_view>
 
 #include "character/akuma.h"
@@ -206,6 +211,111 @@ int main() {
     Check(fresh.Resolve(true, 0, kAkumaLive, NavDirection::kDown, next) && next == kGuile, "invalid column falls back to Guile");
     Check(!fresh.Resolve(true, 2, kGuile, NavDirection::kUp, next), "an invalid side is ignored");
     Check(!fresh.Resolve(true, 0, 16, NavDirection::kUp, next), "a non-roster value is not redirected");
+  }
+
+  {
+    using namespace ssf2t::character;
+    uint8_t next = 0;
+
+    for (int column = 0; column < kVersusColumns; ++column) {
+      AkumaNavigation nav;
+      const uint8_t top = kVersusTopRow[column];
+      Check(nav.Resolve(true, SelectLayout::kVersus, 0, top, NavDirection::kUp, next) && next == kAkumaLive,
+            "Local Match: Up from every top-row cell enters Akuma");
+      Check(nav.column[0] == column && nav.column[1] == kNoColumn, "Local Match: the source column is remembered");
+      AkumaNavigation down = nav;
+      Check(down.Resolve(true, SelectLayout::kVersus, 0, kAkumaLive, NavDirection::kDown, next) && next == top,
+            "Local Match: Akuma + Down returns to the same top-row cell");
+      Check(nav.Resolve(true, SelectLayout::kVersus, 0, kAkumaLive, NavDirection::kUp, next) &&
+                next == kVersusBottomRow[column],
+            "Local Match: Akuma + Up reaches the bottom-row cell of the column");
+      Check(!nav.Resolve(true, SelectLayout::kVersus, 0, kVersusBottomRow[column], NavDirection::kUp, next),
+            "Local Match: bottom-row Up keeps the original move");
+      Check(!nav.Resolve(true, SelectLayout::kVersus, 0, top, NavDirection::kDown, next),
+            "Local Match: top-row Down keeps the original move");
+    }
+    Check(kVersusTopRow[kHondaColumn] == 1, "Local Match: the guest's own Akuma entry is Honda");
+
+    AkumaNavigation off;
+    Check(!off.Resolve(false, SelectLayout::kVersus, 0, kVersusTopRow[3], NavDirection::kUp, next),
+          "Off: Local Match navigation is untouched");
+    for (const uint8_t middle : {uint8_t(10), uint8_t(4), uint8_t(5), uint8_t(6), uint8_t(7), uint8_t(9)}) {
+      AkumaNavigation nav;
+      Check(!nav.Resolve(true, SelectLayout::kVersus, 0, middle, NavDirection::kUp, next),
+            "Local Match: the middle row never enters Akuma");
+    }
+
+    AkumaNavigation both;
+    both.Resolve(true, SelectLayout::kVersus, 0, kVersusTopRow[1], NavDirection::kUp, next);
+    both.Resolve(true, SelectLayout::kVersus, 1, kVersusTopRow[5], NavDirection::kUp, next);
+    Check(both.column[0] == 1 && both.column[1] == 5, "Local Match: P1 and P2 remember their own columns");
+    Check(both.Resolve(true, SelectLayout::kVersus, 1, kAkumaLive, NavDirection::kDown, next) &&
+              next == kVersusTopRow[5],
+          "Local Match: P2 returns through its own column");
+    Check(both.column[0] == 1, "Local Match: P2 leaving Akuma keeps P1's column");
+
+    AkumaNavigation moved;
+    moved.Resolve(true, SelectLayout::kVersus, 0, kVersusTopRow[4], NavDirection::kUp, next);
+    Check(moved.Resolve(true, SelectLayout::kArcade, 0, kAkumaLive, NavDirection::kDown, next) &&
+              next == kTopRow[kGuileColumn],
+          "A column from the other grid is not reused");
+
+    Check(SelectLayoutForMode(0) == SelectLayout::kArcade, "mode 0 is the arcade grid");
+    Check(SelectLayoutForMode(1) == SelectLayout::kVersus && SelectLayoutForMode(2) == SelectLayout::kVersus,
+          "local modes use the versus grid");
+  }
+
+  {
+    using namespace ssf2t::character;
+    // The guest's own tables decide the visual rows: positions give the grid, the navigation table gives the Akuma cell.
+    constexpr uint32_t kImageBase = 0x82000000;
+    constexpr uint32_t kArcadeNav = 0x83A2D320;
+    constexpr uint32_t kVersusNav = 0x83A2D298;
+    constexpr uint32_t kArcadePositions = 0x83A330B8;
+    constexpr uint32_t kVersusPositions = 0x83A33140;
+    std::ifstream in("game/analysis/default-0.0.1.3.image.bin", std::ios::binary);
+    std::vector<uint8_t> image((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (image.size() > kVersusPositions - kImageBase + 34 * 4) {
+      const auto nav = [&](uint32_t table, int live, int direction) {
+        return image[table - kImageBase + size_t(live) * 4 + size_t(direction)];
+      };
+      const auto position = [&](uint32_t table, int live) {
+        const size_t at = table - kImageBase + size_t(live) * 4;
+        return std::pair<int, int>{image[at] << 8 | image[at + 1], image[at + 2] << 8 | image[at + 3]};
+      };
+      const auto row_of = [&](uint32_t table, int y, int columns) {
+        std::vector<std::pair<int, int>> cells;
+        for (int live = 0; live < 18; ++live) {
+          if (position(table, live).second == y) cells.push_back({position(table, live).first, live});
+        }
+        std::sort(cells.begin(), cells.end());
+        std::vector<int> ids;
+        for (const auto& cell : cells) ids.push_back(cell.second);
+        return ids.size() == size_t(columns) ? ids : std::vector<int>{};
+      };
+      const auto matches = [](const std::vector<int>& ids, const auto& row) {
+        return std::equal(ids.begin(), ids.end(), row.begin(), row.end());
+      };
+      Check(matches(row_of(kArcadePositions, 48, kRosterColumns), kTopRow), "the arcade top row is the y=48 row of the guest positions");
+      Check(matches(row_of(kArcadePositions, 16, kRosterColumns), kBottomRow), "the arcade bottom row is the y=16 row of the guest positions");
+      Check(matches(row_of(kVersusPositions, 80, kVersusColumns), kVersusTopRow), "the versus top row is the y=80 row of the guest positions");
+      Check(matches(row_of(kVersusPositions, 16, kVersusColumns), kVersusBottomRow), "the versus bottom row is the y=16 row of the guest positions");
+      Check(position(kArcadePositions, kAkumaLive).second == 112 && position(kVersusPositions, kAkumaLive).second == 112,
+            "Akuma sits one row above the top row in both grids");
+      Check(nav(kArcadeNav, TopRowAt(SelectLayout::kArcade, NativeAkumaColumn(SelectLayout::kArcade)), 0) == kAkumaLive,
+            "the arcade grid enters Akuma from the native column");
+      Check(nav(kVersusNav, TopRowAt(SelectLayout::kVersus, NativeAkumaColumn(SelectLayout::kVersus)), 0) == kAkumaLive,
+            "the versus grid enters Akuma from the native column");
+      for (int column = 0; column < kRosterColumns; ++column) {
+        Check(nav(kArcadeNav, TopRowAt(SelectLayout::kArcade, column), 1) == BottomRowAt(SelectLayout::kArcade, column),
+              "arcade columns pair top and bottom through the guest's Down move");
+      }
+      for (int column = 0; column < kVersusColumns; ++column) {
+        const int top = TopRowAt(SelectLayout::kVersus, column);
+        Check(nav(kVersusNav, top, 3) == TopRowAt(SelectLayout::kVersus, (column + 1) % kVersusColumns),
+              "the versus top row is chained by the guest's Right move");
+      }
+    }
   }
 
   Check(ssf2t::online::kCharacterCount == 17, "roster count is unchanged");
