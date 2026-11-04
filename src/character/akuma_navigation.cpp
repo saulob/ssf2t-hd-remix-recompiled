@@ -6,6 +6,8 @@
 
 #include "character/akuma.h"
 #include "character/akuma_navigation.h"
+#include "character/host_rollback.h"
+#include "character/secret_select.h"
 #include "character/ultra_fighters.h"
 #include "character/ultra_navigation.h"
 #include "guest_memory.h"
@@ -50,19 +52,14 @@ struct PendingMove {
   SelectLayout layout = SelectLayout::kArcade;
 };
 
-template <typename G>
-bool OnlineSelect(const uint8_t* base) {
-  return *GuestHost(base, G::kGameMode) == kOnlineGameMode;
-}
-
 template <typename G, typename S>
 PendingMove ReadMove(const PPCContext& ctx, const uint8_t* base) {
   PendingMove move;
   const uint8_t pad = *GuestHost(base, S::kPad);
   const bool up = (pad & kUpBit) != 0;
   const bool down = !up && (pad & kDownBit) != 0;
-  if (!AkumaEnabled() || ctx.r3.u32 != 0 || (!up && !down)) return move;
-  if (*GuestHost(base, S::kHdStyle) == 0 || OnlineSelect<G>(base)) return move;
+  if (!AkumaAvailable(*GuestHost(base, G::kGameMode)) || ctx.r3.u32 != 0 || (!up && !down)) return move;
+  if (*GuestHost(base, S::kHdStyle) == 0) return move;
   const uint32_t work = LoadBE32(GuestHost(base, G::kFightWork + 4), 0);
   if (work < 0x10000 || work >= 0xFFFF0000u) return move;
   move.side = *GuestHost(base, work + kSideOffset);
@@ -93,17 +90,13 @@ bool ReadUltraDirection(uint8_t pad, PadDirection& direction) {
   return true;
 }
 
-// Evil Ryu is a host identity the rollback peers do not exchange, so he stays out of every online Character Select.
-template <typename G>
-bool NetplaySelect(const uint8_t* base) {
-  return *GuestHost(base, G::kGameMode) == kOnlineGameMode ||
-         rex::cvar::GetFlagByName(kNetplayRoleSetting) != kNetplayRoleOff;
-}
+// The developer Netplay Test replays a Local Match fight without the Character Select, so the cell stays out of it.
+bool DeveloperNetplaySelect() { return rex::cvar::GetFlagByName(kNetplayRoleSetting) != kNetplayRoleOff; }
 
 // Returns true when the Evil Ryu cell consumed the move and the guest handler must not run.
 template <typename G, typename S>
 bool NavigateUltra(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
-  if (!UltraFightersEnabled() || ctx.r3.u32 != 0 || NetplaySelect<G>(base)) return false;
+  if (!EvilRyuAvailable(*GuestHost(base, G::kGameMode)) || ctx.r3.u32 != 0 || DeveloperNetplaySelect()) return false;
   PadDirection direction;
   if (!ReadUltraDirection(*GuestHost(base, S::kPad), direction)) return false;
   if (*GuestHost(base, S::kHdStyle) == 0) return false;
@@ -129,6 +122,9 @@ void NavigateSelect(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
 }
 
 }  // namespace
+
+AkumaNavigation& GlobalAkumaNavigation() { return g_navigation; }
+
 }  // namespace ssf2t::character
 
 REX_EXTERN(__imp__base013_sub_82243D78);

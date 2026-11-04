@@ -138,6 +138,24 @@ export const ADMIN_HTML = String.raw`<!doctype html>
       <p id="chars-empty" class="empty"></p>
     </div>
     <div class="panel">
+      <h2>Secret characters</h2>
+      <p id="secret-line" class="muted"></p>
+      <div class="cards compact">
+        <div class="card"><span class="label">Rooms with Akuma available</span><span id="s-akuma-available" class="value">–</span></div>
+        <div class="card"><span class="label">Rooms with Evil Ryu available</span><span id="s-evil-ryu-available" class="value">–</span></div>
+        <div class="card"><span class="label">Akuma option mismatch</span><span id="s-akuma-mismatch" class="value">–</span></div>
+        <div class="card"><span class="label">Evil Ryu option mismatch</span><span id="s-evil-ryu-mismatch" class="value">–</span></div>
+        <div class="card"><span class="label">Unsupported-peer mismatch</span><span id="s-unsupported" class="value">–</span></div>
+        <div class="card"><span class="label">Fights with Akuma</span><span id="s-fights-akuma" class="value">–</span></div>
+        <div class="card"><span class="label">Fights with Evil Ryu</span><span id="s-fights-evil-ryu" class="value">–</span></div>
+        <div class="card"><span class="label">Akuma mirror fights</span><span id="s-fights-akuma-mirror" class="value">–</span></div>
+        <div class="card"><span class="label">Evil Ryu mirror fights</span><span id="s-fights-evil-ryu-mirror" class="value">–</span></div>
+        <div class="card"><span class="label">Akuma vs Evil Ryu fights</span><span id="s-fights-akuma-vs-evil-ryu" class="value">–</span></div>
+        <div class="card"><span class="label">Matches with Akuma</span><span id="s-matches-akuma" class="value">–</span></div>
+        <div class="card"><span class="label">Matches with Evil Ryu</span><span id="s-matches-evil-ryu" class="value">–</span></div>
+      </div>
+    </div>
+    <div class="panel">
       <h2>Daily totals</h2>
       <div class="scroll"><table id="daily"></table></div>
     </div>
@@ -169,6 +187,10 @@ export const ADMIN_HTML = String.raw`<!doctype html>
           they are in use. Each fight counts two picks, one per side. Win and loss rates are over completed fights; a fight
           cut short by a disconnect counts as started only.</li>
         <li>Fights by platform count each fight once per side, so the two platforms of a fight both appear.</li>
+        <li>Secret characters: a room counts once, when both players are connected, as available (both support and enabled
+          the character), an option mismatch (both support it, only one enabled it) or an unsupported peer (one client
+          does not know it while the other has it enabled). Fights and matches count Akuma and Evil Ryu from the fights
+          that started.</li>
         <li>Last matches keeps the latest 50 closed matches for 30 days, with no names, codes, addresses, countries or
           characters.</li>
         <li>Direct, Relay and Pending count the matches running now. A match is Pending until its host chooses a
@@ -392,7 +414,8 @@ export const ADMIN_JS = String.raw`(function () {
     pm_join_limited: 'Player Match joins refused',
     invite_limited: 'Invites refused',
     match_resume_limited: 'Match resumes refused',
-    relay_abuse_closed: 'Relay connections or relays closed for abuse'
+    relay_abuse_closed: 'Relay connections or relays closed for abuse',
+    fight_secret_rejected: 'Fights refused: secret character not available'
   };
   var STATES = { in_game: 'In game', connecting: 'Connecting' };
   var BUILDS = { base013: 'Original · 0.0.1.3', tu023: 'Title Update #1 · 0.0.2.3' };
@@ -410,6 +433,15 @@ export const ADMIN_JS = String.raw`(function () {
     ]
   };
   var TRANSPORTS = { direct: 'Direct', relay: 'Relay', pending: 'Pending' };
+  var SECRET_CARDS = [
+    ['s-akuma-available', 'secret', 'akuma_available'], ['s-evil-ryu-available', 'secret', 'evil_ryu_available'],
+    ['s-akuma-mismatch', 'secret', 'akuma_option_mismatch'], ['s-evil-ryu-mismatch', 'secret', 'evil_ryu_option_mismatch'],
+    ['s-unsupported', 'secret', 'unsupported_peer'],
+    ['s-fights-akuma', 'secret_fight', 'akuma'], ['s-fights-evil-ryu', 'secret_fight', 'evil_ryu'],
+    ['s-fights-akuma-mirror', 'secret_fight', 'akuma_mirror'], ['s-fights-evil-ryu-mirror', 'secret_fight', 'evil_ryu_mirror'],
+    ['s-fights-akuma-vs-evil-ryu', 'secret_fight', 'akuma_vs_evil_ryu'],
+    ['s-matches-akuma', 'secret_match', 'akuma'], ['s-matches-evil-ryu', 'secret_match', 'evil_ryu']
+  ];
 
   function storedToken() {
     try { return sessionStorage.getItem(KEY) || ''; } catch (e) { return ''; }
@@ -700,6 +732,14 @@ export const ADMIN_JS = String.raw`(function () {
     table.appendChild(body);
   }
 
+  function secretPanel(history) {
+    $('secret-line').textContent = 'Last ' + history.days + ' days. Rooms are counted once, when both players are connected.';
+    SECRET_CARDS.forEach(function (card) {
+      var found = (history.dimensions[card[1]] || []).filter(function (item) { return item.value === card[2]; })[0];
+      $(card[0]).textContent = fmt(found ? found.count : 0);
+    });
+  }
+
   function durationText(ms) {
     var seconds = Math.round(ms / 1000);
     if (seconds < 60) return seconds + 's';
@@ -933,6 +973,7 @@ export const ADMIN_JS = String.raw`(function () {
     characterPanels(history.characters);
     matchupPanel(history.matchups);
     characterTable(history.characters);
+    secretPanel(history);
     dailyTable(history.daily);
     rejects(history);
     protection(history);

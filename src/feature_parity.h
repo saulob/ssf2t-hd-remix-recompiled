@@ -135,7 +135,8 @@ inline constexpr Feature kFeatures[] = {
     {"Online service, identity and friends", "", "", "kOnlineEnabledSetting,kOnlineNameSetting", "", "", "", "",
      "src/online/online_service.cpp,src/online/identity.cpp,src/online/lobby_link.cpp,src/online/friend_view.cpp,"
      "src/online/instance.cpp,src/online/protocol.cpp,src/online_page.cpp,src/online_runtime.cpp,"
-     "src/friend_code_field.cpp,src/online/websocket.cpp,src/online/websocket_frame.cpp",
+     "src/friend_code_field.cpp,src/online/websocket.cpp,src/online/websocket_frame.cpp,"
+     "src/online/secret_characters.cpp,src/online/secret_view.cpp",
      "src/online/websocket_win.cpp,src/clipboard_win32.cpp", "src/online/websocket_posix.cpp,src/clipboard_sdl.cpp",
      "src/online/websocket_win.cpp:connect,src/online/websocket_win.cpp:send_text,src/online/websocket_win.cpp:receive,"
      "src/online/websocket_win.cpp:http_get,src/clipboard_win32.cpp:ReadClipboardText,"
@@ -329,6 +330,7 @@ inline constexpr GateReview kAvailabilityMessages[] = {
     {"src/online_page.cpp", "the online service cannot be reached"},
     {"src/online/connection_test.cpp", "the router offers no automatic port setup"},
     {"src/online/online_service.cpp", "the online service lacks a capability"},
+    {"src/online/secret_view.cpp", "the online service or the opponent lacks a capability"},
     {"src/online/protocol.cpp", "the online service refuses relay"},
     {"src/update_config.cpp", "the program was not started from the release package that can update itself"},
     {"src/updater/update_controller.cpp", "the update helper of the release package is missing"},

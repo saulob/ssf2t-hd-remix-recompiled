@@ -150,6 +150,8 @@ set(SSF2T_ONLINE_SOURCES
     src/online/protocol.cpp
     src/online/random.cpp
     src/online/rendezvous.cpp
+    src/online/secret_characters.cpp
+    src/online/secret_view.cpp
     src/online/stun.cpp
     src/online/upnp.cpp
     src/online/websocket.cpp
@@ -188,6 +190,7 @@ set(SSF2T_SOURCES
     src/character/character_moves.cpp
     src/character/character_moves_hook.cpp
     src/character/fighter_identity.cpp
+    src/character/host_rollback.cpp
     src/character/ultra_fighters.cpp
     src/character/ultra_gameplay_hook.cpp
     src/character/ultra_hd_palette_hook.cpp
@@ -454,6 +457,15 @@ add_executable(ssf2t_ultra_navigation_tests EXCLUDE_FROM_ALL tests/ultra_navigat
     src/character/ultra_navigation.cpp src/character/fighter_identity.cpp)
 target_include_directories(ssf2t_ultra_navigation_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_ultra_navigation_tests)
+
+# Secret characters online: the negotiation rule, the Character Select gating, the rollback-saved host selection and
+# the validation of a selection. Headless.
+add_executable(ssf2t_secret_select_tests EXCLUDE_FROM_ALL tests/secret_select_tests.cpp
+    src/character/ultra_navigation.cpp src/character/fighter_identity.cpp src/character/evil_ryu_moves.cpp
+    src/online/secret_characters.cpp)
+target_include_directories(ssf2t_secret_select_tests PRIVATE src)
+target_compile_options(ssf2t_secret_select_tests PRIVATE -Wall -Wextra)
+add_dependencies(ssf2t_runtime_tests ssf2t_secret_select_tests)
 
 add_executable(ssf2t_evil_ryu_assets_tests EXCLUDE_FROM_ALL tests/evil_ryu_assets_tests.cpp
     src/character/evil_ryu_assets.cpp)

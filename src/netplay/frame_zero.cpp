@@ -40,8 +40,8 @@ std::string Hex(const uint8_t* data, size_t size) {
 }  // namespace
 
 std::vector<uint8_t> FrameZeroView(const std::vector<uint8_t>& blob) {
-  if (blob.size() != kSimBlobSize) return blob;
-  std::vector<uint8_t> view = blob;
+  if (blob.size() < kSimBlobSize) return blob;
+  std::vector<uint8_t> view(blob.begin(), blob.begin() + kSimBlobSize);
   std::fill(view.begin() + kGuestStateSize, view.begin() + kGuestStateSize + kInputTableStateBytes, 0);
   for (uint32_t player = 0; player < kPlayers; ++player) {
     for (const uint32_t field : kInputCommandFields) {
@@ -234,7 +234,7 @@ bool FrameZeroCheck::AdoptionReady() const {
 }
 
 std::optional<FrameZeroAdoption> FrameZeroCheck::Adopt(std::vector<uint8_t>& blob) const {
-  if (!AdoptionReady() || blob.size() != view_.size()) return std::nullopt;
+  if (!AdoptionReady() || blob.size() < view_.size()) return std::nullopt;
   FrameZeroAdoption adoption;
   for (const size_t block : *differing_) {
     const size_t begin = block * kStateBlockBytes;

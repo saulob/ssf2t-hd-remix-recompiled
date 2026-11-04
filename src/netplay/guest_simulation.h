@@ -8,6 +8,7 @@
 
 #include "guest_memory.h"
 #include "netplay/guest_netplay.h"
+#include "netplay/host_state.h"
 #include "netplay/input_model.h"
 #include "netplay/rollback_core.h"
 
@@ -65,7 +66,7 @@ class GuestSimulation final : public Simulation {
     const uint32_t snapshot = LoadBE32(base_, G::kSnapshotPointer);
     if (!PointerUsable(snapshot)) return false;
     Callback(kCmdSave, 0);
-    out.resize(kSimBlobSize);
+    out.resize(kSimBlobSize + HostStateBytes());
     uint8_t* at = out.data();
     at = Put(at, HostAt(snapshot), kArenaSaveSize);
     at = Put(at, base_ + G::kGlobalsSnapshot, kGlobalsSaveSize);
@@ -74,12 +75,13 @@ class GuestSimulation final : public Simulation {
     at = Put(at, base_ + G::kRngState, kRngStateBytes);
     at = Put(at, base_ + G::kSideOrder, kSideOrderBytes);
     std::memcpy(at, history_.words(), sizeof(InputWord) * kPlayers);
+    SaveHostState(at + sizeof(InputWord) * kPlayers);
     return true;
   }
 
   bool Load(const std::vector<uint8_t>& in) override {
     const uint32_t snapshot = LoadBE32(base_, G::kSnapshotPointer);
-    if (!PointerUsable(snapshot) || in.size() != kSimBlobSize) return false;
+    if (!PointerUsable(snapshot) || in.size() != kSimBlobSize + HostStateBytes()) return false;
     const uint8_t* at = in.data();
     at = Take(HostAt(snapshot), at, kArenaSaveSize);
     at = Take(base_ + G::kGlobalsSnapshot, at, kGlobalsSaveSize);
@@ -90,6 +92,7 @@ class GuestSimulation final : public Simulation {
     InputWord previous[kPlayers];
     std::memcpy(previous, at, sizeof(previous));
     history_.set_previous(previous);
+    LoadHostState(at + sizeof(previous));
     Callback(kCmdLoad, 0);
     return true;
   }

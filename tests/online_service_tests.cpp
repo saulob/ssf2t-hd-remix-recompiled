@@ -18,6 +18,7 @@
 #include "netplay/relay_frame.h"
 #include "online/friend_view.h"
 #include "online/online_service.h"
+#include "online/secret_view.h"
 
 using namespace ssf2t::online;
 
@@ -151,6 +152,7 @@ struct Rig {
   std::unique_ptr<OnlineService> service;
   std::string me;
   double now = 100;
+  SecretCapabilities secret_caps;
 
   // Without `udp` the service runs signaling only; `socket` stands in for udp's own gameplay socket.
   explicit Rig(const std::string& guest = kGuestBase013, bool ephemeral = false, const std::string& token = kToken,
@@ -170,6 +172,7 @@ struct Rig {
       return id;
     };
     config.log = [this](const std::string& line) { logs.push_back(line); };
+    config.secret = [this] { return secret_caps; };
     config.open_channel = [this](const std::string& url) {
       auto state = std::make_shared<ChannelState>();
       state->url = url;
@@ -2499,8 +2502,245 @@ void TestCapabilityCheckSparesSameNetworkAndCurrentServices() {
   CHECK(current.CountLogs("reason=peer_endpoint_timeout peer_signaled=true service_forwards_public=true") == 1);
 }
 
+// ---- secret characters ----
+
+std::string FlagsJson(const SecretSet& set) {
+  return std::string("{\"akuma\":") + (set.akuma ? "true" : "false") + ",\"evil_ryu\":" + (set.evil_ryu ? "true" : "false") + "}";
+}
+
+std::string SecretJson(const SecretCapabilities& peer, const SecretSet& effective) {
+  return "\"secret\":{\"peer\":{\"supports\":" + FlagsJson(peer.supports) + ",\"enabled\":" + FlagsJson(peer.enabled) +
+         "},\"effective\":" + FlagsJson(effective) + "}";
+}
+
+SecretCapabilities Caps(bool akuma, bool evil, bool supports = true) {
+  SecretCapabilities caps;
+  caps.supports = {supports, supports};
+  caps.enabled = {akuma, evil};
+  return caps;
+}
+
+void SignInToSecretService(Rig& rig, bool secret_service = true) {
+  rig.Enable();
+  rig.Tick();
+  rig.Event(ChannelEvent::Kind::kOpen);
+  rig.Reply("hello", "\"player\":\"" + rig.me + "\",\"name\":\"Saulo\",\"friend_code\":\"" + rig.me +
+                         "\",\"capabilities\":{\"protocol_version\":3,\"worker_build\":\"test\",\"secret_characters\":" +
+                         (secret_service ? "true" : "false") + "}");
+}
+
+void StartSecretMatch(Rig& rig, const char* id, const char* role, const std::string& secret) {
+  rig.Feed(std::string("{\"ev\":\"match.created\",\"session\":\"") + kSession + "\"," +
+           MatchBody(id, role, "base013", kFriendA, "SauloB") + (secret.empty() ? "" : "," + secret) + "}");
+}
+
+// What the Worker answers: both clients' AND, which the client then checks against its own.
+SecretSet WorkerAnd(const SecretCapabilities& a, const SecretCapabilities& b) { return EffectiveSecrets(a, b); }
+
+void TestHelloAdvertisesWhatThisBuildSupportsAndWhatIsOn() {
+  Rig rig;
+  rig.secret_caps = Caps(true, false);
+  SignInToSecretService(rig);
+  const std::string hello = rig.LastRequest("hello");
+  CHECK(Contains(hello, "\"secret\":{\"supports\":{\"akuma\":true,\"evil_ryu\":true},\"enabled\":{\"akuma\":true,"
+                        "\"evil_ryu\":false}}"));
+  CHECK(rig.CountLogs("online secret-cap local akuma=1 evil=0") == 1);
+  CHECK(rig.CountLogs("online secret-cap service supported=true") == 1);
+
+  Rig bare;
+  SignInToSecretService(bare);
+  CHECK(Contains(bare.LastRequest("hello"),
+                 "\"secret\":{\"supports\":{\"akuma\":false,\"evil_ryu\":false},\"enabled\":{\"akuma\":false,"
+                 "\"evil_ryu\":false}}"));
+}
+
+void TestEveryOnOffCombinationIsDeterministic() {
+  for (int mine = 0; mine < 4; ++mine) {
+    for (int theirs = 0; theirs < 4; ++theirs) {
+      const SecretCapabilities local = Caps((mine & 1) != 0, (mine & 2) != 0);
+      const SecretCapabilities peer = Caps((theirs & 1) != 0, (theirs & 2) != 0);
+      Rig rig;
+      rig.secret_caps = local;
+      SignInToSecretService(rig);
+      StartSecretMatch(rig, "m1", "host", SecretJson(peer, WorkerAnd(local, peer)));
+      const SecretSet effective = rig.service->SecretEffective();
+      CHECK(effective.akuma == (((mine & 1) != 0) && ((theirs & 1) != 0)));
+      CHECK(effective.evil_ryu == (((mine & 2) != 0) && ((theirs & 2) != 0)));
+      CHECK(rig.service->snapshot().secret.effective == effective);
+    }
+  }
+}
+
+void TestSecretStatusTextsExplainWhyACharacterIsOrIsNotAvailable() {
+  const auto row = [](const Snapshot& state, const SecretCapabilities& edited, SecretCharacter which) {
+    for (const SecretRowView& view : DescribeSecretCharacters(state, edited)) {
+      if (view.character == which) return view;
+    }
+    return SecretRowView{};
+  };
+  Rig rig;
+  rig.secret_caps = Caps(true, false);
+  SignInToSecretService(rig);
+  const Snapshot alone = rig.service->snapshot();
+  CHECK(row(alone, Caps(true, false), SecretCharacter::kAkuma).status == "Enabled locally");
+  CHECK(row(alone, Caps(true, false), SecretCharacter::kEvilRyu).status == "Off");
+
+  StartSecretMatch(rig, "m1", "host", SecretJson(Caps(true, true), WorkerAnd(Caps(true, false), Caps(true, true))));
+  const Snapshot together = rig.service->snapshot();
+  CHECK(row(together, Caps(true, false), SecretCharacter::kAkuma).status == "Available");
+  CHECK(row(together, Caps(true, false), SecretCharacter::kAkuma).available);
+  CHECK(row(together, Caps(true, false), SecretCharacter::kEvilRyu).status == "Disabled locally");
+  CHECK(!row(together, Caps(true, false), SecretCharacter::kEvilRyu).available);
+
+  rig.Feed(std::string("{\"ev\":\"match.secret\",\"match\":\"m1\",") + SecretJson(Caps(false, true), {}) + "}");
+  CHECK(row(rig.service->snapshot(), Caps(true, false), SecretCharacter::kAkuma).status == "Disabled by opponent");
+  rig.Feed(std::string("{\"ev\":\"match.secret\",\"match\":\"m1\",") + SecretJson(Caps(true, true, false), {}) + "}");
+  CHECK(row(rig.service->snapshot(), Caps(true, false), SecretCharacter::kAkuma).status == "Unsupported by opponent");
+  rig.Feed(std::string("{\"ev\":\"match.peer_lost\",\"match\":\"m1\"}"));
+  CHECK(row(rig.service->snapshot(), Caps(true, false), SecretCharacter::kAkuma).status == "Waiting for opponent");
+
+  Rig old;
+  old.secret_caps = Caps(true, true);
+  SignInToSecretService(old, false);
+  StartSecretMatch(old, "m1", "host", "");
+  CHECK(row(old.service->snapshot(), Caps(true, true), SecretCharacter::kAkuma).status == "Unsupported by the service");
+  CHECK(row(old.service->snapshot(), Caps(true, true), SecretCharacter::kEvilRyu).status == "Unsupported by the service");
+}
+
+void TestAnOldPeerOrAnOldServiceNeverOffersASecretCharacter() {
+  Rig old_peer;
+  old_peer.secret_caps = Caps(true, true);
+  SignInToSecretService(old_peer);
+  StartSecretMatch(old_peer, "m1", "host", SecretJson(Caps(false, false, false), {}));
+  CHECK(!old_peer.service->SecretEffective().Any());
+
+  Rig old_service;
+  old_service.secret_caps = Caps(true, true);
+  SignInToSecretService(old_service, false);
+  StartSecretMatch(old_service, "m1", "host", "");
+  CHECK(!old_service.service->SecretEffective().Any());
+  CHECK(!old_service.service->snapshot().secret.service_supported);
+  CHECK(old_service.Count("secret.update") == 0);
+
+  Rig missing_fields;
+  missing_fields.secret_caps = Caps(true, true);
+  SignInToSecretService(missing_fields);
+  StartSecretMatch(missing_fields, "m1", "host", "\"secret\":{\"effective\":{\"akuma\":true,\"evil_ryu\":true}}");
+  CHECK(!missing_fields.service->SecretEffective().Any());
+  CHECK(missing_fields.CountLogs("service answer overridden") == 1);
+}
+
+void TestTheClientChecksTheServicesAnswerAgainstItsOwnOptions() {
+  Rig rig;
+  rig.secret_caps = Caps(false, true);
+  SignInToSecretService(rig);
+  StartSecretMatch(rig, "m1", "join", SecretJson(Caps(true, true), {true, true}));
+  const SecretSet effective = rig.service->SecretEffective();
+  CHECK(!effective.akuma && effective.evil_ryu);
+  CHECK(rig.CountLogs("online secret-cap service answer overridden service=3 verified=2") == 1);
+  CHECK(rig.CountLogs("online secret-cap effective akuma=0 evil=1") == 1);
+}
+
+void TestAnOptionChangeIsSentOnceAndRecomputesTheRoom() {
+  Rig rig;
+  rig.secret_caps = Caps(false, false);
+  SignInToSecretService(rig);
+  for (int i = 0; i < 5; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("secret.update") == 0);
+
+  StartSecretMatch(rig, "m1", "host", SecretJson(Caps(true, true), {}));
+  rig.secret_caps = Caps(true, true);
+  rig.Tick();
+  CHECK(rig.Count("secret.update") == 1);
+  CHECK(Contains(rig.LastRequest("secret.update"), "\"enabled\":{\"akuma\":true,\"evil_ryu\":true}"));
+  CHECK(!rig.service->SecretEffective().Any());
+  for (int i = 0; i < 5; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("secret.update") == 1);
+  rig.Reply("secret.update", SecretJson(Caps(true, true), {true, true}));
+  CHECK(rig.service->SecretEffective().akuma && rig.service->SecretEffective().evil_ryu);
+  for (int i = 0; i < 5; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("secret.update") == 1);
+
+  rig.secret_caps = Caps(true, false);
+  rig.Tick();
+  CHECK(rig.Count("secret.update") == 2);
+  CHECK(rig.service->SecretEffective().akuma && !rig.service->SecretEffective().evil_ryu);
+}
+
+void TestARefusedOptionChangeIsRetriedLater() {
+  Rig rig;
+  rig.secret_caps = Caps(false, false);
+  SignInToSecretService(rig);
+  rig.secret_caps = Caps(true, false);
+  rig.Tick();
+  CHECK(rig.Count("secret.update") == 1);
+  rig.Reply("secret.update", "", "limit");
+  for (int i = 0; i < 3; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("secret.update") == 1);
+  for (int i = 0; i < 4; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("secret.update") == 2);
+}
+
+void TestARoomEventForAnotherMatchIsIgnored() {
+  Rig rig;
+  rig.secret_caps = Caps(true, true);
+  SignInToSecretService(rig);
+  StartSecretMatch(rig, "m1", "host", SecretJson(Caps(true, true), {true, true}));
+  rig.Feed(std::string("{\"ev\":\"match.secret\",\"match\":\"other\",") + SecretJson(Caps(false, false), {}) + "}");
+  CHECK(rig.service->SecretEffective().akuma && rig.service->SecretEffective().evil_ryu);
+}
+
+void TestDisconnectReconnectAndLeaveClearTheNegotiatedState() {
+  Rig rig;
+  rig.secret_caps = Caps(true, true);
+  SignInToSecretService(rig);
+  StartSecretMatch(rig, "m1", "host", SecretJson(Caps(true, true), {true, true}));
+  CHECK(rig.service->SecretEffective().Any());
+
+  rig.Feed("{\"ev\":\"match.peer_lost\",\"match\":\"m1\"}");
+  CHECK(!rig.service->SecretEffective().Any());
+  rig.Feed("{\"ev\":\"match.peer_back\",\"match\":\"m1\"}");
+  CHECK(rig.service->SecretEffective().akuma && rig.service->SecretEffective().evil_ryu);
+
+  rig.Feed("{\"ev\":\"match.ended\",\"match\":\"m1\",\"reason\":\"left\"}");
+  CHECK(!rig.service->SecretEffective().Any());
+
+  StartSecretMatch(rig, "m2", "join", SecretJson(Caps(true, false), {true, false}));
+  CHECK(rig.service->SecretEffective().akuma && !rig.service->SecretEffective().evil_ryu);
+  rig.service->LeaveMatch();
+  CHECK(!rig.service->SecretEffective().Any());
+  CHECK(!rig.service->snapshot().secret.peer);
+
+  StartSecretMatch(rig, "m3", "host", SecretJson(Caps(false, true), {false, true}));
+  CHECK(!rig.service->SecretEffective().akuma && rig.service->SecretEffective().evil_ryu);
+
+  rig.service->Apply({false, "Saulo"});
+  CHECK(!rig.service->SecretEffective().Any());
+}
+
+void TestAMalformedRoomAnswerOffersNothing() {
+  Rig rig;
+  rig.secret_caps = Caps(true, true);
+  SignInToSecretService(rig);
+  StartSecretMatch(rig, "m1", "host", "\"secret\":{\"peer\":5,\"effective\":\"yes\"}");
+  CHECK(!rig.service->SecretEffective().Any());
+  StartSecretMatch(rig, "m2", "host", "\"secret\":{\"peer\":{\"supports\":{\"akuma\":\"true\"},\"enabled\":{\"akuma\":1}},"
+                                      "\"effective\":{\"akuma\":\"true\",\"evil_ryu\":1}}");
+  CHECK(!rig.service->SecretEffective().Any());
+}
+
 int main() {
   std::printf("online service tests\n");
+  TestHelloAdvertisesWhatThisBuildSupportsAndWhatIsOn();
+  TestEveryOnOffCombinationIsDeterministic();
+  TestSecretStatusTextsExplainWhyACharacterIsOrIsNotAvailable();
+  TestAnOldPeerOrAnOldServiceNeverOffersASecretCharacter();
+  TestTheClientChecksTheServicesAnswerAgainstItsOwnOptions();
+  TestAnOptionChangeIsSentOnceAndRecomputesTheRoom();
+  TestARefusedOptionChangeIsRetriedLater();
+  TestARoomEventForAnotherMatchIsIgnored();
+  TestDisconnectReconnectAndLeaveClearTheNegotiatedState();
+  TestAMalformedRoomAnswerOffersNothing();
   TestOnlineOffHasNoNetworkBehaviour();
   TestSignInSendsPresenceDetailsAndNeverTheTokenInLogs();
   TestFriendsAndPresenceAreShown();

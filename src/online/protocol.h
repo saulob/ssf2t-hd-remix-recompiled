@@ -6,6 +6,8 @@
 #include <string_view>
 #include <vector>
 
+#include "online/secret_characters.h"
+
 namespace ssf2t::online {
 
 inline constexpr int kLobbyProtocol = 3;
@@ -63,6 +65,7 @@ struct MatchInfo {
   std::string peer_player;
   std::string peer_name;
   uint32_t relay_token = 0;  // nonzero: the service relays this match's frames, if it ever has to
+  std::optional<MatchSecrets> secret;  // the room's secret characters; empty from a service that does not say
 };
 
 // What the service says it can do, in its hello answer; an older service says nothing, which reads as all false.
@@ -74,6 +77,7 @@ struct ServiceCapabilities {
   bool relay_supported = false;
   int relay_max_payload = 0;
   bool fight_telemetry = false;  // the service takes passive fight reports (telemetry.fight)
+  bool secret_characters = false;  // the service negotiates secret characters (hello secret, secret.update)
 };
 
 struct PeerInfo {
@@ -108,6 +112,7 @@ struct ServerMessage {
     kInviteEnded,
     kMatchTransport,
     kRelayClosed,
+    kMatchSecret,
   };
   Kind kind = Kind::kResponse;
 
@@ -133,6 +138,7 @@ struct ServerMessage {
   PeerInfo peer;
   std::string transport;  // match.transport: "direct" or "relay"
   std::optional<ServiceCapabilities> capabilities;  // hello
+  std::optional<MatchSecrets> secret;               // match.secret, and the answer to secret.update inside a match
 };
 
 // Nothing for text that is not a known, well-formed server message.
@@ -149,9 +155,12 @@ struct HelloFields {
   bool presence = true;  // false: a short session that is not shown to friends (the connection test)
   bool relay = false;    // this client can play a match through the service's relay
   bool telemetry = false;  // this client reports its online fights, anonymously
+  SecretCapabilities secret;  // the secret characters this client understands and has turned on
 };
 
 std::string EncodeHello(int seq, const HelloFields& hello);
+// The same capabilities again after the player changed an option while signed in.
+std::string EncodeSecretUpdate(int seq, const SecretCapabilities& secret);
 std::string EncodePing(int seq);
 std::string EncodeFriendsList(int seq);
 std::string EncodeFriendsRequests(int seq);

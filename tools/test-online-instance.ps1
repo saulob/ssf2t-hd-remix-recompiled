@@ -100,6 +100,25 @@ try {
     $named = & $Script -Name c -OnlineName 'SauloC' -CopyFrom $main -InstanceRoot $instances -PrepareOnly 6>&1 | Out-String -Width 4096
     Check ((Get-Content (Join-Path $instances 'c\user_data\settings.toml')) -contains 'ssf2t_online_name = "SauloC"') '-OnlineName is used'
 
+    # The secret-character matrix: each instance gets its own options, and none are copied from the main folder.
+    Add-Content (Join-Path $main 'settings.toml') @('ssf2t_enable_akuma = true', 'ssf2t_enable_ultra_fighters = true')
+    $plain = & $Script -Name d -CopyFrom $main -InstanceRoot $instances -PrepareOnly 6>&1 | Out-String -Width 4096
+    $settingsD = Get-Content (Join-Path $instances 'd\user_data\settings.toml')
+    Check (-not ($settingsD -match 'enable_akuma|enable_ultra_fighters')) 'secret options are not copied from the main folder'
+    Check ((LineValue $plain 'secret options') -eq 'ssf2t_enable_akuma=false ssf2t_enable_ultra_fighters=false') 'summary shows both options Off'
+    $on = & $Script -Name e -Akuma On -EvilRyu Off -CopyFrom $main -InstanceRoot $instances -PrepareOnly 6>&1 | Out-String -Width 4096
+    $settingsE = Get-Content (Join-Path $instances 'e\user_data\settings.toml')
+    Check ($settingsE -contains 'ssf2t_enable_akuma = true') '-Akuma On is written'
+    Check ($settingsE -contains 'ssf2t_enable_ultra_fighters = false') '-EvilRyu Off is written'
+    Check ((LineValue $on 'secret options') -eq 'ssf2t_enable_akuma=true ssf2t_enable_ultra_fighters=false') 'summary shows the chosen options'
+    $kept = & $Script -Name e -EvilRyu On -CopyFrom $main -InstanceRoot $instances -PrepareOnly 6>&1 | Out-String -Width 4096
+    $settingsE2 = Get-Content (Join-Path $instances 'e\user_data\settings.toml')
+    Check (($settingsE2 -contains 'ssf2t_enable_akuma = true') -and ($settingsE2 -contains 'ssf2t_enable_ultra_fighters = true')) 'a later start changes only the option it names'
+    Check (@($settingsE2 | Where-Object { $_ -match '^ssf2t_enable_akuma' }).Count -eq 1) 'an option is written once'
+    $badChoice = $false
+    try { & $Script -Name f -Akuma Maybe -InstanceRoot $instances -PrepareOnly 6>&1 | Out-Null } catch { $badChoice = $true }
+    Check $badChoice 'an option other than On or Off is refused'
+
     $rejected = $false
     try { & $Script -Name 'bad name!' -InstanceRoot $instances -PrepareOnly 6>&1 | Out-Null } catch { $rejected = $true }
     Check $rejected 'an invalid instance name is refused'

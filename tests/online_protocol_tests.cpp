@@ -258,8 +258,81 @@ void TestRelaySignalling() {
   CHECK(DescribeServiceError("relay_unavailable") == "The connection through the online service is not available.");
 }
 
+void TestSecretCharactersOnTheWire() {
+  SecretCapabilities caps;
+  caps.supports = {true, true};
+  caps.enabled = {true, false};
+  HelloFields fields;
+  fields.guest = "base013";
+  fields.player = "ABCD-2345";
+  fields.secret = caps;
+  const std::string hello = EncodeHello(1, fields);
+  CHECK(Contains(hello, "\"secret\":{\"supports\":{\"akuma\":true,\"evil_ryu\":true},\"enabled\":{\"akuma\":true,"
+                        "\"evil_ryu\":false}}"));
+  // A client that supports nothing says so, and cannot enable what it does not support.
+  CHECK(Contains(EncodeHello(1, HelloFields{}), "\"secret\":{\"supports\":{\"akuma\":false,\"evil_ryu\":false},"
+                                                "\"enabled\":{\"akuma\":false,\"evil_ryu\":false}}"));
+  SecretCapabilities lying;
+  lying.enabled = {true, true};
+  CHECK(Contains(EncodeHello(1, [&] { HelloFields f; f.secret = lying; return f; }()), "\"enabled\":{\"akuma\":false,"
+                                                                                       "\"evil_ryu\":false}"));
+  CHECK(EncodeSecretUpdate(4, caps) == "{\"op\":\"secret.update\",\"seq\":4,\"secret\":{\"supports\":{\"akuma\":true,"
+                                       "\"evil_ryu\":true},\"enabled\":{\"akuma\":true,\"evil_ryu\":false}}}");
+
+  const auto greeting = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"capabilities\":{\"protocol_version\":3,"
+                                            "\"secret_characters\":true}}");
+  CHECK(greeting && greeting->capabilities && greeting->capabilities->secret_characters);
+  const auto older = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"capabilities\":{\"protocol_version\":3}}");
+  CHECK(older && older->capabilities && !older->capabilities->secret_characters);
+
+  const auto created = DecodeServerMessage(
+      "{\"ev\":\"match.created\",\"match\":\"m1\",\"role\":\"host\",\"guest\":\"base013\",\"secret\":{\"peer\":"
+      "{\"supports\":{\"akuma\":true,\"evil_ryu\":true},\"enabled\":{\"akuma\":true,\"evil_ryu\":false}},"
+      "\"effective\":{\"akuma\":true,\"evil_ryu\":false}}}");
+  CHECK(created && created->match && created->match->secret);
+  CHECK(created->match->secret->peer.supports.akuma && created->match->secret->peer.supports.evil_ryu);
+  CHECK(created->match->secret->peer.enabled.akuma && !created->match->secret->peer.enabled.evil_ryu);
+  CHECK(created->match->secret->effective.akuma && !created->match->secret->effective.evil_ryu);
+
+  const auto joined = DecodeServerMessage(
+      "{\"re\":2,\"code\":\"ok\",\"session\":\"s\",\"match\":\"m1\",\"role\":\"join\",\"guest\":\"base013\",\"secret\":"
+      "{\"peer\":{\"supports\":{},\"enabled\":{}},\"effective\":{}}}");
+  CHECK(joined && joined->match && joined->match->secret && !joined->match->secret->effective.Any());
+
+  // An older service sends none: the match has no secret answer, which reads as nothing available.
+  const auto none = DecodeServerMessage("{\"ev\":\"match.created\",\"match\":\"m1\",\"role\":\"host\",\"guest\":\"base013\"}");
+  CHECK(none && none->match && !none->match->secret);
+
+  // Anything that is not exactly true is false, and a peer cannot enable what it does not support.
+  const auto odd = DecodeServerMessage(
+      "{\"ev\":\"match.created\",\"match\":\"m1\",\"role\":\"host\",\"guest\":\"base013\",\"secret\":{\"peer\":"
+      "{\"supports\":{\"akuma\":\"true\",\"evil_ryu\":1},\"enabled\":{\"akuma\":true,\"evil_ryu\":true}},"
+      "\"effective\":{\"akuma\":\"yes\",\"evil_ryu\":null}}}");
+  CHECK(odd && odd->match && odd->match->secret);
+  CHECK(!odd->match->secret->peer.supports.Any() && !odd->match->secret->peer.enabled.Any());
+  CHECK(!odd->match->secret->effective.Any());
+  const auto wrong = DecodeServerMessage(
+      "{\"ev\":\"match.created\",\"match\":\"m1\",\"role\":\"host\",\"guest\":\"base013\",\"secret\":[1,2]}");
+  CHECK(wrong && wrong->match && !wrong->match->secret);
+
+  const auto event = DecodeServerMessage(
+      "{\"ev\":\"match.secret\",\"match\":\"m1\",\"secret\":{\"peer\":{\"supports\":{\"akuma\":true},\"enabled\":"
+      "{\"akuma\":true}},\"effective\":{\"akuma\":true}}}");
+  CHECK(event && event->kind == ServerMessage::Kind::kMatchSecret && event->match_id == "m1" && event->secret);
+  CHECK(event->secret->effective.akuma && !event->secret->effective.evil_ryu);
+  CHECK(!DecodeServerMessage("{\"ev\":\"match.secret\",\"secret\":{}}"));
+  CHECK(!DecodeServerMessage("{\"ev\":\"match.secret\",\"match\":\"m1\"}"));
+
+  const auto update = DecodeServerMessage("{\"re\":5,\"code\":\"ok\",\"secret\":{\"peer\":{\"supports\":{\"akuma\":true},"
+                                          "\"enabled\":{\"akuma\":true}},\"effective\":{\"akuma\":true}}}");
+  CHECK(update && update->secret && update->secret->effective.akuma);
+  const auto bare = DecodeServerMessage("{\"re\":5,\"code\":\"ok\"}");
+  CHECK(bare && !bare->secret);
+}
+
 int main() {
   std::printf("online protocol tests\n");
+  TestSecretCharactersOnTheWire();
   TestRelaySignalling();
   TestRequestsAreWellFormed();
   TestAnswersDecode();

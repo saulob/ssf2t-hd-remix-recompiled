@@ -33,7 +33,7 @@ template <typename Memory>
 int FighterCharacter(const Memory& memory, uint32_t fighter) {
   if (memory.U8(fighter + kHiddenCharacterOffset) != 0) return online::kAkumaCharacter;
   const int id = int(int8_t(memory.U8(fighter + kCharacterOffset)));
-  return online::IsCharacterId(id) ? id : -1;
+  return online::IsGuestCharacter(id) ? id : -1;
 }
 
 // Invalid until both fighters hold a real character.

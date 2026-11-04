@@ -1,4 +1,4 @@
-import { isCharacterId } from './characters.js';
+import { SECRET_KEYS, isCharacterId } from './characters.js';
 import { PLATFORMS } from './metrics.js';
 import { sha256Hex } from './sha256.js';
 
@@ -33,7 +33,7 @@ export const BUCKETS = {
   social: { burst: 10, perSecond: 1 },
 };
 
-export const WORKER_BUILD = '2026-11-01-fights1';
+export const WORKER_BUILD = '2026-11-04-secret1';
 
 // Binary relay frames: magic "SR", version, type, token (u32), sequence (u32), payload length (u16), payload.
 export const RELAY = {
@@ -56,7 +56,74 @@ export const CAPABILITIES = {
   relay_supported: true,
   relay_max_payload: RELAY.maxPayload,
   fight_telemetry: true,
+  secret_characters: true,
 };
+
+export { SECRET_KEYS };
+// Mask bit per flag: supports 0 and 1, enabled 2 and 3 (they are stored in the matches table).
+const SECRET_BITS = { akuma: { supports: 0, enabled: 2 }, evil_ryu: { supports: 1, enabled: 3 } };
+
+const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+// Anything that is not exactly true is false, and a character is enabled only if it is supported.
+export function normalizeSecret(value) {
+  const section = (name) => (isPlainObject(value) && isPlainObject(value[name]) ? value[name] : {});
+  const supports = section('supports');
+  const enabled = section('enabled');
+  const out = { supports: {}, enabled: {} };
+  for (const key of SECRET_KEYS) {
+    out.supports[key] = supports[key] === true;
+    out.enabled[key] = out.supports[key] && enabled[key] === true;
+  }
+  return out;
+}
+
+export function secretMask(secret) {
+  const s = normalizeSecret(secret);
+  let mask = 0;
+  for (const key of SECRET_KEYS) {
+    if (s.supports[key]) mask |= 1 << SECRET_BITS[key].supports;
+    if (s.enabled[key]) mask |= 1 << SECRET_BITS[key].enabled;
+  }
+  return mask;
+}
+
+export function secretFromMask(mask) {
+  const bit = (n) => Number.isInteger(mask) && (mask & (1 << n)) !== 0;
+  const out = { supports: {}, enabled: {} };
+  for (const key of SECRET_KEYS) {
+    out.supports[key] = bit(SECRET_BITS[key].supports);
+    out.enabled[key] = out.supports[key] && bit(SECRET_BITS[key].enabled);
+  }
+  return out;
+}
+
+// What both seats can use in a match; the same for either of them.
+export function effectiveSecret(a, b) {
+  const x = normalizeSecret(a);
+  const y = normalizeSecret(b);
+  return Object.fromEntries(SECRET_KEYS.map((key) => [key,
+    x.supports[key] && y.supports[key] && x.enabled[key] && y.enabled[key]]));
+}
+
+// The `secret` dimension values for one match that both seats are ready in: per character available or an option
+// mismatch, and unsupported_peer once when an old client meets a peer that has the character on.
+export function secretEstablishment(a, b) {
+  const x = normalizeSecret(a);
+  const y = normalizeSecret(b);
+  const values = [];
+  let unsupported = false;
+  for (const key of SECRET_KEYS) {
+    if (x.supports[key] && y.supports[key]) {
+      if (x.enabled[key] && y.enabled[key]) values.push(`${key}_available`);
+      else if (x.enabled[key] !== y.enabled[key]) values.push(`${key}_option_mismatch`);
+    } else if (x.supports[key] !== y.supports[key] && (x.supports[key] ? x : y).enabled[key]) {
+      unsupported = true;
+    }
+  }
+  if (unsupported) values.push('unsupported_peer');
+  return values;
+}
 
 // The header of one relay frame, or the reason it is not one. The payload is never looked at.
 export function parseRelayFrame(bytes) {
@@ -151,6 +218,7 @@ export function parseHello(message) {
     presence: message.presence !== false,
     relay: message.relay === true,
     telemetry: message.telemetry === true,
+    secret: normalizeSecret(message.secret),
   };
 }
 

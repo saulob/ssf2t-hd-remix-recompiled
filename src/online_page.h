@@ -14,14 +14,16 @@
 namespace ssf2t {
 
 // Sections of the Online page, in order: with Online play off only its switch; friend requests come first.
-enum class OnlineSection { kOnlinePlay, kFriendRequests, kOnlineName, kFriendCode, kConnectionTest, kPingDisplay, kFriends };
+enum class OnlineSection {
+  kOnlinePlay, kFriendRequests, kOnlineName, kFriendCode, kConnectionTest, kPingDisplay, kSecretCharacters, kFriends
+};
 inline std::vector<OnlineSection> OnlinePageSections(bool online_on, size_t friend_requests) {
   if (!online_on) return {OnlineSection::kOnlinePlay};
   std::vector<OnlineSection> sections{OnlineSection::kOnlinePlay};
   if (friend_requests > 0) sections.push_back(OnlineSection::kFriendRequests);
   for (const OnlineSection section : {OnlineSection::kOnlineName, OnlineSection::kFriendCode,
                                       OnlineSection::kConnectionTest, OnlineSection::kPingDisplay,
-                                      OnlineSection::kFriends}) {
+                                      OnlineSection::kSecretCharacters, OnlineSection::kFriends}) {
     sections.push_back(section);
   }
   return sections;
@@ -50,6 +52,7 @@ class OnlinePage {
   void DrawConnectionTest(trg::Ui& ui, const online::Snapshot& state);
   void DrawConnectionTestBody(trg::Ui& ui, const online::Snapshot& state, const ConnectionTestView& view,
                               bool focus_run_test);
+  void DrawSecretCharacters(trg::Ui& ui, const online::Snapshot& state);
   void DrawFriends(trg::Ui& ui, const online::Snapshot& state);
   void NoteSendState(bool enabled);
 

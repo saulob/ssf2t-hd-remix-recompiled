@@ -1,5 +1,6 @@
 #include "online_runtime.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <memory>
@@ -11,6 +12,8 @@
 #include <rex/cvar.h>
 #include <rex/logging.h>
 
+#include "character/akuma.h"
+#include "character/ultra_fighters.h"
 #include "netplay/online_game_socket.h"
 #include "netplay/packet.h"
 #include "netplay_setting.h"
@@ -36,6 +39,9 @@ namespace {
 netplay::OnlineGameSocket g_game_socket;
 double g_next_bind_try = 0;
 bool g_bind_failure_logged = false;
+
+std::atomic<bool> g_secrets_locked{false};
+std::atomic<uint8_t> g_locked_secrets{0};
 
 std::mutex g_mutex;
 std::filesystem::path g_user_dir;
@@ -75,6 +81,14 @@ const char* PlatformName() {
 #endif
 }
 
+// This build understands both; the player's options say which are on. Violent Ken is not offered online yet.
+online::SecretCapabilities LocalSecretCapabilities() {
+  online::SecretCapabilities secret;
+  secret.supports = {true, true};
+  secret.enabled = {character::AkumaEnabled(), character::UltraFightersEnabled()};
+  return secret;
+}
+
 online::ServiceConfig MakeConfig() {
   online::ServiceConfig config;
   if (const char* url = std::getenv(kOnlineServiceEnv); url && *url) config.url = url;
@@ -89,6 +103,7 @@ online::ServiceConfig MakeConfig() {
   config.lan = online::LocalCandidates();
   config.game_socket = &g_game_socket;
   config.identity = ResolveIdentity;
+  config.secret = LocalSecretCapabilities;
   config.log = [](const std::string& line) { REXLOG_INFO("{}", line); };
   return config;
 }
@@ -141,6 +156,20 @@ void PumpOnlineService() {
     REXLOG_INFO("online runtime signed in={}", signed_in);
   }
 }
+
+online::SecretSet ActiveOnlineSecrets() {
+  if (g_secrets_locked.load(std::memory_order_acquire)) {
+    return online::SecretSet::FromBits(g_locked_secrets.load(std::memory_order_relaxed));
+  }
+  return Online().SecretEffective();
+}
+
+void LockOnlineSecrets(online::SecretSet secrets) {
+  g_locked_secrets.store(secrets.Bits(), std::memory_order_relaxed);
+  g_secrets_locked.store(true, std::memory_order_release);
+}
+
+void UnlockOnlineSecrets() { g_secrets_locked.store(false, std::memory_order_release); }
 
 double OnlineNowSeconds() {
   static const auto start = std::chrono::steady_clock::now();

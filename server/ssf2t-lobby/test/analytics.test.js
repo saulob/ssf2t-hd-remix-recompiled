@@ -121,7 +121,7 @@ test('duplicate fight events do not count a matchup, a pick or a result twice', 
 test('an invalid character or an unstarted completion creates no matchup', () => {
   const env = makeHub();
   const m = startFightMatch(env);
-  for (const bad of [99, -1, 17, 1.5, '4']) {
+  for (const bad of [99, -1, 19, 1.5, '4']) {
     assert.notEqual(send(m.a, fightEvent(m, 'start', 0, { p1: bad, p2: RYU })).code, 'ok');
   }
   assert.notEqual(send(m.a, fightEvent(m, 'complete', 3, { p1: RYU, p2: KEN, result: 'p1' })).code, 'ok');

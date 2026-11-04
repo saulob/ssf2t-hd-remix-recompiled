@@ -29,6 +29,10 @@ void UltraNavigation::Reset() {
   Set(1, false);
 }
 
+void UltraNavigation::Restore(uint8_t mask) {
+  for (int side = 0; side < 2; ++side) Set(side, (mask & (1u << side)) != 0);
+}
+
 void UltraNavigation::Set(int side, bool selected) {
   const uint8_t bit = uint8_t(1u << side);
   if (selected) {

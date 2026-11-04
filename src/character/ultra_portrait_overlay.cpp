@@ -38,7 +38,8 @@ class UltraPortraitOverlay final : public rex::ui::ImGuiDialog {
 
  protected:
   void OnDraw(ImGuiIO& io) override {
-    const bool enabled = UltraFightersEnabled();
+    const bool online = CharacterSelectOnline();
+    const bool enabled = EvilRyuAvailableFor(online);
     const bool select_active = CharacterSelectActive();
     if (!enabled || !select_active) return;
     if (!loaded_) LoadTextures();
@@ -49,6 +50,7 @@ class UltraPortraitOverlay final : public rex::ui::ImGuiDialog {
         GuestView(io.DisplaySize.x, io.DisplaySize.y, float(guest_width) / float(kGuestHeight), letterbox);
     const SelectLayout layout = CharacterSelectLayout();
     for (const UltraPortrait which : kPortraits) {
+      if (online && which != UltraPortrait::kEvilRyu) continue;
       const auto& texture = textures_[size_t(which)];
       if (!UltraPortraitVisible(enabled, select_active, immediate_drawer_ != nullptr, texture != nullptr)) continue;
       const ViewRect rect = UltraPortraitRect(view, float(guest_width), which, layout);

@@ -137,6 +137,36 @@ uint32_t RelayTokenOf(const json::Value* v) {
   return n && *n > 0 && *n <= 0xFFFFFFFFll ? uint32_t(*n) : 0;
 }
 
+SecretSet ReadSecretSet(const json::Value* v) {
+  SecretSet set;
+  if (!v || !v->IsObject()) return set;
+  set.akuma = BoolOf(v->Find(SecretKey(SecretCharacter::kAkuma)), false);
+  set.evil_ryu = BoolOf(v->Find(SecretKey(SecretCharacter::kEvilRyu)), false);
+  return set;
+}
+
+std::optional<MatchSecrets> ReadMatchSecrets(const json::Value* v) {
+  if (!v || !v->IsObject()) return std::nullopt;
+  const json::Value* peer = v->Find("peer");
+  MatchSecrets secrets;
+  if (peer && peer->IsObject()) {
+    secrets.peer.supports = ReadSecretSet(peer->Find("supports"));
+    secrets.peer.enabled = ReadSecretSet(peer->Find("enabled"));
+    secrets.peer = secrets.peer.Normalized();
+  }
+  secrets.effective = ReadSecretSet(v->Find("effective"));
+  return secrets;
+}
+
+std::string SecretSetJson(const SecretSet& set) {
+  return std::string("{\"") + SecretKey(SecretCharacter::kAkuma) + "\":" + (set.akuma ? "true" : "false") + ",\"" +
+         SecretKey(SecretCharacter::kEvilRyu) + "\":" + (set.evil_ryu ? "true" : "false") + "}";
+}
+
+std::string SecretJson(const SecretCapabilities& secret) {
+  return "{\"supports\":" + SecretSetJson(secret.supports) + ",\"enabled\":" + SecretSetJson(secret.enabled) + "}";
+}
+
 ServiceCapabilities ReadCapabilities(const json::Value& v) {
   ServiceCapabilities caps;
   caps.announced = true;
@@ -146,6 +176,7 @@ ServiceCapabilities ReadCapabilities(const json::Value& v) {
   caps.relay_supported = BoolOf(v.Find("relay_supported"), false);
   caps.relay_max_payload = IntOf(v.Find("relay_max_payload"));
   caps.fight_telemetry = BoolOf(v.Find("fight_telemetry"), false);
+  caps.secret_characters = BoolOf(v.Find("secret_characters"), false);
   return caps;
 }
 
@@ -160,6 +191,7 @@ bool ReadMatch(const json::Value& v, MatchInfo& out) {
     out.peer_player = StringOf(peer->Find("player"));
     out.peer_name = StringOf(peer->Find("name"));
   }
+  out.secret = ReadMatchSecrets(v.Find("secret"));
   return !out.match.empty() && (out.role == "host" || out.role == "join") && !out.guest.empty();
 }
 
@@ -191,6 +223,8 @@ std::optional<ServerMessage> DecodeServerMessage(std::string_view text) {
       MatchInfo info;
       if (!ReadMatch(*root, info)) return std::nullopt;
       message.match = info;
+    } else {
+      message.secret = ReadMatchSecrets(root->Find("secret"));
     }
     return message;
   }
@@ -246,6 +280,12 @@ std::optional<ServerMessage> DecodeServerMessage(std::string_view text) {
     message.reason = StringOf(root->Find("reason"));
     return message.invite_id.empty() ? std::nullopt : std::optional<ServerMessage>(message);
   }
+  if (event == "match.secret") {
+    message.kind = Kind::kMatchSecret;
+    message.match_id = StringOf(root->Find("match"));
+    message.secret = ReadMatchSecrets(root->Find("secret"));
+    return message.match_id.empty() || !message.secret ? std::nullopt : std::optional<ServerMessage>(message);
+  }
   if (event == "match.transport" || event == "relay.closed") {
     message.kind = event == "match.transport" ? Kind::kMatchTransport : Kind::kRelayClosed;
     message.match_id = StringOf(root->Find("match"));
@@ -293,7 +333,12 @@ std::string EncodeHello(int seq, const HelloFields& hello) {
                      ",\"player\":" + Quote(hello.player) + ",\"token\":" + Quote(hello.token) +
                      ",\"name\":" + Quote(hello.name) + ",\"version\":" + Quote(hello.version) +
                      ",\"platform\":" + Quote(hello.platform) + ",\"presence\":" + (hello.presence ? "true" : "false") +
-                     (hello.relay ? ",\"relay\":true" : "") + (hello.telemetry ? ",\"telemetry\":true" : ""));
+                     (hello.relay ? ",\"relay\":true" : "") + (hello.telemetry ? ",\"telemetry\":true" : "") +
+                     ",\"secret\":" + SecretJson(hello.secret.Normalized()));
+}
+
+std::string EncodeSecretUpdate(int seq, const SecretCapabilities& secret) {
+  return Envelope("secret.update", seq, ",\"secret\":" + SecretJson(secret.Normalized()));
 }
 
 std::string EncodePing(int seq) { return Envelope("ping", seq); }

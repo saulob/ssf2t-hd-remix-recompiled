@@ -194,6 +194,8 @@ Each instance has its own user folder (`build\online-instances\<name>\user_data`
 logs (`build\online-instances\<name>\logs`), on the production service (`SSF2T_LOBBY` selects another one, such as
 the local server). Display and graphics settings are copied once
 from `build\user_data`; the identity is not. `-PrepareOnly` sets the folders up without starting the game.
+`-Akuma On|Off` and `-EvilRyu On|Off` set the instance's Enable Akuma and Enable Evil Ryu and Violent Ken options (new
+instances start Off), for the secret-character matrix: `tools\online-instance.ps1 -Name a -Akuma On -EvilRyu On`.
 
 The script prints the instance's folders, identity file and the exact log file. Every start writes a new log named after
 the instance, `ssf2t_hd_remix_a_001.log`, `_002`, ... (never a shared `ssf2t_hd_remix.log`), and keeps detailed logging
@@ -205,6 +207,40 @@ Manual two-instance check: Online play On in both, **Copy** the friend code in `
 (Ctrl+V; lower case, a missing hyphen, spaces and a trailing newline are all fine), **Send request**, **Accept** in `a`,
 then Play in both and Multiplayer > Online Match in the game. Log lines: `online friend request sent
 code=...`, `player_match ...`, `XSession...`.
+
+## Secret characters
+
+Akuma and Evil Ryu appear in an Online Match only when both players have them on and both builds understand them.
+Violent Ken is not offered online.
+
+- Each client sends `secret: {supports: {akuma, evil_ryu}, enabled: {akuma, evil_ryu}}` in its hello (`supports` is what
+  the build understands, `enabled` is Enable Akuma / Enable Evil Ryu and Violent Ken) and `secret.update` when an option
+  changes while signed in. Anything missing or not exactly `true` is false, so an older client supports nothing.
+- The Worker keeps both players' capabilities with the match and tells each seat `secret: {peer, effective}` (in the
+  join answer, `match.created`, the resume answer and `match.secret` events). `effective.<character>` is supports and
+  enabled on both sides; it is identical for both seats. The client checks that answer against its own options and can
+  only shrink it. The lobby protocol stays 3 and `kNetplayBuild` is unchanged, so older clients and an older Worker keep
+  working and simply never get a secret character.
+- The Online page shows the options as `Enabled locally` / `Off` outside a match and, inside one, `Available`,
+  `Disabled locally`, `Disabled by opponent`, `Unsupported by opponent`, `Unsupported by the service` or `Waiting for
+  opponent`.
+- A peer that is lost, a match that ends or is left, and a new match each recompute the result from the peer in front of
+  the client; nothing carries over. A rematch against the same peer keeps it.
+- The result is locked when an online Character Select starts (the game's NetSync start, where the rollback begins) and
+  stays fixed until the fight is left, so changing an option mid-match applies from the next Character Select. The locked
+  set is added to the frame-0 setup words only when something is on, so two clients that disagree on it refuse the fight
+  instead of drifting, and clients with nothing on send exactly the words they always did.
+- Character Select online uses the locked set instead of the local option for the hidden Akuma path, the Akuma
+  portrait overlay and the Evil Ryu cell. Local, Arcade and Training keep following the local options.
+- The selection itself is never sent: both consoles replay the same inputs through the game's own Character Select. The
+  Evil Ryu cell and the Evil Ryu move trackers live outside the guest, so they are saved with every rollback snapshot
+  and restored on a rollback; a mispredicted move cannot leave the cell selected. When the fighters are known, each
+  console checks them against the locked set (`online fighter side=2 base=Ryu variant=EvilRyu`); an Akuma or Evil Ryu the
+  match did not negotiate logs `online fighter reject ...` and leaves the match on both consoles.
+- The host reports Evil Ryu as character 17 (Ryu stays 0) and Akuma as 16; the Worker refuses a report of a secret
+  character the match did not negotiate, and counts availability, option mismatches and usage in aggregate (see
+  `server/ssf2t-lobby/README.md`).
+- Logs: `online secret-cap local|peer|effective ...`, `online secret-cap locked ...`, `online fighter ...`.
 
 ## What is not covered
 

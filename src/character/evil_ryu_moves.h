@@ -1,7 +1,10 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <type_traits>
 
 namespace ssf2t::character {
 
@@ -113,12 +116,17 @@ constexpr bool BodySuppressed(EvilRenderState state, uint32_t ticks) {
   return state == EvilRenderState::kTeleportGhost && !TeleportBodyVisible(ticks);
 }
 
+static_assert(std::is_trivially_copyable_v<HostMove>, "host moves ride in the rollback blob as raw bytes");
+
 class HostMoves {
  public:
   HostMove& For(int side) { return moves_[side]; }
   const HostMove& For(int side) const { return moves_[side]; }
   bool Active(int side) const { return side >= 0 && side < 2 && moves_[side].kind != HostMoveKind::kNone; }
   void Reset();
+  void Save(uint8_t* out) const { std::memcpy(out, moves_.data(), sizeof(moves_)); }
+  void Load(const uint8_t* in) { std::memcpy(moves_.data(), in, sizeof(moves_)); }
+  static constexpr size_t kBytes = 2 * sizeof(HostMove);
 
  private:
   std::array<HostMove, 2> moves_{};

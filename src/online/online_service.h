@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -17,6 +18,7 @@
 #include "online/lobby_link.h"
 #include "online/protocol.h"
 #include "online/rendezvous.h"
+#include "online/secret_characters.h"
 
 namespace ssf2t::online {
 
@@ -54,6 +56,8 @@ struct ServiceConfig {
   bool relay = true;
   // Reports this client's online fights to the service, anonymously and best effort.
   bool fight_telemetry = true;
+  // The secret characters this client understands and has turned on, read again every update. Empty: none.
+  std::function<SecretCapabilities()> secret;
 };
 
 struct UserSettings {
@@ -114,6 +118,15 @@ struct PlayerMatchSnapshot {
   int search_generation = 0;  // grows with every answered search
 };
 
+// The secret characters as the Online page shows them.
+struct SecretSnapshot {
+  SecretCapabilities local;
+  bool service_supported = false;  // the service negotiates secret characters at all
+  bool in_match = false;
+  std::optional<SecretCapabilities> peer;  // the opponent's, once the service has said
+  SecretSet effective;                     // what both players can pick right now
+};
+
 struct Snapshot {
   Connection connection = Connection::kOff;
   std::string connection_text;
@@ -125,6 +138,7 @@ struct Snapshot {
   std::vector<Invite> invites;    // friends' invitations to their Player Match, oldest first
   PlayerMatchSnapshot player_match;
   std::optional<MatchSnapshot> match;
+  SecretSnapshot secret;
   std::string notice;  // the last thing worth telling the player; stays until replaced
   bool testing = false;
   std::optional<ConnectionReport> test;
@@ -201,6 +215,8 @@ class OnlineService {
   // The peer of the last match that ended because no connection could be made, for a while after it ended.
   std::optional<ActivePeer> FailedPeer() const;
   ServiceCapabilities Capabilities() const;
+  // The secret characters both players of the current match have, or none outside one. Lock-free: read by game hooks.
+  SecretSet SecretEffective() const { return SecretSet::FromBits(secret_effective_.load(std::memory_order_relaxed)); }
   // The game's lobby wait for the host's player list: not over while the match is still being established, over at
   // once when it failed or its budget ran out. Anything else is left to the game.
   GuestWait GuestWaitState();
@@ -227,7 +243,7 @@ class OnlineService {
   enum class Purpose {
     kHello, kFriends, kRequests, kAdd, kAccept, kDecline, kRemove, kPlayerMatchHost, kPlayerMatchCancel,
     kPlayerMatchSearch, kPlayerMatchJoin, kEndpoint, kReady, kLeave, kResume, kInviteSend, kInviteDecline,
-    kTransportDirect, kTransportRelay, kFightReport
+    kTransportDirect, kTransportRelay, kFightReport, kSecretUpdate
   };
   struct Pending {
     Purpose purpose = Purpose::kHello;
@@ -262,6 +278,10 @@ class OnlineService {
   void SendLocked(const std::string& text);
   void FlushFightReports();
   void SendFightReport(const FightReport& report);
+  SecretCapabilities CurrentSecret() const;
+  void PumpSecret();
+  void SetMatchSecret(const std::optional<MatchSecrets>& secret);
+  void PublishSecret();
   bool Connected() const { return step_ == Step::kOnline; }
   void Notice(const std::string& text);
   void Log(const std::string& line);
@@ -341,6 +361,18 @@ class OnlineService {
   std::string notice_;
   double notice_at_ = 0;
   std::vector<std::string> notices_;
+
+  SecretCapabilities local_secret_;      // this client's capabilities as of the last update
+  SecretCapabilities announced_secret_;  // the ones the service has been told
+  SecretCapabilities secret_sent_;       // the update awaiting its answer
+  bool secret_in_flight_ = false;
+  double secret_retry_at_ = 0;
+  std::optional<MatchSecrets> match_secret_;
+  std::atomic<uint8_t> secret_effective_{0};
+  bool secret_logged_ = false;
+  SecretCapabilities logged_local_;
+  std::optional<SecretCapabilities> logged_peer_;
+  SecretSet logged_effective_;
 
   std::optional<MatchInfo> match_;
   std::optional<PeerInfo> peer_;

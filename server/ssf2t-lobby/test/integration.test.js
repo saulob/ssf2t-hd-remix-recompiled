@@ -99,7 +99,7 @@ test('the history keeps the abuse diagnostics next to the fight and character nu
     assert.equal(history.characters.find((c) => c.id === 0).wins, 1);
     assert.equal(history.characters.find((c) => c.id === 4).losses, 1);
     assert.deepEqual(Object.keys(history.dimensions).sort(), ['abuse', 'country', 'fight_guest', 'fight_platform',
-      'fight_transport', 'platform', 'reject', 'transport', 'version']);
+      'fight_transport', 'platform', 'reject', 'secret', 'secret_fight', 'secret_match', 'transport', 'version']);
     assert.equal(history.daily.at(-1).day, metricsDay(env.clock.now));
   }
 });

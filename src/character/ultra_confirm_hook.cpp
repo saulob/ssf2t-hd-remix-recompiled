@@ -6,6 +6,7 @@
 #include <rex/logging.h>
 
 #include "character/evil_ryu_moves.h"
+#include "character/secret_select.h"
 #include "character/ultra_fighters.h"
 #include "character/ultra_navigation.h"
 #include "guest_memory.h"
@@ -29,7 +30,8 @@ void TouchInteractiveSelect() {
 
 template <typename G>
 void ObserveLock(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
-  if (UltraFightersEnabled()) TouchInteractiveSelect();
+  const bool online = OnlineSelectMode(*GuestHost(base, G::kGameMode));
+  if (UltraFightersEnabled() && !online) TouchInteractiveSelect();
   original(ctx, base);
   if (!UltraFightersEnabled()) return;
   const uint32_t work = LoadBE32(GuestHost(base, G::kFightWork + 4), 0);

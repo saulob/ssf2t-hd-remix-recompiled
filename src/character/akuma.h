@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include <rex/cvar.h>
 
 namespace ssf2t::character {
@@ -13,5 +15,8 @@ inline constexpr char kEnableAkumaHelp[] =
 REXCVAR_DECLARE(bool, ssf2t_enable_akuma);
 
 bool AkumaEnabled();
+// Whether Akuma can be picked now: the local option in Local and Arcade play, the negotiated result in an Online Match.
+bool AkumaAvailableFor(bool online_select);
+bool AkumaAvailable(uint8_t game_mode);
 
 }  // namespace ssf2t::character

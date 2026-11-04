@@ -286,6 +286,7 @@ SUITES=(
   "online protocol|ssf2t_online_protocol_tests|$A_NET"
   "online identity|ssf2t_online_identity_tests|$A_NET;$A_DATA"
   "online service (Find Match, Create Match, Invite, friends)|ssf2t_online_service_tests|$A_NET;$A_RELAY;$A_PM;$A_MULTI"
+  "secret characters (negotiation rule, select gating, rollback host state, validation)|ssf2t_secret_select_tests|$A_NET;$A_RB;$A_B13;$A_TU;$A_MULTI"
   "online rendezvous (STUN, UDP punch, relay selection)|ssf2t_online_rendezvous_tests|$A_RELAY;$A_NET"
   "online connection test|ssf2t_online_connection_tests|$A_NET;$A_RELAY"
   "friend code field|ssf2t_friend_field_tests|$A_NET"

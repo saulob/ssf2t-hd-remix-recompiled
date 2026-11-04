@@ -2,12 +2,15 @@
 import { metricsDay } from '../src/metrics.js';
 import { befriend, identity } from './harness.js';
 
+export const SECRET_ON = { supports: { akuma: true, evil_ryu: true }, enabled: { akuma: true, evil_ryu: true } };
+
+// `secret` is both players' capabilities; secretA and secretB override one side.
 export function startFightMatch(env, { nA = 1, nB = 2, guest = 'base013', platformA = 'Windows', platformB = 'Windows',
-  telemetry = true, ipA = '203.0.113.1', ipB = '203.0.113.2' } = {}) {
+  telemetry = true, ipA = '203.0.113.1', ipB = '203.0.113.2', secret, secretA = secret, secretB = secret } = {}) {
   const a = env.connect(identity(nA), { guest, platform: platformA, ip: ipA });
   const b = env.connect(identity(nB), { guest, platform: platformB, ip: ipB });
-  a.hello({ relay: true, ...(telemetry ? { telemetry: true } : {}) });
-  b.hello({ relay: true, ...(telemetry ? { telemetry: true } : {}) });
+  a.hello({ relay: true, ...(telemetry ? { telemetry: true } : {}), ...(secretA ? { secret: secretA } : {}) });
+  b.hello({ relay: true, ...(telemetry ? { telemetry: true } : {}), ...(secretB ? { secret: secretB } : {}) });
   befriend(a, b);
   const hosted = a.call('pm.host', {});
   const joined = b.call('pm.join', { session: hosted.session });

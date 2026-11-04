@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { CAPABILITIES } from '../src/protocol.js';
 import { identity, makeHub } from './harness.js';
-import { characters, daily, dimension, fightEvent, playFight, send, startFightMatch } from './fight_support.js';
+import { SECRET_ON, characters, daily, dimension, fightEvent, playFight, send, startFightMatch } from './fight_support.js';
 
 test('the service announces fight telemetry and the protocol number is unchanged', () => {
   assert.equal(CAPABILITIES.fight_telemetry, true);
@@ -92,7 +92,7 @@ test('a telemetry event before sign-in is refused', () => {
 test('an invalid character is rejected', () => {
   const env = makeHub();
   const m = startFightMatch(env);
-  for (const bad of [17, 255, -1, 1.5, '4', null, undefined]) {
+  for (const bad of [19, 255, -1, 1.5, '4', null, undefined]) {
     assert.equal(send(m.a, fightEvent(m, 'start', 0, { p1: bad })).code, 'bad_request', String(bad));
     assert.equal(send(m.a, fightEvent(m, 'start', 0, { p2: bad })).code, 'bad_request', String(bad));
   }
@@ -101,7 +101,7 @@ test('an invalid character is rejected', () => {
 
 test('every playable character id is accepted', () => {
   const env = makeHub();
-  const m = startFightMatch(env);
+  const m = startFightMatch(env, { secret: SECRET_ON });
   for (let id = 0; id <= 16; id++) assert.equal(send(m.a, fightEvent(m, 'start', id, { p1: id, p2: 16 - id })).code, 'ok');
   assert.equal(daily(env, 'fights_started'), 17);
 });

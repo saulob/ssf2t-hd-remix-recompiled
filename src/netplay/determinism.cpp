@@ -92,7 +92,7 @@ const char* StateRegionName(size_t region) {
 
 std::array<uint32_t, kStateRegions> StateRegionHashes(const std::vector<uint8_t>& blob) {
   std::array<uint32_t, kStateRegions> hashes{};
-  if (blob.size() != kSimBlobSize) return hashes;
+  if (blob.size() < kSimBlobSize) return hashes;
   size_t offset = 0;
   for (size_t i = 0; i < kStateRegions; ++i) {
     const uint64_t hash = Fnv1a64(blob.data() + offset, kStateRegionTable[i].size);
@@ -103,7 +103,7 @@ std::array<uint32_t, kStateRegions> StateRegionHashes(const std::vector<uint8_t>
 }
 
 std::string DescribeStateHashes(const std::vector<uint8_t>& blob) {
-  if (blob.size() != kSimBlobSize) return "unavailable";
+  if (blob.size() < kSimBlobSize) return "unavailable";
   const auto hashes = StateRegionHashes(blob);
   std::string out;
   char text[32];

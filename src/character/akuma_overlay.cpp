@@ -16,6 +16,7 @@
 #include "aspect_ratio.h"
 #include "character/akuma.h"
 #include "character/akuma_portrait.h"
+#include "character/secret_select.h"
 #include "character/ultra_fighters.h"
 #include "guest_memory.h"
 #include "presentation_setting.h"
@@ -29,17 +30,20 @@ constexpr int64_t kStaleMilliseconds = 3000;
 struct Base013Select {
   static constexpr uint32_t kLive = 0x83CA6C9C;
   static constexpr uint32_t kLayout = 0x83CA290E;
+  static constexpr uint32_t kMode = 0x83CA294F;
 };
 
 struct TitleUpdate023Select {
   static constexpr uint32_t kLive = 0x83CA71B4;
   static constexpr uint32_t kLayout = 0x83CA2E26;
+  static constexpr uint32_t kMode = 0x83CA2E67;
 };
 
 std::atomic<int64_t> g_last_touch_ms{0};
 std::atomic<uint32_t> g_live{0};
 std::atomic<uint32_t> g_session{0};
 std::atomic<SelectLayout> g_layout{SelectLayout::kArcade};
+std::atomic<bool> g_online{false};
 
 int64_t NowMilliseconds() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
@@ -54,7 +58,9 @@ bool SelectActive() {
 template <typename S>
 void TouchSelect(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   original(ctx, base);
-  if (!AkumaEnabled() && !UltraFightersEnabled()) return;
+  const uint8_t mode = *GuestHost(base, S::kMode);
+  g_online.store(OnlineSelectMode(mode), std::memory_order_relaxed);
+  if (!AkumaAvailable(mode) && !EvilRyuAvailable(mode)) return;
   if (!SelectActive()) g_session.fetch_add(1, std::memory_order_relaxed);
   g_layout.store(*GuestHost(base, S::kLayout) != 0 ? SelectLayout::kVersus : SelectLayout::kArcade,
                  std::memory_order_relaxed);
@@ -71,14 +77,15 @@ class AkumaPortraitOverlay final : public rex::ui::ImGuiDialog {
  protected:
   void OnDraw(ImGuiIO& io) override {
     const uint32_t live = g_live.load(std::memory_order_relaxed);
-    if (AkumaEnabled() && SelectActive() && GuestShowsAkuma(uint8_t(live), uint8_t(live >> 8))) {
+    const bool available = AkumaAvailableFor(g_online.load(std::memory_order_relaxed));
+    if (available && SelectActive() && GuestShowsAkuma(uint8_t(live), uint8_t(live >> 8))) {
       if (!suppress_logged_) {
         suppress_logged_ = true;
         REXLOG_INFO("DEBUG_SAULO AKUMA overlay draw-suppressed guest-akuma=1");
       }
       return;
     }
-    if (!AkumaPortraitVisible(AkumaEnabled(), SelectActive(), uint8_t(live), uint8_t(live >> 8)) || !EnsureTexture()) {
+    if (!AkumaPortraitVisible(available, SelectActive(), uint8_t(live), uint8_t(live >> 8)) || !EnsureTexture()) {
       return;
     }
     const bool letterbox = rex::cvar::GetFlagByName(kLetterboxSetting) != "false";
@@ -125,6 +132,8 @@ class AkumaPortraitOverlay final : public rex::ui::ImGuiDialog {
 }  // namespace
 
 bool CharacterSelectActive() { return SelectActive(); }
+
+bool CharacterSelectOnline() { return g_online.load(std::memory_order_relaxed); }
 
 uint32_t CharacterSelectSession() { return g_session.load(std::memory_order_relaxed); }
 

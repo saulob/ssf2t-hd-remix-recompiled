@@ -213,6 +213,7 @@ $Suites = @(
     @('online identity', 'online_identity', 'Online protocol', 'Saves / user data'),
     @('online service', 'online_service', 'Online protocol', 'Direct / Relay', 'Player Match', 'Multiple fights / matches', 'Online parity'),
     @('fight telemetry (reporter, guest reads on both images, queue, wire)', 'fight_telemetry', 'Fight telemetry', 'Base013', 'TU023', 'Online protocol', 'Direct / Relay', 'Multiple fights / matches', 'Hooks and patches', 'Online parity'),
+    @('secret characters (negotiation rule, select gating, rollback host state, validation)', 'secret_select', 'Online protocol', 'Rollback', 'Base013', 'TU023', 'Multiple fights / matches'),
     @('online rendezvous', 'online_rendezvous', 'Direct / Relay'),
     @('online connection test', 'online_connection', 'Online protocol', 'Direct / Relay'),
     @('friend code field', 'friend_field', 'Online protocol'),

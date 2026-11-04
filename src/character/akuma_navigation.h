@@ -61,6 +61,8 @@ struct AkumaNavigation {
   std::array<int, 2> column = {{kNoColumn, kNoColumn}};
   std::array<SelectLayout, 2> layout = {{SelectLayout::kArcade, SelectLayout::kArcade}};
 
+  void Reset() { *this = AkumaNavigation{}; }
+
   bool Resolve(bool enabled, int side, uint8_t live, NavDirection direction, uint8_t& next) {
     return Resolve(enabled, SelectLayout::kArcade, side, live, direction, next);
   }

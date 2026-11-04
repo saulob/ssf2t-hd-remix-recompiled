@@ -19,6 +19,7 @@ constexpr double kRefreshSeconds = 30.0;
 constexpr double kNameSettleSeconds = 1.5;
 constexpr double kLeaveFlushSeconds = 2.0;
 constexpr double kNoticeSeconds = 12.0;
+constexpr double kSecretRetrySeconds = 5.0;
 constexpr double kHostRefreshSeconds = 60.0;
 constexpr double kSearchSeconds = 3.0;
 constexpr double kSearchFreshSeconds = 1.0;
@@ -131,6 +132,8 @@ void OnlineService::Disable() {
   retry_delay_ = 1.0;
   link_ = NetplayLink::kNone;
   rtt_ms_.reset();
+  secret_in_flight_ = false;
+  secret_retry_at_ = 0;
 }
 
 void OnlineService::Update(double now) {
@@ -157,6 +160,7 @@ void OnlineService::Update(double now) {
   if (step_ != Step::kOnline) return;
   if (now >= next_refresh_) Refresh();
   PumpPlayerMatch();
+  PumpSecret();
   if (SessionName() != greeted_name_ && !match_ && now - name_since_ >= kNameSettleSeconds) {
     Log("online name changed, signing in again");
     if (channel_) channel_->Close();
@@ -195,8 +199,12 @@ void OnlineService::OnEvent(const ChannelEvent& event, double now) {
       step_ = Step::kGreeting;
       step_deadline_ = now + kStepTimeoutSeconds;
       Send(Purpose::kHello, [this](int seq) {
+        local_secret_ = announced_secret_ = CurrentSecret();
+        secret_in_flight_ = false;
+        PublishSecret();
         return EncodeHello(seq, {config_.guest, config_.build, identity_.player_id, identity_.token, SessionName(),
-                                 config_.version, config_.platform, true, config_.relay && config_.game_socket, config_.fight_telemetry});
+                                 config_.version, config_.platform, true, config_.relay && config_.game_socket,
+                                 config_.fight_telemetry, local_secret_});
       });
       break;
     case ChannelEvent::Kind::kText:
@@ -341,6 +349,16 @@ void OnlineService::OnResponse(const ServerMessage& message, double now) {
     case Purpose::kFightReport:
       if (!ok && ++fight_reports_failed_ <= 3) Log("fight telemetry refused code=" + message.code);
       break;
+    case Purpose::kSecretUpdate:
+      secret_in_flight_ = false;
+      if (!ok) {
+        secret_retry_at_ = now + kSecretRetrySeconds;
+        Log("online secret-cap update refused code=" + message.code);
+        break;
+      }
+      announced_secret_ = secret_sent_;
+      if (match_ && message.secret) SetMatchSecret(message.secret);
+      break;
     case Purpose::kInviteDecline:
     case Purpose::kPlayerMatchCancel:
     case Purpose::kEndpoint:
@@ -389,6 +407,8 @@ void OnlineService::OnGreeted(const ServerMessage& message, double now) {
         "relay_supported=false");
   }
   Log(std::string("relay capability available=") + Flag(capabilities_.relay_supported));
+  Log(std::string("online secret-cap service supported=") + Flag(capabilities_.secret_characters));
+  PublishSecret();
   Refresh();
   if (match_) {
     const std::string id = match_->match;
@@ -440,13 +460,22 @@ void OnlineService::OnServerEvent(const ServerMessage& message, double now) {
       if (match_ && match_->match == message.match_id) OnMatchEnded(message.reason);
       break;
     case Kind::kMatchPeerLost:
-      if (match_ && match_->match == message.match_id) peer_lost_ = true;
+      if (match_ && match_->match == message.match_id) {
+        peer_lost_ = true;
+        PublishSecret();
+      }
       break;
     case Kind::kMatchPeerBack:
-      if (match_ && match_->match == message.match_id) peer_lost_ = false;
+      if (match_ && match_->match == message.match_id) {
+        peer_lost_ = false;
+        PublishSecret();
+      }
       break;
     case Kind::kMatchReady:
       Log(std::string("online peer ready=") + (message.ready ? "true" : "false"));
+      break;
+    case Kind::kMatchSecret:
+      if (match_ && match_->match == message.match_id) SetMatchSecret(message.secret);
       break;
     case Kind::kMatchTransport:
       OnMatchTransport(message);
@@ -708,6 +737,8 @@ void OnlineService::OnMatchStarted(const MatchInfo& info) {
   }
   match_ = info;
   ++match_generation_;
+  match_secret_ = info.secret;
+  PublishSecret();
   peer_.reset();
   assignment_.reset();
   peer_lost_ = false;
@@ -812,6 +843,8 @@ void OnlineService::ClearMatch() {
     LogTransportSummary();
   }
   match_.reset();
+  match_secret_.reset();
+  PublishSecret();
   peer_.reset();
   assignment_.reset();
   peer_lost_ = false;
@@ -1542,6 +1575,60 @@ void OnlineService::Log(const std::string& line) {
   if (config_.log) config_.log(line);
 }
 
+SecretCapabilities OnlineService::CurrentSecret() const {
+  return config_.secret ? config_.secret().Normalized() : SecretCapabilities{};
+}
+
+void OnlineService::PumpSecret() {
+  const SecretCapabilities current = CurrentSecret();
+  if (!(current == local_secret_)) {
+    local_secret_ = current;
+    PublishSecret();
+  }
+  if (current == announced_secret_ || secret_in_flight_ || now_ < secret_retry_at_ || !capabilities_.secret_characters) {
+    return;
+  }
+  secret_in_flight_ = true;
+  secret_sent_ = current;
+  Send(Purpose::kSecretUpdate, [&current](int seq) { return EncodeSecretUpdate(seq, current); });
+}
+
+void OnlineService::SetMatchSecret(const std::optional<MatchSecrets>& secret) {
+  match_secret_ = secret;
+  PublishSecret();
+}
+
+// A peer that dropped out leaves the room's secrets off until it is back; a match that ended leaves none at all.
+void OnlineService::PublishSecret() {
+  const bool live = match_ && !peer_lost_ && match_secret_;
+  const SecretSet effective = live ? VerifiedSecrets(local_secret_, *match_secret_) : SecretSet{};
+  secret_effective_.store(effective.Bits(), std::memory_order_relaxed);
+  std::optional<SecretCapabilities> peer;
+  if (match_ && match_secret_) peer = match_secret_->peer;
+  if (secret_logged_ && local_secret_ == logged_local_ && peer == logged_peer_ && effective == logged_effective_) return;
+  const auto flag = [](bool value) { return value ? 1 : 0; };
+  if (!secret_logged_ || !(local_secret_ == logged_local_)) {
+    Log("online secret-cap local akuma=" + std::to_string(flag(local_secret_.enabled.akuma)) +
+        " evil=" + std::to_string(flag(local_secret_.enabled.evil_ryu)));
+  }
+  if (peer && !(peer == logged_peer_)) {
+    Log("online secret-cap peer akuma=" + std::to_string(flag(peer->enabled.akuma)) +
+        " evil=" + std::to_string(flag(peer->enabled.evil_ryu)) + " supports=" + std::to_string(peer->supports.Bits()));
+  }
+  if (live && !(match_secret_->effective == effective)) {
+    Log("online secret-cap service answer overridden service=" + std::to_string(match_secret_->effective.Bits()) +
+        " verified=" + std::to_string(effective.Bits()));
+  }
+  if (!secret_logged_ || !(effective == logged_effective_)) {
+    Log("online secret-cap effective akuma=" + std::to_string(flag(effective.akuma)) +
+        " evil=" + std::to_string(flag(effective.evil_ryu)));
+  }
+  secret_logged_ = true;
+  logged_local_ = local_secret_;
+  logged_peer_ = peer;
+  logged_effective_ = effective;
+}
+
 Snapshot OnlineService::snapshot() const {
   std::lock_guard<std::mutex> lock(mutex_);
   Snapshot s;
@@ -1562,6 +1649,11 @@ Snapshot OnlineService::snapshot() const {
   s.testing = testing_;
   s.test = test_;
   s.tests_finished = tests_finished_;
+  s.secret.local = local_secret_;
+  s.secret.service_supported = capabilities_.secret_characters;
+  s.secret.in_match = match_.has_value();
+  if (match_ && match_secret_) s.secret.peer = match_secret_->peer;
+  s.secret.effective = SecretSet::FromBits(secret_effective_.load(std::memory_order_relaxed));
   if (match_) {
     MatchSnapshot m;
     m.peer_player = match_->peer_player;

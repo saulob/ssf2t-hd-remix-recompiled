@@ -194,9 +194,10 @@ void TestOnlinePageSections() {
   const std::vector<OnlineSection> on = OnlinePageSections(true, 0);
   CHECK((on == std::vector<OnlineSection>{OnlineSection::kOnlinePlay, OnlineSection::kOnlineName,
                                           OnlineSection::kFriendCode, OnlineSection::kConnectionTest,
-                                          OnlineSection::kPingDisplay, OnlineSection::kFriends}));
+                                          OnlineSection::kPingDisplay, OnlineSection::kSecretCharacters,
+                                          OnlineSection::kFriends}));
   const std::vector<OnlineSection> with_requests = OnlinePageSections(true, 2);
-  CHECK(with_requests.size() == 7 && with_requests[1] == OnlineSection::kFriendRequests);
+  CHECK(with_requests.size() == 8 && with_requests[1] == OnlineSection::kFriendRequests);
 }
 
 void TestLauncherHasAnOnlinePageWithoutTechnicalControls() {

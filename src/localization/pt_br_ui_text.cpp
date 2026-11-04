@@ -406,6 +406,15 @@ New friend request	Novo pedido de amizade
 Decline	Recusar
 Your friend code	Seu código de amigo
 Not available right now	Indisponível no momento
+Secret characters	Personagens secretos
+Akuma and Evil Ryu are in an Online Match only when both players have them on. Turn them on in Gameplay.	Akuma e Evil Ryu só aparecem em uma Partida Online quando os dois jogadores os ativam. Ative-os em Jogabilidade.
+Available	Disponível
+Disabled locally	Desativado localmente
+Disabled by opponent	Desativado pelo oponente
+Unsupported by opponent	Sem suporte do oponente
+Unsupported by the service	Sem suporte do serviço
+Waiting for opponent	Aguardando o oponente
+Enabled locally	Ativado localmente
 Connecting...	Conectando...
 Copy	Copiar
 Friend code copied.	Código de amigo copiado.

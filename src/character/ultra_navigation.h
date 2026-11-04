@@ -42,6 +42,9 @@ class UltraNavigation {
   UltraMove Resolve(bool enabled, int side, uint8_t live, PadDirection direction);
   bool OnEvilRyu(int side) const;
   void Reset();
+  uint8_t Mask() const { return mask_.load(std::memory_order_relaxed); }
+  // Puts the cell selection back as a rollback saved it, requested identities included.
+  void Restore(uint8_t mask);
 
  private:
   void Set(int side, bool selected);

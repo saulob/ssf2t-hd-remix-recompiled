@@ -45,7 +45,7 @@ One JSON object per text frame; the literal `ping` is answered `pong`. Requests 
 
 | op | fields | answer |
 |---|---|---|
-| `hello` | `proto`, `game`, `guest` (`base013`/`tu023`), `build`, `player`, `token`, `name`, `version`, `platform`, `presence`, `relay` | `player`, `name`, `friend_code`, `capabilities` |
+| `hello` | `proto`, `game`, `guest` (`base013`/`tu023`), `build`, `player`, `token`, `name`, `version`, `platform`, `presence`, `relay`, optional `secret` | `player`, `name`, `friend_code`, `capabilities` |
 | `ping` | | `time` |
 | `friends.list` / `friends.requests` | | `friends[]` / `incoming[]`, `outgoing[]` |
 | `friends.add` | `code` | `player`, `name`, `state` (`pending`/`friends`) |
@@ -58,17 +58,18 @@ One JSON object per text frame; the literal `ping` is answered `pong`. Requests 
 | `match.ready` | `match`, `ready` | |
 | `match.transport` | `match`, `transport` (`direct`/`relay`); host only | |
 | `match.leave` / `match.resume` | `match` | `.resume` answers with the match |
+| `secret.update` | `secret` (as in `hello`) | `secret` (the match's view) when in a match |
 
 A friend row is `{player, name, online, state, platform, version, guest, build, compatible}`; `state` is `offline`,
 `online`, `player_match`, `connecting` or `in_game`.
 
-`capabilities` is `{protocol_version, worker_build, public_endpoints, relay_supported, relay_max_payload, fight_telemetry}`; an older
-service sends none, which clients read as no relay and no fight telemetry. `match.created` and the `pm.join` answer carry `relay_token` when
+`capabilities` is `{protocol_version, worker_build, public_endpoints, relay_supported, relay_max_payload, fight_telemetry,
+secret_characters}`; an older service sends none, which clients read as no relay, no fight telemetry and no secret characters. `match.created` and the `pm.join` answer carry `relay_token` when
 the match has a relay.
 
 Events: `friend.request`, `friend.added`, `friend.removed`, `friend.status`, `friend.offline`, `match.created`
 (with `session`), `match.peer`, `match.ready`,
-`match.peer_lost`, `match.peer_back`, `match.ended` (`left`, `disconnect`, `expired`), `match.transport` (to the joiner),
+`match.peer_lost`, `match.peer_back`, `match.secret`, `match.ended` (`left`, `disconnect`, `expired`), `match.transport` (to the joiner),
 `relay.closed` (`peer_disconnected`, `rate_limit`, `peer_backpressure`, `peer_unavailable`, `unavailable`).
 
 Errors: `bad_request`, `too_large`, `no_session`, `proto`, `bad_game`, `bad_guest`, `unauthorized`, `not_found`,
@@ -86,16 +87,50 @@ connection; only the port comes from the client, and LAN candidates reach only a
 dropped socket keeps its match seat for 30 s (`match.resume` retakes it); after that the peer hears `match.ended`.
 
 Limits: 4 KB frames, 16-character names, 60 messages burst then 20/s per socket (`friends.add`, `pm.host`, `pm.join`,
-`invite.send`, `match.resume` 10 burst then 1/s), 16 sockets and 20 new players per day per address, 200 friends, 50 pending requests each way.
+`invite.send`, `match.resume`, `secret.update` 10 burst then 1/s), 16 sockets and 20 new players per day per address, 200 friends, 50 pending requests each way.
 Relay: 400 frames/s (burst 800) and 128 KB/s (burst 256 KB) per socket, twice that per match; 256 dropped frames in a
 match end its relay. All matches share the one Durable Object, so relayed traffic counts against its CPU and request
 budget.
+
+### Secret characters (optional, protocol 3 unchanged)
+
+Two characters outside the original roster, Akuma (id 16) and Evil Ryu (id 17), are playable online only when both
+players have them. Each connection advertises, in `hello` and later with `secret.update`:
+
+```
+"secret": {"supports": {"akuma": bool, "evil_ryu": bool}, "enabled": {"akuma": bool, "evil_ryu": bool}}
+```
+
+`supports` is what the client's build can play, `enabled` what the player turned on. Parsing is strict: anything that is
+not exactly `true` is `false`; a missing or malformed field, a malformed section and unknown keys never fail the request
+and read as `false`; `enabled` counts only where `supports` is true. A client that sends nothing (every client before
+this field) supports and enables nothing, so a match with it never has a secret character. The value is kept on the
+connection and copied into the match row when a match is created (`host_secret`, `join_secret`: bit 0 supports Akuma,
+bit 1 supports Evil Ryu, bit 2 enabled Akuma, bit 3 enabled Evil Ryu); nothing carries from one match to the next, and
+`match.resume` refreshes the resuming seat's mask from its new connection.
+
+The match answers (`pm.join`, `match.created`, `match.resume`) carry, for the receiving seat:
+
+```
+"secret": {"peer": {"supports": {...}, "enabled": {...}}, "effective": {"akuma": bool, "evil_ryu": bool}}
+```
+
+`peer` is the other seat's stored capabilities; `effective.k` is true only when both seats support and enabled `k`, the
+same for both seats. `secret.update` answers `{}`, plus the same `secret` view when the sender is in a match. When it
+changes the sender's capabilities (an identical update does nothing: no write, no event) and the sender is in a match,
+the stored mask is updated and both seats receive `{"ev":"match.secret","match":id,"secret":<their view>}`; a
+`match.resume` that changes the mask sends it to the peer. No player id is in any of it. `secret.update` shares the
+10 burst / 1 per second bucket of the other social operations.
+
+Violent Ken (id 18) is a reserved identity: a valid character id, never advertised and never available.
 
 ### Fight telemetry (optional, protocol 3 unchanged)
 
 A client that sets `telemetry: true` in `hello` reports its online fights with `telemetry.fight`:
 `{match, kind: start|complete, fight, p1, p2, build, transport: direct|relay, platform, result: p1|p2|draw}`. Characters
-are the game's internal ids 0 to 16 (`src/characters.js`). Only the match's host sends it; the service takes either
+are the game's internal ids 0 to 16 plus this port's secret ids 17 (Evil Ryu) and 18 (Violent Ken, reserved)
+(`src/characters.js`). A start that names a secret character the match's `effective` view does not allow (Violent Ken
+never) is refused with `bad_request` and records nothing; the diagnostic `fight_secret_rejected` counts it. Only the match's host sends it; the service takes either
 seat's copy and counts each `(match, fight, kind)` once. It answers `ok` with `counted` (`false`, `reason: duplicate`
 for a repeat) or refuses an unknown match, an invalid character, build, platform, transport or fight index (0 to 199), a
 build other than the match's, a completion without a start or with other characters, and anything after the match
@@ -103,7 +138,14 @@ ended. The Worker's own knowledge of the transport wins over the report. A v0.3.
 signs in and matches exactly as before; its matches add no fight numbers and show dashes under Last matches.
 
 Stored per day: fights started and completed, draws, fights per transport, build and platform (each fight counts once for
-each side's platform), and per character picks, wins, losses and draws. Per open match: its start, platforms, transport
+each side's platform), and per character picks, wins, losses and draws (Evil Ryu has its own row, apart from Ryu).
+Secret characters add three dimensions in `metrics_daily_dimensions`, counts only: `secret`, once per match when both
+seats are first ready (`akuma_available`, `evil_ryu_available` when both seats support and enabled it,
+`akuma_option_mismatch`, `evil_ryu_option_mismatch` when both support it and exactly one enabled it, and
+`unsupported_peer` once when exactly one side supports a character and that side enabled it); `secret_fight`, per started
+fight (`akuma`, `evil_ryu`, `akuma_mirror`, `evil_ryu_mirror`, `akuma_vs_evil_ryu`); and `secret_match`, once per match at
+the first fight that includes the character (`akuma`, `evil_ryu`, tracked by two flags on the open match's telemetry row).
+Nothing is written by `secret.update` itself beyond the match's mask. Per open match: its start, platforms, transport
 and fight counts, and one row per fight for the dedupe; both go when the match closes. A closed match leaves one row in
 `recent_matches` (end time, duration, fight counts, transport, build, platform pair, final state: Completed,
 Abandoned, Disconnected, Timeout, Failed or Ended), kept for the latest 50 matches or 30 days, whichever drops it first.
@@ -144,7 +186,8 @@ None of this changes the protocol, the wire format or what a released client see
 (a Worker secret of 16 or more characters; without it the API answers 503). The page is read-only. It shows players
 online, players in matches, advertised matches, the running matches as Direct, Relay or Pending (the "now" cards),
 the accumulated numbers for today and for the selected range (matches, fights, Direct and Relay, character picks, wins and
-losses), the last matches, and daily counters and 15-minute samples kept in the object's `metrics_*` and `recent_matches` tables. No row names a player, an address or a match. The
+losses), a Secret characters section (rooms with Akuma or Evil Ryu available, option and unsupported-peer mismatches,
+fights and matches with each, mirrors and Akuma vs Evil Ryu), the last matches, and daily counters and 15-minute samples kept in the object's `metrics_*` and `recent_matches` tables. No row names a player, an address or a match. The
 match list is read live and shows a short id only; relay tokens, connection ids, friend codes and addresses never
 leave the hub.
 

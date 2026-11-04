@@ -5,6 +5,10 @@
 #include <rex/hook.h>
 
 #include "character/akuma_select.h"
+#include "character/secret_select.h"
+#include "guest_memory.h"
+#include "netplay/guest_netplay.h"
+#include "online_runtime.h"
 #include "title_update_image.h"
 
 namespace ssf2t::character {
@@ -14,11 +18,19 @@ REXCVAR_DEFINE_BOOL(ssf2t_enable_akuma, false, "SSF2T",
 
 bool AkumaEnabled() { return REXCVAR_GET(ssf2t_enable_akuma); }
 
+bool AkumaAvailableFor(bool online_select) {
+  return SecretAvailable(online_select, AkumaEnabled(), online_select && ActiveOnlineSecrets().akuma);
+}
+
+bool AkumaAvailable(uint8_t game_mode) { return AkumaAvailableFor(OnlineSelectMode(game_mode)); }
+
 namespace {
 
+template <typename G>
 void UnlockAkuma(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   original(ctx, base);
-  ctx.r3.u64 = AkumaUnlockResult(AkumaEnabled(), uint32_t(ctx.r3.u32));
+  const bool online = OnlineSelectMode(*GuestHost(base, G::kGameMode));
+  ctx.r3.u64 = AkumaUnlockFor(online, AkumaAvailableFor(online), uint32_t(ctx.r3.u32));
 }
 
 }  // namespace
@@ -26,12 +38,12 @@ void UnlockAkuma(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
 
 REX_EXTERN(__imp__base013_sub_823C9668);
 REX_HOOK_RAW(base013_sub_823C9668) {
-  ssf2t::character::UnlockAkuma(ctx, base, __imp__base013_sub_823C9668);
+  ssf2t::character::UnlockAkuma<ssf2t::netplay::Base013Netplay>(ctx, base, __imp__base013_sub_823C9668);
 }
 
 #if SSF2T_TITLE_UPDATE_IMAGE
 REX_EXTERN(__imp__tu023_sub_823C9C60);
 REX_HOOK_RAW(tu023_sub_823C9C60) {
-  ssf2t::character::UnlockAkuma(ctx, base, __imp__tu023_sub_823C9C60);
+  ssf2t::character::UnlockAkuma<ssf2t::netplay::TitleUpdate023Netplay>(ctx, base, __imp__tu023_sub_823C9C60);
 }
 #endif

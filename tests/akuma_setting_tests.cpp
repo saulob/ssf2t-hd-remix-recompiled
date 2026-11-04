@@ -318,7 +318,8 @@ int main() {
     }
   }
 
-  Check(ssf2t::online::kCharacterCount == 17, "roster count is unchanged");
+  Check(ssf2t::online::kCharacterCount == 18 && ssf2t::online::kEvilRyuCharacter == 17,
+        "roster is the original seventeen plus Evil Ryu");
   Check(ssf2t::online::kAkumaCharacter == 16, "Akuma keeps the original roster id");
 
   if (failures == 0) std::printf("akuma setting tests passed\n");

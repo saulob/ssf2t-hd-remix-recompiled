@@ -7,12 +7,15 @@
 
 #include <imgui.h>
 
+#include "character/akuma.h"
+#include "character/ultra_fighters.h"
 #include "friend_code_field.h"
 #include "infinite_time.h"
 #include "localization/ui_text.h"
 #include "online/friend_view.h"
 #include "online/identity.h"
 #include "online/protocol.h"
+#include "online/secret_view.h"
 #include "online_runtime.h"
 #include "online_setting.h"
 
@@ -25,6 +28,8 @@ constexpr char kTestHelp[] =
 constexpr char kUnreachable[] = "Cannot reach the online service right now. Run the Connection test for details.";
 constexpr char kNoFriends[] = "No friends yet. Add someone with their friend code.";
 constexpr char kInfiniteTimeOff[] = "Infinite Time was turned off because Online play is on.";
+constexpr char kSecretHelp[] =
+    "Akuma and Evil Ryu are in an Online Match only when both players have them on. Turn them on in Gameplay.";
 
 int OnlineNameFilter(ImGuiInputTextCallbackData* data) {
   return data->EventChar < 0x80 && online::OnlineNameChar(char(data->EventChar)) ? 0 : 1;
@@ -139,6 +144,7 @@ void OnlinePage::Draw(trg::Ui& ui) {
       case OnlineSection::kPingDisplay:
         ui.Toggle(kOnlinePingLabel, kOnlinePingHelp, kOnlinePingSetting, kDefaultOnlinePing, "Off", "On");
         break;
+      case OnlineSection::kSecretCharacters: DrawSecretCharacters(ui, state); break;
       case OnlineSection::kFriends: DrawFriends(ui, state); break;
     }
   }
@@ -278,6 +284,22 @@ void OnlinePage::DrawConnectionTestBody(trg::Ui& ui, const online::Snapshot& sta
     ImGui::TextWrapped("%s: %s", Tr(line.label.c_str()), line.text.c_str());
   }
   ui.Spacer();
+}
+
+void OnlinePage::DrawSecretCharacters(trg::Ui& ui, const online::Snapshot& state) {
+  online::SecretCapabilities edited;
+  edited.supports = {true, true};
+  edited.enabled = {ui.settings().GetBool(character::kEnableAkumaSetting, character::kDefaultEnableAkuma),
+                    ui.settings().GetBool(character::kEnableUltraFightersSetting, character::kDefaultEnableUltraFighters)};
+  ui.Heading("Secret characters");
+  for (const online::SecretRowView& row : online::DescribeSecretCharacters(state, edited)) {
+    ui.Row(row.label.c_str());
+    ImGui::PushStyleColor(ImGuiCol_Text, row.available ? ui.theme().good_dot : ui.theme().dim);
+    ImGui::TextUnformatted(row.status.c_str());
+    ImGui::PopStyleColor();
+  }
+  ui.EndRows();
+  ui.Help(kSecretHelp);
 }
 
 void OnlinePage::DrawFriends(trg::Ui& ui, const online::Snapshot& state) {

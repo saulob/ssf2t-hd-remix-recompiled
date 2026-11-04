@@ -5,15 +5,17 @@
 // hibernated Durable Object resumes as if it had never stopped; relay routes are a memory cache rebuilt from them.
 // The same class runs in the development server (local/server.js).
 import { PROTECTION, RateLimiter } from './abuse.js';
+import { SECRET_CHARACTER, SECRET_KEYS } from './characters.js';
 import { Metrics, SAMPLE_MS, countryCode, platformCategory, sampleBucket, versionCategory } from './metrics.js';
 import { sha256Hex, toHex } from './sha256.js';
 import {
   BUCKETS, CAPABILITIES, LIMITS, ProtocolError, RELAY, compatibleGuests, fail, ipGroup, isLocalAddress,
-  normalizeFriendCode, parseEndpoint, parseFightEvent, parseHello, parseRelayFrame,
+  effectiveSecret, normalizeFriendCode, normalizeSecret, parseEndpoint, parseFightEvent, parseHello, parseRelayFrame,
+  secretEstablishment, secretFromMask, secretMask,
 } from './protocol.js';
 
 const DAY_MS = 24 * 3600 * 1000;
-const SOCIAL_OPS = new Set(['friends.add', 'pm.host', 'pm.join', 'invite.send', 'match.resume']);
+const SOCIAL_OPS = new Set(['friends.add', 'pm.host', 'pm.join', 'invite.send', 'match.resume', 'secret.update']);
 const RULE_KEY = /^[a-z_]{1,16}$/;
 const QOS_DATA = /^(?:[0-9a-f]{2}){0,256}$/;
 const ROLES = ['host', 'join'];
@@ -45,11 +47,13 @@ const SCHEMA = [
      host_port INTEGER NOT NULL DEFAULT 0, join_port INTEGER NOT NULL DEFAULT 0,
      host_lan TEXT NOT NULL DEFAULT '[]', join_lan TEXT NOT NULL DEFAULT '[]',
      host_ready INTEGER NOT NULL DEFAULT 0, join_ready INTEGER NOT NULL DEFAULT 0,
-     relay_token INTEGER NOT NULL DEFAULT 0, transport TEXT NOT NULL DEFAULT '')`,
+     relay_token INTEGER NOT NULL DEFAULT 0, transport TEXT NOT NULL DEFAULT '',
+     host_secret INTEGER NOT NULL DEFAULT 0, join_secret INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS match_telemetry (match TEXT PRIMARY KEY, guest TEXT NOT NULL, host_platform TEXT NOT NULL,
      join_platform TEXT NOT NULL, reporting INTEGER NOT NULL, transport TEXT NOT NULL DEFAULT '',
      transport_counted INTEGER NOT NULL DEFAULT 0, established INTEGER, fights_started INTEGER NOT NULL DEFAULT 0,
-     fights_completed INTEGER NOT NULL DEFAULT 0)`,
+     fights_completed INTEGER NOT NULL DEFAULT 0, secret_akuma INTEGER NOT NULL DEFAULT 0,
+     secret_evil_ryu INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS match_fights (match TEXT NOT NULL, fight INTEGER NOT NULL, p1 INTEGER NOT NULL,
      p2 INTEGER NOT NULL, completed INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (match, fight))`,
 ];
@@ -59,6 +63,9 @@ const ADDED_COLUMNS = [
   ['matches', 'host_pub_ip', "TEXT NOT NULL DEFAULT ''"], ['matches', 'join_pub_ip', "TEXT NOT NULL DEFAULT ''"],
   ['matches', 'host_pub_port', 'INTEGER NOT NULL DEFAULT 0'], ['matches', 'join_pub_port', 'INTEGER NOT NULL DEFAULT 0'],
   ['matches', 'relay_token', 'INTEGER NOT NULL DEFAULT 0'], ['matches', 'transport', "TEXT NOT NULL DEFAULT ''"],
+  ['matches', 'host_secret', 'INTEGER NOT NULL DEFAULT 0'], ['matches', 'join_secret', 'INTEGER NOT NULL DEFAULT 0'],
+  ['match_telemetry', 'secret_akuma', 'INTEGER NOT NULL DEFAULT 0'],
+  ['match_telemetry', 'secret_evil_ryu', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -92,6 +99,12 @@ function playerOf(value) {
 
 const transportOf = (row) =>
   (row.transport === 'direct' ? 'direct' : row.transport === 'relay' && row.relay_token ? 'relay' : 'pending');
+
+// What one seat is told about the characters of its match: the peer's stored capabilities and what both allow.
+function secretView(row, role) {
+  const peer = secretFromMask(row[`${role === 'host' ? 'join' : 'host'}_secret`]);
+  return { peer, effective: effectiveSecret(secretFromMask(row[`${role}_secret`]), peer) };
+}
 
 // One match as the dashboard shows it: a short id, no player, address, connection or token.
 function matchReport(row, now) {
@@ -602,9 +615,10 @@ export class Hub {
   createMatch(host, joiner) {
     const id = this.randomHex(8);
     const token = host.att.relay && joiner.att.relay ? relayToken() : 0;
-    this.host.sql.run(`INSERT INTO matches (id, host, joiner, guest, build, created, host_cid, join_cid, relay_token)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, host.att.player, joiner.att.player, joiner.att.guest, joiner.att.build,
-      this.host.now(), host.att.cid, joiner.att.cid, token);
+    this.host.sql.run(`INSERT INTO matches (id, host, joiner, guest, build, created, host_cid, join_cid, relay_token,
+      host_secret, join_secret) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, host.att.player, joiner.att.player,
+    joiner.att.guest, joiner.att.build, this.host.now(), host.att.cid, joiner.att.cid, token, secretMask(host.att.secret),
+    secretMask(joiner.att.secret));
     this.track(() => this.metrics.count('matches_started'));
     this.host.sql.run(`INSERT INTO match_telemetry (match, guest, host_platform, join_platform, reporting) VALUES (?, ?, ?, ?, ?)`,
       id, joiner.att.guest, platformCategory(host.att.platform), platformCategory(joiner.att.platform),
@@ -649,7 +663,8 @@ export class Hub {
   matchView(row, role) {
     const peer = this.playerRow(this.playerOfRole(row, this.otherRole(role)));
     return { match: row.id, role, guest: row.guest, build: row.build, peer: { player: peer?.player ?? '', name: peer?.name ?? '' },
-      peer_lost: row[`${this.otherRole(role)}_cid`] === null, ...(row.relay_token ? { relay_token: row.relay_token } : {}) };
+      peer_lost: row[`${this.otherRole(role)}_cid`] === null, ...(row.relay_token ? { relay_token: row.relay_token } : {}),
+      secret: secretView(row, role) };
   }
 
   attachMatch(cid, id) {
@@ -688,6 +703,27 @@ export class Hub {
     }));
     this.host.sql.run('DELETE FROM match_fights WHERE match = ?', row.id);
     this.host.sql.run('DELETE FROM match_telemetry WHERE match = ?', row.id);
+  }
+
+  // A secret character can start a fight only when both seats support and enabled it; violent_ken never can.
+  requireSecretCharacters(row, event) {
+    const effective = effectiveSecret(secretFromMask(row.host_secret), secretFromMask(row.join_secret));
+    for (const id of [event.p1, event.p2]) {
+      const key = SECRET_CHARACTER[id];
+      if (key && effective[key] !== true) {
+        this.diagnose('fight_secret_rejected');
+        fail('bad_request', 'character not available');
+      }
+    }
+  }
+
+  // Each secret character counts once per match, at the first fight that includes it.
+  countSecretMatch(tele, event) {
+    for (const key of SECRET_KEYS) {
+      if (tele[`secret_${key}`] || ![event.p1, event.p2].some((id) => SECRET_CHARACTER[id] === key)) continue;
+      this.host.sql.run(`UPDATE match_telemetry SET secret_${key} = 1 WHERE match = ?`, tele.match);
+      this.track(() => this.metrics.secretMatch(key));
+    }
   }
 
   // The match's transport counts once, whichever of the host's choice and its first fight names it first.
@@ -890,7 +926,7 @@ const HANDLERS = {
     const wasOnline = hello.presence && this.presentSockets(hello.player).length > 0;
     Object.assign(att, { hello: true, player: hello.player, name: hello.name, presence: hello.presence, guest: hello.guest,
       build: hello.build, version: hello.version, platform: hello.platform, relay: hello.relay, telemetry: hello.telemetry,
-      match: null });
+      secret: hello.secret, match: null });
     if (newSession) this.track(() => this.metrics.session(att));
     else if (hello.presence) this.diagnose('hello_reconnect_deduped');
     this.diagnose('hello_accepted');
@@ -1117,9 +1153,11 @@ const HANDLERS = {
     const role = this.roleOf(row, att.player);
     if (row[`${role}_ready`] !== (msg.ready ? 1 : 0)) {
       this.host.sql.run(`UPDATE matches SET ${role}_ready = ? WHERE id = ?`, msg.ready ? 1 : 0, row.id);
-      if (msg.ready && row[`${this.otherRole(role)}_ready`]) {
+      if (msg.ready && row[`${this.otherRole(role)}_ready`] && this.telemetryOf(row.id)?.established === null) {
         this.host.sql.run('UPDATE match_telemetry SET established = COALESCE(established, ?) WHERE match = ?',
           this.host.now(), row.id);
+        this.track(() => this.metrics.secretEstablished(secretEstablishment(secretFromMask(row.host_secret),
+          secretFromMask(row.join_secret))));
       }
     }
     this.later(() => {
@@ -1162,6 +1200,7 @@ const HANDLERS = {
     if (event.kind === 'start') {
       if (fight) return { counted: false, reason: 'duplicate' };
       if (tele.fights_started >= LIMITS.fightsPerMatch) fail('limit', 'too many fights');
+      this.requireSecretCharacters(row, event);
       const known = transportOf(row);
       const transport = known === 'pending' ? event.transport : known;
       this.host.sql.run('INSERT INTO match_fights (match, fight, p1, p2) VALUES (?, ?, ?, ?)', row.id, event.fight, event.p1,
@@ -1170,6 +1209,7 @@ const HANDLERS = {
       this.countTransport(row, transport);
       this.track(() => this.metrics.fightStarted({ p1: event.p1, p2: event.p2, transport, guest: row.guest,
         platforms: [tele.host_platform, tele.join_platform] }));
+      this.countSecretMatch(tele, event);
       return { counted: true };
     }
     if (!fight) fail('bad_request', 'fight not started');
@@ -1179,6 +1219,28 @@ const HANDLERS = {
     this.host.sql.run('UPDATE match_telemetry SET fights_completed = fights_completed + 1 WHERE match = ?', row.id);
     this.track(() => this.metrics.fightCompleted({ p1: event.p1, p2: event.p2, result: event.result }));
     return { counted: true };
+  },
+
+  // The sender's secret character capabilities; a change inside a match reaches both seats.
+  'secret.update'(att, msg) {
+    const secret = normalizeSecret(msg.secret);
+    const mask = secretMask(secret);
+    const changed = mask !== secretMask(att.secret);
+    if (changed) att.secret = secret;
+    let row = att.match && this.matchRow(att.match);
+    const role = row && this.roleOf(row, att.player);
+    if (!role) return {};
+    if (changed) {
+      this.host.sql.run(`UPDATE matches SET ${role}_secret = ? WHERE id = ?`, mask, row.id);
+      row = this.matchRow(row.id);
+      const fresh = row;
+      this.later(() => {
+        for (const seat of ROLES) {
+          this.sendToRole(fresh, seat, { ev: 'match.secret', match: fresh.id, secret: secretView(fresh, seat) });
+        }
+      });
+    }
+    return { secret: secretView(row, role) };
   },
 
   'match.leave'(att, msg) {
@@ -1209,10 +1271,17 @@ const HANDLERS = {
     // A relay never outlives the socket it was set up on.
     this.endRelay(row, 'resumed', role);
     this.host.sql.run(`UPDATE matches SET ${role}_cid = ?, ${role}_grace = NULL WHERE id = ?`, att.cid, row.id);
+    const mask = secretMask(att.secret);
+    const secretChanged = row[`${role}_secret`] !== mask;
+    if (secretChanged) this.host.sql.run(`UPDATE matches SET ${role}_secret = ? WHERE id = ?`, mask, row.id);
     att.match = row.id;
     const fresh = this.matchRow(row.id);
     this.later(() => {
       this.sendToRole(fresh, this.otherRole(role), { ev: 'match.peer_back', match: fresh.id });
+      if (secretChanged) {
+        this.sendToRole(fresh, this.otherRole(role), { ev: 'match.secret', match: fresh.id,
+          secret: secretView(fresh, this.otherRole(role)) });
+      }
       this.introduce(this.matchRow(fresh.id));
       this.notifyStatus(att.player);
     });

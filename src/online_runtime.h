@@ -23,6 +23,12 @@ void PumpOnlineService();
 
 double OnlineNowSeconds();
 
+// The secret characters the current online fight was started with: fixed from the start of its Character Select, so
+// the rollback replays them identically, and the service's live answer otherwise.
+online::SecretSet ActiveOnlineSecrets();
+void LockOnlineSecrets(online::SecretSet secrets);
+void UnlockOnlineSecrets();
+
 // Online Match's UDP socket, bound as soon as Online is on and the game runs (well before the Online Match menu), so
 // Windows Firewall can prompt for network access right away. It then stays bound for the whole process: every match
 // learns its public endpoint from it and plays over it. False while the bind fails (retried every few seconds).
