@@ -9,8 +9,8 @@
 
 namespace ssf2t::character {
 
-// The port-side state the Character Select and the Evil Ryu moves keep outside the guest, laid out for the rollback
-// blob: the Evil Ryu cell mask, the Akuma column memory, then both sides' move trackers.
+// The port-side state the Character Select and the Ultra fighters' moves keep outside the guest, laid out for the
+// rollback blob: the Ultra cell mask, the Akuma column memory, then both sides' move trackers.
 inline constexpr size_t kHostRollbackBytes = 1 + 2 * (1 + 1) + HostMoves::kBytes;
 
 inline void SaveHostRollback(const UltraNavigation& ultra, const AkumaNavigation& akuma, const HostMoves& moves,

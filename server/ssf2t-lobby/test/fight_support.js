@@ -2,7 +2,8 @@
 import { metricsDay } from '../src/metrics.js';
 import { befriend, identity } from './harness.js';
 
-export const SECRET_ON = { supports: { akuma: true, evil_ryu: true }, enabled: { akuma: true, evil_ryu: true } };
+export const SECRET_ON = { supports: { akuma: true, evil_ryu: true, violent_ken: true },
+  enabled: { akuma: true, evil_ryu: true, violent_ken: true } };
 
 // `secret` is both players' capabilities; secretA and secretB override one side.
 export function startFightMatch(env, { nA = 1, nB = 2, guest = 'base013', platformA = 'Windows', platformB = 'Windows',

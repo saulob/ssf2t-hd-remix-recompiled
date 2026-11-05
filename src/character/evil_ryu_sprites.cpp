@@ -29,6 +29,7 @@ int ArtIndex(uint32_t id) {
     case 1: return int(EvilArt::kLargePortrait);
     case 2: return int(EvilArt::kName);
     case 3: return int(EvilArt::kHudName);
+    case 4: return int(EvilArt::kLosePortrait);
     default: return -1;
   }
 }
@@ -111,8 +112,9 @@ bool ParseEvilSprites(const uint8_t* file, size_t size, EvilSprites* out) {
     }
     at += bytes;
   }
-  for (const EvilSpriteImage& image : out->images) {
-    if (image.indices.empty()) return false;
+  // A package without the beaten portrait still loads; the large portrait stands in.
+  for (int art = 0; art < kEvilArtCount; ++art) {
+    if (EvilArt(art) != EvilArt::kLosePortrait && out->images[size_t(art)].indices.empty()) return false;
   }
   return true;
 }

@@ -2,12 +2,9 @@
 
 namespace ssf2t::online {
 
-const char* SecretKey(SecretCharacter character) {
-  return character == SecretCharacter::kAkuma ? "akuma" : "evil_ryu";
-}
-
 const char* SecretLabel(SecretCharacter character) {
-  return character == SecretCharacter::kAkuma ? "Akuma" : "Evil Ryu";
+  if (character == SecretCharacter::kAkuma) return "Akuma";
+  return character == SecretCharacter::kEvilRyu ? "Evil Ryu" : "Violent Ken";
 }
 
 SecretSet EffectiveSecrets(const SecretCapabilities& a, const SecretCapabilities& b) {
@@ -36,7 +33,7 @@ SecretStatus SecretStatusOf(SecretCharacter character, const SecretCapabilities&
 
 SecretSet VerifiedSecrets(const SecretCapabilities& local, const MatchSecrets& room) {
   const SecretSet own = EffectiveSecrets(local, room.peer);
-  return {room.effective.akuma && own.akuma, room.effective.evil_ryu && own.evil_ryu};
+  return SecretSet::FromBits(uint8_t(room.effective.Bits() & own.Bits()));
 }
 
 }  // namespace ssf2t::online

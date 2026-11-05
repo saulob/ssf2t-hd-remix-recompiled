@@ -630,11 +630,16 @@ class FightRuntime {
     for (int side = 0; side < 2; ++side) {
       const ssf2t::character::FighterIdentity requested = ssf2t::character::RequestedIdentity(side);
       const ssf2t::character::SelectionVerdict verdict = ssf2t::character::ValidateSecretSelection(
-          snapshot.character[side], requested == ssf2t::character::FighterIdentity::kEvilRyu, locked_secrets_);
+          snapshot.character[side], requested, locked_secrets_);
       const bool evil = ssf2t::character::ReportsEvilRyu(snapshot.character[side], requested, locked_secrets_.evil_ryu);
+      const bool violent =
+          ssf2t::character::ReportsViolentKen(snapshot.character[side], requested, locked_secrets_.violent_ken);
       REXLOG_INFO("online fighter side={} base={} variant={}", side + 1,
                   ssf2t::online::CharacterName(snapshot.character[side]),
-                  evil ? "EvilRyu" : snapshot.character[side] == ssf2t::online::kAkumaCharacter ? "Akuma" : "none");
+                  evil      ? "EvilRyu"
+                  : violent ? "ViolentKen"
+                  : snapshot.character[side] == ssf2t::online::kAkumaCharacter ? "Akuma"
+                                                                               : "none");
       if (verdict == ssf2t::character::SelectionVerdict::kAccepted) continue;
       rejected = true;
       REXLOG_INFO("online fighter reject side={} variant={} reason=capability-disabled", side + 1,
@@ -672,6 +677,10 @@ class FightRuntime {
       if (ssf2t::character::ReportsEvilRyu(last_snapshot_.character[side], ssf2t::character::RequestedIdentity(side),
                                            locked_secrets_.evil_ryu)) {
         last_snapshot_.character[side] = ssf2t::online::kEvilRyuCharacter;
+      } else if (ssf2t::character::ReportsViolentKen(last_snapshot_.character[side],
+                                                     ssf2t::character::RequestedIdentity(side),
+                                                     locked_secrets_.violent_ken)) {
+        last_snapshot_.character[side] = ssf2t::online::kViolentKenCharacter;
       }
     }
     identity_ready_ = identity_ready_ || IdentityReady(ReadModes(base));

@@ -6,6 +6,7 @@
 
 #include "character/evil_ryu_palette.h"
 #include "character/ultra_fight.h"
+#include "character/violent_ken_data.h"
 #include "guest_memory.h"
 #include "netplay/fight_snapshot.h"
 #include "netplay/guest_netplay.h"
@@ -34,8 +35,10 @@ void ApplyEvilRyuPalette(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const uint32_t ram = LoadBE32(GuestHost(base, P::kPaletteRamPointer), 0) & ~0xFFu;
   if (block < 0x10000 || block >= 0xFFFF0000u || ram < 0x10000 || ram >= 0xFFFF0000u) return;
   for (int side = 0; side < 2; ++side) {
-    if (!EvilRyuOnSide<G>(base, side)) continue;
-    const EvilRyuPalette* palette = LoadedEvilRyuPalette();
+    const bool evil = EvilRyuOnSide<G>(base, side);
+    const bool violent = ViolentKenOnSide<G>(base, side);
+    if (!evil && !violent) continue;
+    const EvilRyuPalette* palette = evil ? LoadedEvilRyuPalette() : LoadedViolentKenPalette();
     if (!palette) continue;
     const uint32_t page = ram + kPaletteRamPage[side];
     std::array<uint16_t, kPaletteWords> current{};
@@ -46,7 +49,7 @@ void ApplyEvilRyuPalette(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     static std::array<int, 2> logged{{-1, -1}};
     if (logged[side] != colour) {
       logged[side] = colour;
-      REXLOG_INFO("DEBUG_SAULO EVIL_RYU palette side={} colour={} applied", side + 1, colour);
+      REXLOG_INFO("DEBUG_SAULO ULTRA palette side={} colour={} applied", side + 1, colour);
     }
   }
 }
@@ -63,8 +66,7 @@ REX_HOOK_RAW(base013_sub_82318EF0) {
 #if SSF2T_TITLE_UPDATE_IMAGE
 REX_EXTERN(__imp__tu023_sub_82318E30);
 REX_HOOK_RAW(tu023_sub_82318E30) {
-  ssf2t::character::ApplyEvilRyuPalette<ssf2t::netplay::TitleUpdate023Netplay,
-                                       ssf2t::character::TitleUpdate023Palette>(ctx, base,
-                                                                                __imp__tu023_sub_82318E30);
+  ssf2t::character::ApplyEvilRyuPalette<ssf2t::netplay::TitleUpdate023Netplay, ssf2t::character::TitleUpdate023Palette>(
+      ctx, base, __imp__tu023_sub_82318E30);
 }
 #endif

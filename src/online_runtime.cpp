@@ -14,6 +14,7 @@
 
 #include "character/akuma.h"
 #include "character/ultra_fighters.h"
+#include "character/violent_ken_data.h"
 #include "netplay/online_game_socket.h"
 #include "netplay/packet.h"
 #include "netplay_setting.h"
@@ -81,11 +82,13 @@ const char* PlatformName() {
 #endif
 }
 
-// This build understands both; the player's options say which are on. Violent Ken is not offered online yet.
+// This build understands all three; the player's options say which are on. Without the local Violent Ken gameplay
+// package he would play as Ken, so he is not offered.
 online::SecretCapabilities LocalSecretCapabilities() {
   online::SecretCapabilities secret;
-  secret.supports = {true, true};
-  secret.enabled = {character::AkumaEnabled(), character::UltraFightersEnabled()};
+  secret.supports = {true, true, true};
+  secret.enabled = {character::AkumaEnabled(), character::UltraFightersEnabled(),
+                    character::UltraFightersEnabled() && character::ViolentKenGameplayReady()};
   return secret;
 }
 

@@ -32,6 +32,15 @@ void Check(bool ok, const std::string& what) {
 
 fs::path Root() { return fs::path(SSF2T_SOURCE_DIR); }
 
+std::string Read(const std::string& relative);
+
+// feature_parity.h kDormantSources: the sources allowed to be built by no target.
+std::string DormantList() {
+  const std::string registry = Read("src/feature_parity.h");
+  const size_t list = registry.find("kDormantSources[]");
+  return list == std::string::npos ? std::string() : registry.substr(list, registry.find("};", list) - list);
+}
+
 std::string Read(const std::string& relative) {
   std::ifstream in(Root() / relative, std::ios::binary);
   std::stringstream text;
@@ -212,6 +221,7 @@ void TestCMakeBuildsEveryFeatureOnBothPlatforms() {
     const std::string ext = entry.path().extension().string();
     if (!entry.is_regular_file() || (ext != ".cpp" && ext != ".c")) continue;
     const std::string relative = fs::relative(entry.path(), Root()).generic_string();
+    if (Has(DormantList(), "{\"" + relative + "\", ")) continue;
     Check(Has(cmake, relative), relative + " is not built by any target");
   }
 }

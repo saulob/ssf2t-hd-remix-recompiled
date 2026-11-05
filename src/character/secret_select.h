@@ -25,25 +25,34 @@ constexpr uint32_t AkumaUnlockFor(bool online_select, bool available, uint32_t o
   return online_select ? 0u : original;
 }
 
-// A fighter the match did not negotiate. Evil Ryu rides on Ryu's guest id, so the guest character alone says nothing.
-enum class SelectionVerdict : uint8_t { kAccepted, kAkuma, kEvilRyu };
+// A fighter the match did not negotiate. The Ultra fighters ride on guest ids, so the guest character alone says nothing.
+enum class SelectionVerdict : uint8_t { kAccepted, kAkuma, kEvilRyu, kViolentKen };
 
-constexpr SelectionVerdict ValidateSecretSelection(int guest_character, bool evil_ryu_requested,
+constexpr SelectionVerdict ValidateSecretSelection(int guest_character, FighterIdentity requested,
                                                    const online::SecretSet& negotiated) {
   if (guest_character == kAkumaGuestCharacter && !negotiated.akuma) return SelectionVerdict::kAkuma;
-  if (evil_ryu_requested && guest_character == kRyuGuestCharacter && !negotiated.evil_ryu) {
+  if (requested == FighterIdentity::kEvilRyu && guest_character == kRyuGuestCharacter && !negotiated.evil_ryu) {
     return SelectionVerdict::kEvilRyu;
+  }
+  if (requested == FighterIdentity::kViolentKen && guest_character == kKenGuestCharacter && !negotiated.violent_ken) {
+    return SelectionVerdict::kViolentKen;
   }
   return SelectionVerdict::kAccepted;
 }
 
 constexpr const char* SelectionVerdictName(SelectionVerdict verdict) {
-  return verdict == SelectionVerdict::kAkuma ? "Akuma" : verdict == SelectionVerdict::kEvilRyu ? "EvilRyu" : "none";
+  if (verdict == SelectionVerdict::kAkuma) return "Akuma";
+  if (verdict == SelectionVerdict::kEvilRyu) return "EvilRyu";
+  return verdict == SelectionVerdict::kViolentKen ? "ViolentKen" : "none";
 }
 
 // The identity a fight report names for a side: the Ryu carrier is Evil Ryu only when the match negotiated him.
 constexpr bool ReportsEvilRyu(int guest_character, FighterIdentity requested, bool evil_ryu_negotiated) {
   return evil_ryu_negotiated && requested == FighterIdentity::kEvilRyu && guest_character == kRyuGuestCharacter;
+}
+
+constexpr bool ReportsViolentKen(int guest_character, FighterIdentity requested, bool violent_ken_negotiated) {
+  return violent_ken_negotiated && requested == FighterIdentity::kViolentKen && guest_character == kKenGuestCharacter;
 }
 
 }  // namespace ssf2t::character

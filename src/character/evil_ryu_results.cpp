@@ -8,14 +8,18 @@ namespace ssf2t::character {
 namespace {
 
 constexpr size_t npos = std::string::npos;
-constexpr float kRowPitch = 33.0f;
-constexpr float kStripePitch = 30.25f;
-constexpr float kFirstStripeY = 271.0f;
+// 19 rows fit the height of the stock 17 at a pitch of 31. The stripes sit in two nested groups, (y * 1.02 + 9) * 1.07
+// on screen, so these place each stripe on the highlight's row. The stock bar is 39 tall around y 322.5, centred on the
+// row text; it keeps that centre and shrinks to one pitch, or it would cover half of both neighbouring rows' stripes.
+constexpr float kRowPitch = 31.0f;
+constexpr float kStripePitch = 28.40f;
+constexpr float kFirstStripeY = 272.47f;
+constexpr float kHighlightY = 307.0f;
+constexpr float kHighlightHeight = kRowPitch;
 constexpr std::string_view kStripeLetters = "ABCDEFGHIJKLMNOPQ";
 constexpr std::array<std::string_view, kResultsNativeRows> kRows = {
     "ryu",     "honda", "blanka", "guile", "ken",   "chunli",  "zangief", "dhalsim", "bison",
     "sagat",   "balrog", "vega",  "cammy", "thawk", "feilong", "deejay",  "akuma"};
-constexpr std::string_view kEvilRyuTextId = "Ryu_Hadouken";
 
 std::atomic<bool> g_screen{false};
 std::atomic<bool> g_scripts{false};
@@ -95,19 +99,21 @@ bool ReflowRows(std::string& xml, size_t screen, size_t& screen_end, int player,
     if (!text.ok() || !SetPosY(xml, text.begin, top + float(ResultsDisplayRow(row)) * kRowPitch)) return false;
     screen_end = xml.find("</UIScreen>", screen);
   }
-  const Span model = FindElement(xml, SuffixName("honda", player, highlight), "UIText", screen, screen_end);
-  if (!model.ok()) return false;
-  std::string copy = xml.substr(model.begin, model.end - model.begin);
-  if (!ReplaceAll(copy, NameTag(SuffixName("honda", player, highlight)),
-                  NameTag(SuffixName("evilryu", player, highlight))) ||
-      !ReplaceAll(copy, "<textID>CHAR_HONDA</textID>", "<textID>" + std::string(kEvilRyuTextId) + "</textID>") ||
-      !SetPosY(copy, 0, top + float(kEvilRyuResultsRow) * kRowPitch)) {
-    return false;
+  for (const HostResultsRow& host : kHostResultsRows) {
+    const Span model = FindElement(xml, SuffixName("honda", player, highlight), "UIText", screen, screen_end);
+    if (!model.ok()) return false;
+    std::string copy = xml.substr(model.begin, model.end - model.begin);
+    if (!ReplaceAll(copy, NameTag(SuffixName("honda", player, highlight)),
+                    NameTag(SuffixName(host.label, player, highlight))) ||
+        !ReplaceAll(copy, "<textID>CHAR_HONDA</textID>", "<textID>" + std::string(host.text_id) + "</textID>") ||
+        !SetPosY(copy, 0, top + float(host.display_row) * kRowPitch)) {
+      return false;
+    }
+    const Span anchor = FindElement(xml, first, "UIText", screen, screen_end);
+    if (!anchor.ok()) return false;
+    xml.insert(anchor.end, "\n" + copy);
+    screen_end = xml.find("</UIScreen>", screen);
   }
-  const Span anchor = FindElement(xml, first, "UIText", screen, screen_end);
-  if (!anchor.ok()) return false;
-  xml.insert(anchor.end, "\n" + copy);
-  screen_end = xml.find("</UIScreen>", screen);
   return true;
 }
 
@@ -134,16 +140,22 @@ bool ReflowStripes(std::string& xml, size_t screen, size_t& screen_end, int play
     if (!moved.ok() || !SetSizeY(xml, moved.begin, kStripePitch)) return false;
     screen_end = xml.find("</UIScreen>", screen);
   }
-  const Span model = FindElement(xml, "stripeB" + suffix, "UIGraphic", screen, screen_end);
-  const Span last = FindElement(xml, "stripeQ" + suffix, "UIGraphic", screen, screen_end);
-  if (!model.ok() || !last.ok()) return false;
-  std::string copy = xml.substr(model.begin, model.end - model.begin);
-  if (!ReplaceAll(copy, NameTag("stripeB" + suffix), NameTag("stripeR" + suffix)) ||
-      !SetPosY(copy, 0, kFirstStripeY + float(kResultsNativeRows) * kStripePitch)) {
-    return false;
+  std::string after = "stripeQ" + suffix;
+  for (int row = kResultsNativeRows; row < kResultsRows; ++row) {
+    const std::string model_name = (row % 2 ? "stripeB" : "stripeA") + suffix;
+    const std::string name = "stripe" + std::string(1, char('A' + row)) + suffix;
+    const Span model = FindElement(xml, model_name, "UIGraphic", screen, screen_end);
+    const Span last = FindElement(xml, after, "UIGraphic", screen, screen_end);
+    if (!model.ok() || !last.ok()) return false;
+    std::string copy = xml.substr(model.begin, model.end - model.begin);
+    if (!ReplaceAll(copy, NameTag(model_name), NameTag(name)) ||
+        !SetPosY(copy, 0, kFirstStripeY + float(row) * kStripePitch)) {
+      return false;
+    }
+    xml.insert(last.end, "\n" + copy);
+    screen_end = xml.find("</UIScreen>", screen);
+    after = name;
   }
-  xml.insert(last.end, "\n" + copy);
-  screen_end = xml.find("</UIScreen>", screen);
   return true;
 }
 
@@ -157,8 +169,23 @@ bool AddHighlightEvent(std::string& xml, size_t screen, size_t& screen_end, int 
   if (group == npos || group >= screen_end) return false;
   const size_t event = xml.find("<animEvent>", group);
   if (event == npos || event >= screen_end) return false;
-  xml.insert(event, "<animEvent>\n<anim>" + HighlightAnimation(player, kResultsRows) + "</anim>\n<event>results" +
-                        std::to_string(player) + "_row" + std::to_string(kResultsRows) + "</event>\n</animEvent>\n");
+  for (int position = kResultsNativeRows + 1; position <= kResultsRows; ++position) {
+    xml.insert(event, "<animEvent>\n<anim>" + HighlightAnimation(player, position) + "</anim>\n<event>results" +
+                          std::to_string(player) + "_row" + std::to_string(position) + "</event>\n</animEvent>\n");
+  }
+  screen_end = xml.find("</UIScreen>", screen);
+  return true;
+}
+
+bool FitHighlight(std::string& xml, size_t screen, size_t& screen_end, int player) {
+  const size_t group = xml.find(NameTag("highlight_move_group" + std::to_string(player)), screen);
+  if (group == npos || group >= screen_end) return false;
+  const std::string name = "highlight" + std::to_string(player);
+  const Span bar = FindElement(xml, name, "UIGraphic", group, screen_end);
+  if (!bar.ok() || !SetPosY(xml, bar.begin, kHighlightY)) return false;
+  screen_end = xml.find("</UIScreen>", screen);
+  const Span moved = FindElement(xml, name, "UIGraphic", group, screen_end);
+  if (!moved.ok() || !SetSizeY(xml, moved.begin, kHighlightHeight)) return false;
   screen_end = xml.find("</UIScreen>", screen);
   return true;
 }
@@ -175,36 +202,39 @@ bool InsertAfterLine(std::string& xml, std::string_view needle, std::string_view
 
 }  // namespace
 
-ResultsCorrection EvilResultsBook::Record(int winner, const std::array<bool, 2>& evil) {
+ResultsCorrection HostResultsBook::Record(int winner, const std::array<bool, 2>& fought) {
   ResultsCorrection correction;
-  last_match_evil_ = evil;
+  last_match_ = fought;
   if (winner < 0 || winner > 1) return correction;
   const int loser = 1 - winner;
-  if (evil[size_t(winner)]) {
+  if (fought[size_t(winner)]) {
     ++wins_[size_t(winner)];
-    correction.ryu_win_side = winner;
+    correction.carrier_win_side = winner;
   }
-  if (evil[size_t(loser)]) {
+  if (fought[size_t(loser)]) {
     ++losses_[size_t(loser)];
-    correction.ryu_loss_side = loser;
+    correction.carrier_loss_side = loser;
   }
   return correction;
 }
 
-void EvilResultsBook::Reset(int side) {
+void HostResultsBook::Reset(int side) {
   if (side < 0 || side > 1) return;
   wins_[size_t(side)] = 0;
   losses_[size_t(side)] = 0;
-  last_match_evil_[size_t(side)] = false;
+  last_match_[size_t(side)] = false;
 }
 
-EvilResultsBook& GlobalEvilResults() {
-  static EvilResultsBook book;
-  return book;
+HostResultsBook& GlobalHostResults(int host_row) {
+  static std::array<HostResultsBook, kResultsHostRows> books;
+  return books[size_t(host_row)];
 }
 
 bool PatchResultsScreen(std::string& xml) {
-  if (xml.find(NameTag("results1_winslosses_grid")) == npos || xml.find(NameTag("evilryu1")) != npos) return false;
+  if (xml.find(NameTag("results1_winslosses_grid")) == npos ||
+      xml.find(NameTag(SuffixName(kHostResultsRows[0].label, 1, false))) != npos) {
+    return false;
+  }
   std::string patched = xml;
   const size_t name = patched.find(NameTag("Results"));
   if (name == npos) return false;
@@ -214,7 +244,7 @@ bool PatchResultsScreen(std::string& xml) {
   for (const int player : {1, 2}) {
     if (!ReflowRows(patched, screen, screen_end, player, false) ||
         !ReflowRows(patched, screen, screen_end, player, true) || !ReflowStripes(patched, screen, screen_end, player) ||
-        !AddHighlightEvent(patched, screen, screen_end, player)) {
+        !AddHighlightEvent(patched, screen, screen_end, player) || !FitHighlight(patched, screen, screen_end, player)) {
       return false;
     }
   }
@@ -224,29 +254,36 @@ bool PatchResultsScreen(std::string& xml) {
 }
 
 bool PatchResultsScripts(std::string& xml) {
-  if (xml.find("name=\"InitResultsPlayer0\"") == npos || xml.find("evilryu1") != npos) return false;
+  if (xml.find("name=\"InitResultsPlayer0\"") == npos ||
+      xml.find(SuffixName(kHostResultsRows[0].label, 1, false)) != npos) {
+    return false;
+  }
   std::string patched = xml;
   const std::string newline = patched.find("\r\n") != npos ? "\r\n" : "\n";
   for (const int player : {1, 2}) {
     const std::string number = std::to_string(player);
     const std::string reset = "UIElement_SetColor_FloatsA(akuma" + number + "_highlight, 0.0f);";
-    const std::string label = "evilryu" + number;
-    const std::string defaults = "\t\tUIElement_SetVisibleFlag(" + label + ", true);" + newline +
-                                 "\t\tUIElement_SetColor_FloatsA(" + label + "_highlight, 0.0f);" + newline +
-                                 "\t\tif( InLobby() )" + newline + "\t\t{" + newline +
-                                 "\t\t\tUIElement_SetVisibleFlag(" + label + ", false);" + newline + "\t\t}" + newline;
-    if (!InsertAfterLine(patched, reset, defaults)) return false;
     const std::string last_row = "UIEvent_SendToTopScreen(results" + number + "_row17);";
-    const size_t row = patched.find(last_row);
-    if (row == npos) return false;
-    const size_t last_else = patched.rfind("else", row);
-    if (last_else == npos) return false;
-    patched.insert(last_else, "else if( GetResultRegister() eq " + std::to_string(kEvilRyuResultsCharacter) + " )" +
-                                  newline + "      {" + newline + "\t\t\t\tUIEvent_SendToTopScreen(results" + number +
-                                  "_row" + std::to_string(kResultsRows) + ");" + newline +
-                                  "\t\t\t\tUIElement_SetVisibleFlag(" + label + ", false);" + newline +
-                                  "\t\t\t\tUIElement_SetColor_Floats(" + label +
-                                  "_highlight, 1.0f, 1.0f, 1.0f, 1.0f);" + newline + "      }" + newline + "      ");
+    int position = kResultsNativeRows;
+    for (const HostResultsRow& host : kHostResultsRows) {
+      ++position;
+      const std::string label = SuffixName(host.label, player, false);
+      const std::string defaults = "\t\tUIElement_SetVisibleFlag(" + label + ", true);" + newline +
+                                   "\t\tUIElement_SetColor_FloatsA(" + label + "_highlight, 0.0f);" + newline +
+                                   "\t\tif( InLobby() )" + newline + "\t\t{" + newline +
+                                   "\t\t\tUIElement_SetVisibleFlag(" + label + ", false);" + newline + "\t\t}" +
+                                   newline;
+      if (!InsertAfterLine(patched, reset, defaults)) return false;
+      const size_t row = patched.find(last_row);
+      if (row == npos) return false;
+      const size_t last_else = patched.rfind("else", row);
+      if (last_else == npos) return false;
+      patched.insert(last_else, "else if( GetResultRegister() eq " + std::to_string(host.character) + " )" + newline +
+                                    "      {" + newline + "\t\t\t\tUIEvent_SendToTopScreen(results" + number + "_row" +
+                                    std::to_string(position) + ");" + newline + "\t\t\t\tUIElement_SetVisibleFlag(" +
+                                    label + ", false);" + newline + "\t\t\t\tUIElement_SetColor_Floats(" + label +
+                                    "_highlight, 1.0f, 1.0f, 1.0f, 1.0f);" + newline + "      }" + newline + "      ");
+    }
   }
   xml = std::move(patched);
   g_scripts.store(true, std::memory_order_relaxed);
@@ -259,8 +296,9 @@ bool PatchResultsGrid(std::string& xml) {
   const Span grid = FindElement(xml, "results_winslosses_grid", "UIGrid", 0, xml.size());
   if (!grid.ok()) return false;
   std::string block = xml.substr(grid.begin, grid.end - grid.begin);
-  if (block.find("grid_text_17_0") != npos || !ReplaceAll(block, kRowsTag, "<numRows>18</numRows>") ||
-      !ReplaceAll(block, kVisibleTag, "<numVisibleRows>18</numVisibleRows>")) {
+  const std::string rows = std::to_string(kResultsRows);
+  if (block.find("grid_text_17_0") != npos || !ReplaceAll(block, kRowsTag, "<numRows>" + rows + "</numRows>") ||
+      !ReplaceAll(block, kVisibleTag, "<numVisibleRows>" + rows + "</numVisibleRows>")) {
     return false;
   }
   for (int row = 0; row < kResultsNativeRows; ++row) {
@@ -273,15 +311,20 @@ bool PatchResultsGrid(std::string& xml) {
   const size_t last_close = list_end == npos ? npos : block.rfind("</row>", list_end);
   const size_t last_open = last_close == npos ? npos : block.rfind("<row>", last_close);
   if (last_open == npos) return false;
-  std::string row = block.substr(last_open, last_close + 6 - last_open);
-  for (int column = 0; column < kResultsColumns; ++column) {
-    const std::string number = std::to_string(column);
-    const std::string from = NameTag("grid_text_16_" + number);
-    const size_t at = row.find(from);
-    if (at == npos || !SetPosY(row, at, float(kResultsNativeRows) * kRowPitch)) return false;
-    ReplaceAll(row, from, NameTag("grid_text_17_" + number));
+  const std::string last_row = block.substr(last_open, last_close + 6 - last_open);
+  std::string added;
+  for (int display = kResultsNativeRows; display < kResultsRows; ++display) {
+    std::string row = last_row;
+    for (int column = 0; column < kResultsColumns; ++column) {
+      const std::string number = std::to_string(column);
+      const std::string from = NameTag("grid_text_16_" + number);
+      const size_t at = row.find(from);
+      if (at == npos || !SetPosY(row, at, float(display) * kRowPitch)) return false;
+      ReplaceAll(row, from, NameTag("grid_text_" + std::to_string(display) + "_" + number));
+    }
+    added += "\n" + row;
   }
-  block.insert(last_close + 6, "\n" + row);
+  block.insert(last_close + 6, added);
   xml.replace(grid.begin, grid.end - grid.begin, block);
   g_grid.store(true, std::memory_order_relaxed);
   return true;
@@ -305,16 +348,20 @@ bool PatchResultsAnimations(std::string& xml) {
         end += patched.size() - before;
       }
     }
-    const Span model = FindElement(patched, HighlightAnimation(player, 2), "UIAnim", 0, patched.size());
-    if (!model.ok()) return false;
-    std::string copy = patched.substr(model.begin, model.end - model.begin);
-    if (!ReplaceAll(copy, NameTag(HighlightAnimation(player, 2)), NameTag(HighlightAnimation(player, kResultsRows)))) {
-      return false;
+    int added = kResultsNativeRows;
+    for (const HostResultsRow& host : kHostResultsRows) {
+      ++added;
+      const Span model = FindElement(patched, HighlightAnimation(player, 2), "UIAnim", 0, patched.size());
+      if (!model.ok()) return false;
+      std::string copy = patched.substr(model.begin, model.end - model.begin);
+      if (!ReplaceAll(copy, NameTag(HighlightAnimation(player, 2)), NameTag(HighlightAnimation(player, added)))) {
+        return false;
+      }
+      for (size_t at = copy.find("<pos>"); at != npos; at = copy.find("<pos>", at + 5)) {
+        if (!SetPosY(copy, at, float(host.display_row) * kRowPitch)) return false;
+      }
+      patched.insert(model.end, "\n" + copy);
     }
-    for (size_t at = copy.find("<pos>"); at != npos; at = copy.find("<pos>", at + 5)) {
-      if (!SetPosY(copy, at, float(kEvilRyuResultsRow) * kRowPitch)) return false;
-    }
-    patched.insert(model.end, "\n" + copy);
   }
   xml = std::move(patched);
   g_animations.store(true, std::memory_order_relaxed);

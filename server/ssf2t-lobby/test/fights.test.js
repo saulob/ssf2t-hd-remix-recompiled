@@ -102,8 +102,8 @@ test('an invalid character is rejected', () => {
 test('every playable character id is accepted', () => {
   const env = makeHub();
   const m = startFightMatch(env, { secret: SECRET_ON });
-  for (let id = 0; id <= 16; id++) assert.equal(send(m.a, fightEvent(m, 'start', id, { p1: id, p2: 16 - id })).code, 'ok');
-  assert.equal(daily(env, 'fights_started'), 17);
+  for (let id = 0; id <= 18; id++) assert.equal(send(m.a, fightEvent(m, 'start', id, { p1: id, p2: 18 - id })).code, 'ok');
+  assert.equal(daily(env, 'fights_started'), 19);
 });
 
 test('an invalid or foreign build is rejected', () => {

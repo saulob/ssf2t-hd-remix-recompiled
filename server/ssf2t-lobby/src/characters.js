@@ -5,10 +5,9 @@ export const CHARACTERS = [
   'Cammy', 'T. Hawk', 'Fei Long', 'Dee Jay', 'Akuma', 'Evil Ryu', 'Violent Ken',
 ];
 
-// Ids that need both players' consent (protocol.js, secret capabilities). violent_ken is reserved and never available.
+// Ids that need both players' consent. Each key also needs a bit pair in protocol.js SECRET_BITS.
 export const SECRET_CHARACTER = { 16: 'akuma', 17: 'evil_ryu', 18: 'violent_ken' };
-// The ones a client can advertise today; violent_ken also needs a bit pair in protocol.js SECRET_BITS.
-export const SECRET_KEYS = ['akuma', 'evil_ryu'];
+export const SECRET_KEYS = Object.values(SECRET_CHARACTER);
 
 export const isCharacterId = (value) => Number.isInteger(value) && value >= 0 && value < CHARACTERS.length;
 

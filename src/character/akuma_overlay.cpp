@@ -60,7 +60,7 @@ void TouchSelect(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   original(ctx, base);
   const uint8_t mode = *GuestHost(base, S::kMode);
   g_online.store(OnlineSelectMode(mode), std::memory_order_relaxed);
-  if (!AkumaAvailable(mode) && !EvilRyuAvailable(mode)) return;
+  if (!AkumaAvailable(mode) && !EvilRyuAvailable(mode) && !ViolentKenAvailable(mode)) return;
   if (!SelectActive()) g_session.fetch_add(1, std::memory_order_relaxed);
   g_layout.store(*GuestHost(base, S::kLayout) != 0 ? SelectLayout::kVersus : SelectLayout::kArcade,
                  std::memory_order_relaxed);

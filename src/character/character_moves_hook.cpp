@@ -13,19 +13,22 @@
 namespace ssf2t::character {
 namespace {
 
-// The script native behind GetPlayerCharacterIndex(side). Evil Ryu fights as Ryu, so the screen reports Ryu's page
-// unless the fighter on that side is Evil Ryu.
+// The script native behind GetPlayerCharacterIndex(side). An Ultra fighter fights as its carrier, so the screen reports
+// the carrier's page unless the fighter on that side is the Ultra fighter.
 template <typename G>
 void PlayerCharacterIndex(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const int side = int(ctx.r3.u32);
   original(ctx, base);
   if (!CharacterMovesPageReady() || !UltraFightersEnabled()) return;
-  if (ctx.r3.u32 != uint32_t(kRyuGuestCharacter) || !EvilRyuOnSide<G>(base, side)) return;
-  ctx.r3.u64 = uint64_t(kEvilRyuMoveListIndex);
-  static std::array<bool, 2> logged{};
-  if (!logged[side]) {
-    logged[side] = true;
-    REXLOG_INFO("DEBUG_SAULO EVIL_RYU character-moves side={} page=evil-ryu", side + 1);
+  const bool evil = ctx.r3.u32 == uint32_t(kRyuGuestCharacter) && EvilRyuOnSide<G>(base, side);
+  const bool violent = ctx.r3.u32 == uint32_t(kKenGuestCharacter) && ViolentKenOnSide<G>(base, side);
+  if (!evil && !violent) return;
+  ctx.r3.u64 = uint64_t(evil ? kEvilRyuMoveListIndex : kViolentKenMoveListIndex);
+  static std::array<std::array<bool, 2>, 2> logged{};
+  bool& seen = logged[evil ? 0 : 1][size_t(side)];
+  if (!seen) {
+    seen = true;
+    REXLOG_INFO("DEBUG_SAULO ULTRA character-moves side={} page={}", side + 1, evil ? "evil-ryu" : "violent-ken");
   }
 }
 

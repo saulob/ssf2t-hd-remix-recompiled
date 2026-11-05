@@ -197,6 +197,9 @@ set(SSF2T_SOURCES
     src/character/ultra_hud_hook.cpp
     src/character/evil_ryu_debug.cpp
     src/character/evil_ryu_debug_keys.cpp
+    src/character/ultra_arcade_debug.cpp
+    src/character/ultra_arcade_debug_hook.cpp
+    src/character/ultra_arcade_debug_keys.cpp
     src/character/ultra_moves_hook.cpp
     src/character/ultra_confirm_hook.cpp
     src/character/ultra_cursor_hook.cpp
@@ -206,11 +209,17 @@ set(SSF2T_SOURCES
     src/character/evil_ryu_moves.cpp
     src/character/evil_ryu_sprites.cpp
     src/character/evil_ryu_audio.cpp
+    src/character/violent_ken_audio.cpp
     src/character/evil_ryu_results.cpp
     src/character/ultra_audio_hook.cpp
     src/character/ultra_results_hook.cpp
     src/character/ultra_winner_hook.cpp
+    src/character/ultra_ending.cpp
+    src/character/ultra_ending_hook.cpp
     src/character/evil_ryu_palette.cpp
+    src/character/violent_ken_actions.cpp
+    src/character/violent_ken_data.cpp
+    src/character/violent_ken_moves.cpp
     src/character/ultra_palette_hook.cpp
     src/character/ultra_portrait_overlay.cpp
     src/character/ultra_portraits.cpp
@@ -458,6 +467,14 @@ add_executable(ssf2t_ultra_navigation_tests EXCLUDE_FROM_ALL tests/ultra_navigat
 target_include_directories(ssf2t_ultra_navigation_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_ultra_navigation_tests)
 
+add_executable(ssf2t_violent_ken_tests EXCLUDE_FROM_ALL tests/violent_ken_tests.cpp
+    src/character/ultra_navigation.cpp src/character/fighter_identity.cpp src/character/evil_ryu_moves.cpp
+    src/character/evil_ryu_actions.cpp src/character/evil_ryu_sprites.cpp src/character/evil_ryu_palette.cpp
+    src/character/violent_ken_actions.cpp src/character/violent_ken_data.cpp src/character/violent_ken_moves.cpp
+    src/online/secret_characters.cpp)
+target_include_directories(ssf2t_violent_ken_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_violent_ken_tests)
+
 # Secret characters online: the negotiation rule, the Character Select gating, the rollback-saved host selection and
 # the validation of a selection. Headless.
 add_executable(ssf2t_secret_select_tests EXCLUDE_FROM_ALL tests/secret_select_tests.cpp
@@ -497,10 +514,21 @@ add_executable(ssf2t_evil_ryu_debug_tests EXCLUDE_FROM_ALL tests/evil_ryu_debug_
 target_include_directories(ssf2t_evil_ryu_debug_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_debug_tests)
 
+add_executable(ssf2t_arcade_debug_tests EXCLUDE_FROM_ALL tests/arcade_debug_tests.cpp
+    src/character/ultra_arcade_debug.cpp src/character/fighter_identity.cpp)
+target_include_directories(ssf2t_arcade_debug_tests PRIVATE src)
+target_compile_definitions(ssf2t_arcade_debug_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_arcade_debug_tests)
+
 add_executable(ssf2t_character_moves_tests EXCLUDE_FROM_ALL tests/character_moves_tests.cpp
-    src/character/character_moves.cpp src/updater/third_party/miniz/miniz.c)
+    src/character/character_moves.cpp src/character/ultra_ending.cpp src/updater/third_party/miniz/miniz.c)
 target_include_directories(ssf2t_character_moves_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_character_moves_tests)
+
+add_executable(ssf2t_ultra_ending_tests EXCLUDE_FROM_ALL tests/ultra_ending_tests.cpp
+    src/character/character_moves.cpp src/character/ultra_ending.cpp src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_ultra_ending_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_ultra_ending_tests)
 
 add_executable(ssf2t_ultra_select_presentation_tests EXCLUDE_FROM_ALL tests/ultra_select_presentation_tests.cpp
     src/character/ultra_navigation.cpp src/character/fighter_identity.cpp)
@@ -511,6 +539,11 @@ add_executable(ssf2t_evil_ryu_audio_tests EXCLUDE_FROM_ALL tests/evil_ryu_audio_
     src/character/evil_ryu_audio.cpp)
 target_include_directories(ssf2t_evil_ryu_audio_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_audio_tests)
+
+add_executable(ssf2t_violent_ken_audio_tests EXCLUDE_FROM_ALL tests/violent_ken_audio_tests.cpp
+    src/character/evil_ryu_audio.cpp src/character/violent_ken_audio.cpp)
+target_include_directories(ssf2t_violent_ken_audio_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_violent_ken_audio_tests)
 
 add_executable(ssf2t_evil_ryu_results_tests EXCLUDE_FROM_ALL tests/evil_ryu_results_tests.cpp
     src/character/evil_ryu_results.cpp src/updater/third_party/miniz/miniz.c)

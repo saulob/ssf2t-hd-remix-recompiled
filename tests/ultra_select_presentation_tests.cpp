@@ -26,7 +26,7 @@ SelectPresentation Present(const UltraNavigation& nav, std::array<uint32_t, 2> h
 }
 
 void Enter(UltraNavigation& nav, int side) {
-  nav.Resolve(true, side, kEvilRyuNeighbourLive, PadDirection::kRight);
+  nav.Resolve(true, false, side, kEvilRyuNeighbourLive, PadDirection::kRight);
 }
 
 void TestCombinations() {
@@ -45,11 +45,11 @@ void TestCombinations() {
   p = Present(nav, {kRyu, kRyu});
   Check(p.evil[0] && p.evil[1], "Evil vs Evil shows both");
 
-  nav.Resolve(true, 0, kRyuGuestCharacter, PadDirection::kLeft);
+  nav.Resolve(true, false, 0, kRyuGuestCharacter, PadDirection::kLeft);
   p = Present(nav, {kHonda, kRyu});
   Check(!p.evil[0] && p.evil[1], "P1 Ryu / P2 Evil: only P2 is Evil Ryu");
 
-  nav.Resolve(true, 1, kRyuGuestCharacter, PadDirection::kLeft);
+  nav.Resolve(true, false, 1, kRyuGuestCharacter, PadDirection::kLeft);
   p = Present(nav, {kRyu, kRyu});
   Check(!p.evil[0] && !p.evil[1], "both leaving clears both");
 }
@@ -62,16 +62,16 @@ void TestIsolation() {
   Check(!Present(nav, {kRyu, 5}).evil[1], "P2 on another fighter is not Evil Ryu");
   Check(!Present(nav, {kHonda, kRyu}).evil[0], "P1 off the carrier shows no Evil Ryu");
 
-  nav.Resolve(true, 1, kEvilRyuNeighbourLive, PadDirection::kUp);
+  nav.Resolve(true, false, 1, kEvilRyuNeighbourLive, PadDirection::kUp);
   Check(RequestedIdentity(0) == FighterIdentity::kEvilRyu, "P2 moving does not clear P1");
 
   Enter(nav, 1);
-  nav.Resolve(true, 1, kRyuGuestCharacter, PadDirection::kLeft);
+  nav.Resolve(true, false, 1, kRyuGuestCharacter, PadDirection::kLeft);
   Check(RequestedIdentity(0) == FighterIdentity::kEvilRyu && RequestedIdentity(1) == FighterIdentity::kGuest,
         "P2 backing out never clears P1 or leaves P2 requested");
   Check(Present(nav, {kRyu, kRyu}).evil[0] && !Present(nav, {kRyu, kRyu}).evil[1], "presentation follows");
 
-  nav.Resolve(true, 0, kRyuGuestCharacter, PadDirection::kLeft);
+  nav.Resolve(true, false, 0, kRyuGuestCharacter, PadDirection::kLeft);
   Enter(nav, 1);
   Check(RequestedIdentity(0) == FighterIdentity::kGuest && RequestedIdentity(1) == FighterIdentity::kEvilRyu,
         "P1 backing out never touches P2");
@@ -127,6 +127,19 @@ void TestNameTiles() {
         "P1's Ryu name stays Ryu");
 }
 
+void TestBeatenPortraitSide() {
+  using F = FighterIdentity;
+  constexpr uint32_t kKen = kKenGuestCharacter;
+  SelectPresentation p = ResolveSelectPresentation({F::kViolentKen, F::kGuest}, {true, false}, {kKen, kKen});
+  Check(p.violent[0] && !p.violent[1], "only the side that chose Violent Ken loses as him");
+  p = ResolveSelectPresentation({F::kGuest, F::kViolentKen}, {false, true}, {kKen, kKen});
+  Check(!p.violent[0] && p.violent[1], "a Ken on the other side keeps Ken's beaten face");
+  p = ResolveSelectPresentation({F::kViolentKen, F::kGuest}, {false, false}, {kKen, 2});
+  Check(!p.violent[0], "a stale request without its cell shows Ken");
+  p = ResolveSelectPresentation({F::kEvilRyu, F::kGuest}, {true, false}, {kRyu, 2});
+  Check(p.evil[0] && !p.violent[0], "Evil Ryu takes the same path with his own art");
+}
+
 void TestFightIdentity() {
   ResetIdentities();
   UltraNavigation nav;
@@ -146,6 +159,7 @@ int main() {
   TestIsolation();
   TestSharedSlot();
   TestNameTiles();
+  TestBeatenPortraitSide();
   TestFightIdentity();
   if (failures == 0) std::printf("ultra select presentation tests passed\n");
   return failures == 0 ? 0 : 1;

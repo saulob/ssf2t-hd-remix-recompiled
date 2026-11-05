@@ -31,6 +31,9 @@
 #include "character/evil_ryu_palette.h"
 #include "character/evil_ryu_sprites.h"
 #include "character/ultra_portrait_overlay.h"
+#include "character/violent_ken_audio.h"
+#include "character/ultra_ending.h"
+#include "character/violent_ken_data.h"
 #include "diagnostics.h"
 #include "frame_counter.h"
 #include "invite_ui.h"
@@ -40,6 +43,7 @@
 #include "guest_image.h"
 #include "infinite_time.h"
 #include "character/evil_ryu_debug_keys.h"
+#include "character/ultra_arcade_debug_keys.h"
 #include "infinite_time_ui.h"
 #include "online_runtime.h"
 #include "online_setting.h"
@@ -262,6 +266,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
       });
     }
     if (window()) character::AttachEvilRyuDebugKeys(window());  // DEBUG_SAULO
+    if (window()) character::AttachArcadeDebugKeys(window());  // DEBUG_SAULO
     QueueStartupInfiniteTimeNotice(
         InfiniteTimeActive(REXCVAR_GET(ssf2t_infinite_time), REXCVAR_GET(ssf2t_online_enabled)));
     ReXApp::LaunchModule();
@@ -290,6 +295,9 @@ class SuperStreetFighterApp : public rex::ReXApp {
     character::SetEvilRyuPaletteDirectory(game_data_root());
     character::SetEvilSpriteDirectory(game_data_root());
     character::SetEvilAudioDirectory(game_data_root());
+    character::SetViolentKenDirectory(game_data_root());
+    character::SetUltraEndingDirectory(game_data_root());
+    character::SetViolentKenAudioDirectory(game_data_root());
     if (window() && imgui_drawer()) {
       CreateFrameCounter(imgui_drawer());
       character::CreateAkumaOverlay(imgui_drawer(), immediate_drawer(), game_data_root());
@@ -318,6 +326,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
     ModalDialog::DetachEscapeKey();
     DetachInfiniteTimeKey();
     character::DetachEvilRyuDebugKeys();  // DEBUG_SAULO
+    character::DetachArcadeDebugKeys();  // DEBUG_SAULO
     delete achievements_;
     DetachWindowHost();
     REXLOG_INFO("{}", FormatCleanExit(ProcessUptimeText()));

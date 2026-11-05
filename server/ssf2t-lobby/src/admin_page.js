@@ -143,16 +143,23 @@ export const ADMIN_HTML = String.raw`<!doctype html>
       <div class="cards compact">
         <div class="card"><span class="label">Rooms with Akuma available</span><span id="s-akuma-available" class="value">–</span></div>
         <div class="card"><span class="label">Rooms with Evil Ryu available</span><span id="s-evil-ryu-available" class="value">–</span></div>
+        <div class="card"><span class="label">Rooms with Violent Ken available</span><span id="s-violent-ken-available" class="value">–</span></div>
         <div class="card"><span class="label">Akuma option mismatch</span><span id="s-akuma-mismatch" class="value">–</span></div>
         <div class="card"><span class="label">Evil Ryu option mismatch</span><span id="s-evil-ryu-mismatch" class="value">–</span></div>
+        <div class="card"><span class="label">Violent Ken option mismatch</span><span id="s-violent-ken-mismatch" class="value">–</span></div>
         <div class="card"><span class="label">Unsupported-peer mismatch</span><span id="s-unsupported" class="value">–</span></div>
         <div class="card"><span class="label">Fights with Akuma</span><span id="s-fights-akuma" class="value">–</span></div>
         <div class="card"><span class="label">Fights with Evil Ryu</span><span id="s-fights-evil-ryu" class="value">–</span></div>
+        <div class="card"><span class="label">Fights with Violent Ken</span><span id="s-fights-violent-ken" class="value">–</span></div>
         <div class="card"><span class="label">Akuma mirror fights</span><span id="s-fights-akuma-mirror" class="value">–</span></div>
         <div class="card"><span class="label">Evil Ryu mirror fights</span><span id="s-fights-evil-ryu-mirror" class="value">–</span></div>
+        <div class="card"><span class="label">Violent Ken mirror fights</span><span id="s-fights-violent-ken-mirror" class="value">–</span></div>
         <div class="card"><span class="label">Akuma vs Evil Ryu fights</span><span id="s-fights-akuma-vs-evil-ryu" class="value">–</span></div>
+        <div class="card"><span class="label">Akuma vs Violent Ken fights</span><span id="s-fights-akuma-vs-violent-ken" class="value">–</span></div>
+        <div class="card"><span class="label">Evil Ryu vs Violent Ken fights</span><span id="s-fights-evil-ryu-vs-violent-ken" class="value">–</span></div>
         <div class="card"><span class="label">Matches with Akuma</span><span id="s-matches-akuma" class="value">–</span></div>
         <div class="card"><span class="label">Matches with Evil Ryu</span><span id="s-matches-evil-ryu" class="value">–</span></div>
+        <div class="card"><span class="label">Matches with Violent Ken</span><span id="s-matches-violent-ken" class="value">–</span></div>
       </div>
     </div>
     <div class="panel">
@@ -189,8 +196,8 @@ export const ADMIN_HTML = String.raw`<!doctype html>
         <li>Fights by platform count each fight once per side, so the two platforms of a fight both appear.</li>
         <li>Secret characters: a room counts once, when both players are connected, as available (both support and enabled
           the character), an option mismatch (both support it, only one enabled it) or an unsupported peer (one client
-          does not know it while the other has it enabled). Fights and matches count Akuma and Evil Ryu from the fights
-          that started.</li>
+          does not know it while the other has it enabled). Fights and matches count Akuma, Evil Ryu and Violent Ken from
+          the fights that started.</li>
         <li>Last matches keeps the latest 50 closed matches for 30 days, with no names, codes, addresses, countries or
           characters.</li>
         <li>Direct, Relay and Pending count the matches running now. A match is Pending until its host chooses a
@@ -435,12 +442,19 @@ export const ADMIN_JS = String.raw`(function () {
   var TRANSPORTS = { direct: 'Direct', relay: 'Relay', pending: 'Pending' };
   var SECRET_CARDS = [
     ['s-akuma-available', 'secret', 'akuma_available'], ['s-evil-ryu-available', 'secret', 'evil_ryu_available'],
+    ['s-violent-ken-available', 'secret', 'violent_ken_available'],
     ['s-akuma-mismatch', 'secret', 'akuma_option_mismatch'], ['s-evil-ryu-mismatch', 'secret', 'evil_ryu_option_mismatch'],
+    ['s-violent-ken-mismatch', 'secret', 'violent_ken_option_mismatch'],
     ['s-unsupported', 'secret', 'unsupported_peer'],
     ['s-fights-akuma', 'secret_fight', 'akuma'], ['s-fights-evil-ryu', 'secret_fight', 'evil_ryu'],
+    ['s-fights-violent-ken', 'secret_fight', 'violent_ken'],
     ['s-fights-akuma-mirror', 'secret_fight', 'akuma_mirror'], ['s-fights-evil-ryu-mirror', 'secret_fight', 'evil_ryu_mirror'],
+    ['s-fights-violent-ken-mirror', 'secret_fight', 'violent_ken_mirror'],
     ['s-fights-akuma-vs-evil-ryu', 'secret_fight', 'akuma_vs_evil_ryu'],
-    ['s-matches-akuma', 'secret_match', 'akuma'], ['s-matches-evil-ryu', 'secret_match', 'evil_ryu']
+    ['s-fights-akuma-vs-violent-ken', 'secret_fight', 'akuma_vs_violent_ken'],
+    ['s-fights-evil-ryu-vs-violent-ken', 'secret_fight', 'evil_ryu_vs_violent_ken'],
+    ['s-matches-akuma', 'secret_match', 'akuma'], ['s-matches-evil-ryu', 'secret_match', 'evil_ryu'],
+    ['s-matches-violent-ken', 'secret_match', 'violent_ken']
   ];
 
   function storedToken() {

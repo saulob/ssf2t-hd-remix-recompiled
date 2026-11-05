@@ -35,14 +35,15 @@ void ReadTextTable(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
 
   const uint32_t size = ssf2t::LoadBE32(base, size_address);
   std::string text(reinterpret_cast<const char*>(ssf2t::GuestHost(base, buffer)), size);
-  const uint32_t moves = moves_text ? ssf2t::character::PatchMoveListText(text) : 0;
-  if (!english_table && moves == 0) return;
   ssf2t::localization::LocalizedTable table;
   if (english_table) {
     table = ssf2t::localization::BuildLocalizedTable(text, ssf2t::localization::PortugueseBrazilGameText().rows);
   } else {
     table.text = std::move(text);
   }
+  // After the translation: its rows are pinned to the stock English lines, and the banners take its wording.
+  const uint32_t moves = moves_text ? ssf2t::character::PatchMoveListText(table.text) : 0;
+  if (!english_table && moves == 0) return;
   const uint32_t copy = REX_KERNEL_MEMORY()->SystemHeapAlloc(uint32_t(table.text.size() + 1));
   if (copy == 0) {
     REXLOG_WARN("Language: game text not applied, out of guest memory guest={}", G::kName);

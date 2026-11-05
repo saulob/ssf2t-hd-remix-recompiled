@@ -6,25 +6,35 @@
 
 namespace ssf2t::online {
 
-// The extra fighters an online match can negotiate. Violent Ken joins here once he is playable online.
-enum class SecretCharacter : uint8_t { kAkuma = 0, kEvilRyu = 1 };
-inline constexpr int kSecretCharacterCount = 2;
+// The extra fighters an online match can negotiate.
+enum class SecretCharacter : uint8_t { kAkuma = 0, kEvilRyu = 1, kViolentKen = 2 };
+inline constexpr int kSecretCharacterCount = 3;
 
 constexpr SecretCharacter SecretCharacterAt(int index) { return SecretCharacter(index); }
-const char* SecretKey(SecretCharacter character);   // the wire key: "akuma", "evil_ryu"
-const char* SecretLabel(SecretCharacter character);  // "Akuma", "Evil Ryu"
+// The wire key. Header only: the protocol parser uses it in targets that do not link the negotiation rule.
+constexpr const char* SecretKey(SecretCharacter character) {
+  if (character == SecretCharacter::kAkuma) return "akuma";
+  return character == SecretCharacter::kEvilRyu ? "evil_ryu" : "violent_ken";
+}
+const char* SecretLabel(SecretCharacter character);  // "Akuma", "Evil Ryu", "Violent Ken"
 
 // One flag per secret character.
 struct SecretSet {
   bool akuma = false;
   bool evil_ryu = false;
+  bool violent_ken = false;
 
-  bool Has(SecretCharacter character) const { return character == SecretCharacter::kAkuma ? akuma : evil_ryu; }
-  void Set(SecretCharacter character, bool value) { (character == SecretCharacter::kAkuma ? akuma : evil_ryu) = value; }
-  bool Any() const { return akuma || evil_ryu; }
-  uint8_t Bits() const { return uint8_t((akuma ? 1u : 0u) | (evil_ryu ? 2u : 0u)); }
-  static SecretSet FromBits(uint8_t bits) { return {(bits & 1u) != 0, (bits & 2u) != 0}; }
-  friend bool operator==(const SecretSet& a, const SecretSet& b) { return a.akuma == b.akuma && a.evil_ryu == b.evil_ryu; }
+  bool Has(SecretCharacter character) const {
+    return character == SecretCharacter::kAkuma ? akuma : character == SecretCharacter::kEvilRyu ? evil_ryu : violent_ken;
+  }
+  void Set(SecretCharacter character, bool value) {
+    (character == SecretCharacter::kAkuma ? akuma : character == SecretCharacter::kEvilRyu ? evil_ryu : violent_ken) = value;
+  }
+  bool Any() const { return akuma || evil_ryu || violent_ken; }
+  // Frame zero setup word: bit 0 Akuma, bit 1 Evil Ryu, bit 2 Violent Ken.
+  uint8_t Bits() const { return uint8_t((akuma ? 1u : 0u) | (evil_ryu ? 2u : 0u) | (violent_ken ? 4u : 0u)); }
+  static SecretSet FromBits(uint8_t bits) { return {(bits & 1u) != 0, (bits & 2u) != 0, (bits & 4u) != 0}; }
+  friend bool operator==(const SecretSet& a, const SecretSet& b) { return a.Bits() == b.Bits(); }
 };
 
 // What one client advertises: what its build understands, and what its player turned on.
@@ -34,7 +44,9 @@ struct SecretCapabilities {
 
   // A client cannot enable what it does not understand.
   SecretCapabilities Normalized() const {
-    return {supports, {enabled.akuma && supports.akuma, enabled.evil_ryu && supports.evil_ryu}};
+    return {supports,
+            {enabled.akuma && supports.akuma, enabled.evil_ryu && supports.evil_ryu,
+             enabled.violent_ken && supports.violent_ken}};
   }
   friend bool operator==(const SecretCapabilities& a, const SecretCapabilities& b) {
     return a.supports == b.supports && a.enabled == b.enabled;

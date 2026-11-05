@@ -33,7 +33,7 @@ export const BUCKETS = {
   social: { burst: 10, perSecond: 1 },
 };
 
-export const WORKER_BUILD = '2026-11-04-secret1';
+export const WORKER_BUILD = '2026-11-04-secret2';
 
 // Binary relay frames: magic "SR", version, type, token (u32), sequence (u32), payload length (u16), payload.
 export const RELAY = {
@@ -60,8 +60,10 @@ export const CAPABILITIES = {
 };
 
 export { SECRET_KEYS };
-// Mask bit per flag: supports 0 and 1, enabled 2 and 3 (they are stored in the matches table).
-const SECRET_BITS = { akuma: { supports: 0, enabled: 2 }, evil_ryu: { supports: 1, enabled: 3 } };
+// Mask bit per flag. Masks are stored in the matches table, so assigned bits never move and rows from before a character
+// read as false for it.
+const SECRET_BITS = { akuma: { supports: 0, enabled: 2 }, evil_ryu: { supports: 1, enabled: 3 },
+  violent_ken: { supports: 4, enabled: 5 } };
 
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 

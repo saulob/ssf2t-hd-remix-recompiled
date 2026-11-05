@@ -142,6 +142,7 @@ SecretSet ReadSecretSet(const json::Value* v) {
   if (!v || !v->IsObject()) return set;
   set.akuma = BoolOf(v->Find(SecretKey(SecretCharacter::kAkuma)), false);
   set.evil_ryu = BoolOf(v->Find(SecretKey(SecretCharacter::kEvilRyu)), false);
+  set.violent_ken = BoolOf(v->Find(SecretKey(SecretCharacter::kViolentKen)), false);
   return set;
 }
 
@@ -160,7 +161,8 @@ std::optional<MatchSecrets> ReadMatchSecrets(const json::Value* v) {
 
 std::string SecretSetJson(const SecretSet& set) {
   return std::string("{\"") + SecretKey(SecretCharacter::kAkuma) + "\":" + (set.akuma ? "true" : "false") + ",\"" +
-         SecretKey(SecretCharacter::kEvilRyu) + "\":" + (set.evil_ryu ? "true" : "false") + "}";
+         SecretKey(SecretCharacter::kEvilRyu) + "\":" + (set.evil_ryu ? "true" : "false") + ",\"" +
+         SecretKey(SecretCharacter::kViolentKen) + "\":" + (set.violent_ken ? "true" : "false") + "}";
 }
 
 std::string SecretJson(const SecretCapabilities& secret) {

@@ -10,6 +10,7 @@
 #include "character/secret_select.h"
 #include "character/ultra_fighters.h"
 #include "character/ultra_navigation.h"
+#include "character/violent_ken_data.h"
 #include "guest_memory.h"
 #include "netplay/fight_snapshot.h"
 #include "netplay/guest_netplay.h"
@@ -93,10 +94,13 @@ bool ReadUltraDirection(uint8_t pad, PadDirection& direction) {
 // The developer Netplay Test replays a Local Match fight without the Character Select, so the cell stays out of it.
 bool DeveloperNetplaySelect() { return rex::cvar::GetFlagByName(kNetplayRoleSetting) != kNetplayRoleOff; }
 
-// Returns true when the Evil Ryu cell consumed the move and the guest handler must not run.
+// Returns true when an Ultra cell consumed the move and the guest handler must not run.
 template <typename G, typename S>
 bool NavigateUltra(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
-  if (!EvilRyuAvailable(*GuestHost(base, G::kGameMode)) || ctx.r3.u32 != 0 || DeveloperNetplaySelect()) return false;
+  const uint8_t game_mode = *GuestHost(base, G::kGameMode);
+  const bool evil_ryu = EvilRyuAvailable(game_mode);
+  const bool violent_ken = ViolentKenAvailable(game_mode) && ViolentKenGameplayReady();
+  if ((!evil_ryu && !violent_ken) || ctx.r3.u32 != 0 || DeveloperNetplaySelect()) return false;
   PadDirection direction;
   if (!ReadUltraDirection(*GuestHost(base, S::kPad), direction)) return false;
   if (*GuestHost(base, S::kHdStyle) == 0) return false;
@@ -105,10 +109,11 @@ bool NavigateUltra(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const int side = *GuestHost(base, work + kSideOffset);
   if (side < 0 || side > 1) return false;
 
-  const UltraMove move = GlobalUltraNavigation().Resolve(true, side, *GuestHost(base, S::kLive + side), direction);
+  const UltraMove move =
+      GlobalUltraNavigation().Resolve(evil_ryu, violent_ken, side, *GuestHost(base, S::kLive + side), direction);
   if (move.action == UltraMoveAction::kNone) return false;
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU select side={} action={}", side + 1,
-              move.action == UltraMoveAction::kEnter ? "enter" : move.action == UltraMoveAction::kLeave ? "leave" : "hold");
+  REXLOG_INFO("DEBUG_SAULO ULTRA select side={} action={} identity={}", side + 1, int(move.action),
+              IdentityName(RequestedIdentity(side)));
   if (move.action == UltraMoveAction::kEnter) original(ctx, base);
   *(base + S::kLive + side) = move.live;
   *(base + S::kSpecial + side) = 0;

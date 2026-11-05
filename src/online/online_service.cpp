@@ -1609,11 +1609,14 @@ void OnlineService::PublishSecret() {
   const auto flag = [](bool value) { return value ? 1 : 0; };
   if (!secret_logged_ || !(local_secret_ == logged_local_)) {
     Log("online secret-cap local akuma=" + std::to_string(flag(local_secret_.enabled.akuma)) +
-        " evil=" + std::to_string(flag(local_secret_.enabled.evil_ryu)));
+        " evil=" + std::to_string(flag(local_secret_.enabled.evil_ryu)) +
+        " violent=" + std::to_string(flag(local_secret_.enabled.violent_ken)));
   }
   if (peer && !(peer == logged_peer_)) {
     Log("online secret-cap peer akuma=" + std::to_string(flag(peer->enabled.akuma)) +
-        " evil=" + std::to_string(flag(peer->enabled.evil_ryu)) + " supports=" + std::to_string(peer->supports.Bits()));
+        " evil=" + std::to_string(flag(peer->enabled.evil_ryu)) +
+        " violent=" + std::to_string(flag(peer->enabled.violent_ken)) +
+        " supports=" + std::to_string(peer->supports.Bits()));
   }
   if (live && !(match_secret_->effective == effective)) {
     Log("online secret-cap service answer overridden service=" + std::to_string(match_secret_->effective.Bits()) +
@@ -1621,7 +1624,8 @@ void OnlineService::PublishSecret() {
   }
   if (!secret_logged_ || !(effective == logged_effective_)) {
     Log("online secret-cap effective akuma=" + std::to_string(flag(effective.akuma)) +
-        " evil=" + std::to_string(flag(effective.evil_ryu)));
+        " evil=" + std::to_string(flag(effective.evil_ryu)) +
+        " violent=" + std::to_string(flag(effective.violent_ken)));
   }
   secret_logged_ = true;
   logged_local_ = local_secret_;

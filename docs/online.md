@@ -210,11 +210,11 @@ code=...`, `player_match ...`, `XSession...`.
 
 ## Secret characters
 
-Akuma and Evil Ryu appear in an Online Match only when both players have them on and both builds understand them.
-Violent Ken is not offered online.
+Akuma, Evil Ryu and Violent Ken each appear in an Online Match only when both players have them on and both builds
+understand them.
 
-- Each client sends `secret: {supports: {akuma, evil_ryu}, enabled: {akuma, evil_ryu}}` in its hello (`supports` is what
-  the build understands, `enabled` is Enable Akuma / Enable Evil Ryu and Violent Ken) and `secret.update` when an option
+- Each client sends `secret: {supports: {akuma, evil_ryu, violent_ken}, enabled: {akuma, evil_ryu, violent_ken}}` in its
+  hello (`supports` is what the build understands, `enabled` is Enable Akuma / Enable Evil Ryu and Violent Ken) and `secret.update` when an option
   changes while signed in. Anything missing or not exactly `true` is false, so an older client supports nothing.
 - The Worker keeps both players' capabilities with the match and tells each seat `secret: {peer, effective}` (in the
   join answer, `match.created`, the resume answer and `match.secret` events). `effective.<character>` is supports and
@@ -233,12 +233,12 @@ Violent Ken is not offered online.
 - Character Select online uses the locked set instead of the local option for the hidden Akuma path, the Akuma
   portrait overlay and the Evil Ryu cell. Local, Arcade and Training keep following the local options.
 - The selection itself is never sent: both consoles replay the same inputs through the game's own Character Select. The
-  Evil Ryu cell and the Evil Ryu move trackers live outside the guest, so they are saved with every rollback snapshot
+  Ultra cells and the Evil Ryu and Violent Ken move trackers live outside the guest, so they are saved with every rollback snapshot
   and restored on a rollback; a mispredicted move cannot leave the cell selected. When the fighters are known, each
   console checks them against the locked set (`online fighter side=2 base=Ryu variant=EvilRyu`); an Akuma or Evil Ryu the
   match did not negotiate logs `online fighter reject ...` and leaves the match on both consoles.
-- The host reports Evil Ryu as character 17 (Ryu stays 0) and Akuma as 16; the Worker refuses a report of a secret
-  character the match did not negotiate, and counts availability, option mismatches and usage in aggregate (see
+- The host reports Evil Ryu as character 17 (Ryu stays 0), Violent Ken as 18 (Ken stays 4) and Akuma as 16; the Worker
+  refuses a report of a secret character the match did not negotiate, and counts availability, option mismatches and usage in aggregate (see
   `server/ssf2t-lobby/README.md`).
 - Logs: `online secret-cap local|peer|effective ...`, `online secret-cap locked ...`, `online fighter ...`.
 

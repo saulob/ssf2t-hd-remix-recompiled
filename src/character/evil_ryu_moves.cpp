@@ -11,9 +11,10 @@ constexpr uint16_t kDemonForwardKick = 0x102;
 constexpr uint8_t kDemonForwardStep = 2;
 constexpr uint8_t kDemonFinalStep = 4;
 
-constexpr int16_t kDashVelocity[kTeleportVariants] = {0xB80, 0x800, -0xB80, -0x800};
-constexpr int16_t kDashDeceleration[kTeleportVariants] = {0x30, 0x30, -0x30, -0x30};
-constexpr uint16_t kDashThreshold[kTeleportVariants] = {0x300, 0x240, 0x300, 0x240};
+constexpr int16_t kDashVelocity[kTeleportVariants] = {0x8A0, 0x600, -0x8A0, -0x600};
+constexpr int16_t kDashDeceleration[kTeleportVariants] = {0x24, 0x24, -0x24, -0x24};
+constexpr uint16_t kDashThreshold[kTeleportVariants] = {0x240, 0x1B0, 0x240, 0x1B0};
+constexpr uint8_t kShakunetsuRecovery[3] = {42, 50, 60};
 
 constexpr uint8_t F = kNibbleForward, B = kNibbleBack, D = kNibbleDown, DF = kNibbleDownForward, DB = kNibbleDownBack;
 
@@ -95,6 +96,15 @@ DashParameters DashFor(int variant, bool facing_flag) {
   return parameters;
 }
 
+uint8_t ShakunetsuRecovery(uint8_t strength) {
+  const size_t row = strength >> 1;
+  return kShakunetsuRecovery[row < std::size(kShakunetsuRecovery) ? row : 0];
+}
+
+bool SenpuInput(uint8_t nibble, uint16_t pad_current, uint16_t pad_previous) {
+  return nibble == kNibbleForward && (uint16_t(pad_current & ~pad_previous) & kMediumKick) != 0;
+}
+
 bool DashState::Step(int32_t& position, uint8_t wall_flag) {
   velocity = int16_t(velocity - deceleration);
   position += velocity * 256;
@@ -110,11 +120,15 @@ bool DashState::Step(int32_t& position, uint8_t wall_flag) {
 
 EvilRenderState RenderStateFor(const HostMove& move, bool in_special_class, bool unique_pose) {
   if (in_special_class && move.kind == HostMoveKind::kRagingDemon) return EvilRenderState::kShunGokuSatsu;
+  if (in_special_class && move.kind == HostMoveKind::kRasetsu && move.phase == HostMovePhase::kDash) {
+    return EvilRenderState::kTeleportGhost;
+  }
   if (in_special_class && move.kind == HostMoveKind::kTeleport) {
     switch (move.phase) {
       case HostMovePhase::kStartup: return EvilRenderState::kTeleportStartup;
       case HostMovePhase::kDash: return EvilRenderState::kTeleportGhost;
       case HostMovePhase::kTail:
+      case HostMovePhase::kRise:
       case HostMovePhase::kRecovery: return EvilRenderState::kTeleportRecovery;
     }
   }

@@ -131,12 +131,21 @@ int main() {
   const DashResult fk = RunDash(1, true);
   const DashResult bp = RunDash(2, true);
   const DashResult bk = RunDash(3, true);
-  Check(fp.frames == 46 && std::fabs(fp.pixels - 326.3) < 1.0, "forward punch dash matches the guest Ashura (46 frames, 326 px)");
-  Check(fk.frames == 31 && std::fabs(fk.pixels - 155.0) < 1.0, "forward kick dash matches the guest Ashura (31 frames, 155 px)");
-  Check(bp.frames == 46 && std::fabs(bp.pixels + 326.3) < 1.0, "back punch dash goes the other way");
-  Check(bk.frames == 31 && std::fabs(bk.pixels + 155.0) < 1.0, "back kick dash goes the other way");
+  Check(fp.frames == 46 && std::fabs(fp.pixels - 244.7) < 1.0, "the forward punch dash is USF2 Evil Ryu's (46 frames, 245 px)");
+  Check(fk.frames == 31 && std::fabs(fk.pixels - 116.3) < 1.0, "the forward kick dash is USF2 Evil Ryu's (31 frames, 116 px)");
+  Check(bp.frames == 46 && std::fabs(bp.pixels + 244.7) < 1.0, "back punch dash goes the other way");
+  Check(bk.frames == 31 && std::fabs(bk.pixels + 116.3) < 1.0, "back kick dash goes the other way");
+  {
+    const DashParameters far = DashFor(0, true);
+    const DashParameters near = DashFor(1, true);
+    const DashParameters back = DashFor(2, true);
+    Check(far.velocity == 0x8A0 && far.deceleration == 0x24 && far.threshold == 0x240, "0xb9c288 row 0 and 0xb9c2a8[0]");
+    Check(near.velocity == 0x600 && near.deceleration == 0x24 && near.threshold == 0x1B0, "0xb9c288 row 1 and 0xb9c2a8[1]");
+    Check(back.velocity == -0x8A0 && back.deceleration == -0x24 && back.threshold == 0x240, "0xb9c288 row 2 and 0xb9c2a8[2]");
+    Check(kTeleportTailFrames == 5, "0x591e8 stores 5 ticks of dash tail");
+  }
   const DashResult flipped = RunDash(0, false);
-  Check(flipped.pixels < -300.0, "the facing flag mirrors the dash");
+  Check(flipped.pixels < -240.0, "the facing flag mirrors the dash");
   const DashResult walled = RunDash(0, true, 2);
   Check(walled.frames == 1, "the right wall flag ends a rightward dash at once");
   const DashResult not_walled = RunDash(0, true, 1);
@@ -222,8 +231,9 @@ int main() {
   Check(TeleportSlide(18) == -2 && TeleportSlide(20) == -4, "high events slide backward");
   Check(TeleportBodyVisible(1) && !TeleportBodyVisible(2), "the dash ghost flickers on alternate frames");
 
-  Check(DemonDashSpent(0x300) && DemonDashSpent(-0x300), "the raging demon whiffs at 3 pixels per tick");
-  Check(!DemonDashSpent(0x301) && !DemonDashSpent(-0x301), "the raging demon keeps dashing above that");
+  Check(DemonDashSpent(0x400) && DemonDashSpent(-0x400), "the raging demon whiffs at 4 pixels per tick");
+  Check(!DemonDashSpent(0x401) && !DemonDashSpent(-0x401), "the raging demon keeps dashing above that");
+  Check(kDemonDashVelocity == 0x8A0 && kDemonDashDeceleration == 0x24, "0xb9c1d0 8.625 and the -0.140625 at 0x59ba4");
   {
     int16_t velocity = kDemonDashVelocity;
     int frames = 0;
@@ -231,9 +241,21 @@ int main() {
       velocity = int16_t(velocity - kDemonDashDeceleration);
       ++frames;
     }
-    Check(frames == 46, "the raging demon dash runs out in 46 frames, like the far teleport");
+    Check(frames == 33, "the raging demon dash runs out in 33 frames");
     Check(frames < kDemonDashTimeout, "the guest timeout never ends the dash first");
   }
+
+  Check(TatsuSpins(0) == 0 && TatsuSpins(2) == 1 && TatsuSpins(4) == 2, "Evil Ryu's Tatsu spins 0, 1, 2 where Ryu's spins 0, 3, 4");
+  Check(ShakunetsuRecovery(0) == 42 && ShakunetsuRecovery(2) == 50 && ShakunetsuRecovery(4) == 60, "0xb9c318 row 1");
+  Check(ShakunetsuRecovery(40) == 42, "an out of range strength stays in the table");
+
+  Check(SenpuInput(kNibbleForward, kMk, 0), "forward + medium kick is Senpu Kyaku");
+  Check(!SenpuInput(kNibbleForward, kMk, kMk), "a held kick does not repeat it");
+  Check(!SenpuInput(0, kMk, 0), "medium kick alone is the normal");
+  Check(!SenpuInput(kNibbleForward, kHp, 0), "forward + heavy punch is not a unique for Evil Ryu");
+  Check(!SenpuInput(kNibbleDownForward, kMk, 0), "the crouching kick stays a normal");
+  Check(kSenpuHopVelocityX == 0x480 && kSenpuHopDecelerationX == 0x20, "0x58cb4 4.5 and 0x58cc4 -0.125");
+  Check(kSenpuHopVelocityY == 0x300 && kSenpuHopDecelerationY == 0x50, "0x58cb8 3.0 and 0x58cc8 -0.3125");
 
   HostMoves moves;
   moves.For(0).kind = HostMoveKind::kTeleport;

@@ -28,29 +28,21 @@ EvilAudioPackage g_package;
 
 }  // namespace
 
-EvilAudioPackage ParseEvilAudio(const uint8_t* file, size_t size) {
-  EvilAudioPackage package;
-  if (size < kHeaderSize || std::memcmp(file, kMagic, kMagicSize) != 0) {
-    package.error = "decode";
-    return package;
-  }
+const char* ParseClipPackage(const uint8_t* file, size_t size, const char* magic, EvilClipData* clips, size_t clip_count) {
+  if (size < kHeaderSize || std::memcmp(file, magic, kMagicSize) != 0) return "decode";
   const uint32_t count = ReadLE32(file + kMagicSize);
   size_t at = kHeaderSize;
   for (uint32_t i = 0; i < count; ++i) {
-    if (size - at < kRecordHeaderSize) {
-      package.error = "truncated";
-      return package;
-    }
+    if (size - at < kRecordHeaderSize) return "truncated";
     const uint32_t id = ReadLE32(file + at);
     const uint32_t rate = ReadLE32(file + at + 4);
     const uint32_t samples = ReadLE32(file + at + 8);
     at += kRecordHeaderSize;
-    if (id == 0 || id > kEvilClipCount || rate == 0 || rate > kMaxRate || samples == 0 || samples > kMaxSamples ||
+    if (id == 0 || id > clip_count || rate == 0 || rate > kMaxRate || samples == 0 || samples > kMaxSamples ||
         size - at < size_t(samples) * 2) {
-      package.error = "truncated";
-      return package;
+      return "truncated";
     }
-    EvilClipData& clip = package.clips[id - 1];
+    EvilClipData& clip = clips[id - 1];
     clip.rate = rate;
     clip.samples.resize(samples);
     for (uint32_t s = 0; s < samples; ++s) {
@@ -58,9 +50,25 @@ EvilAudioPackage ParseEvilAudio(const uint8_t* file, size_t size) {
     }
     at += size_t(samples) * 2;
   }
-  for (const EvilClipData& clip : package.clips) {
-    if (clip.samples.empty()) package.error = "missing clip";
+  for (size_t clip = 0; clip < clip_count; ++clip) {
+    if (clips[clip].samples.empty()) return "missing clip";
   }
+  return nullptr;
+}
+
+std::vector<uint8_t> ReadClipPackage(const std::filesystem::path& path) {
+  std::ifstream in(path, std::ios::binary | std::ios::ate);
+  const std::streamoff size = in ? std::streamoff(in.tellg()) : std::streamoff(0);
+  if (size <= 0 || size > kMaxFileSize) return {};
+  std::vector<uint8_t> bytes(static_cast<size_t>(size));
+  in.seekg(0);
+  if (!in.read(reinterpret_cast<char*>(bytes.data()), size)) return {};
+  return bytes;
+}
+
+EvilAudioPackage ParseEvilAudio(const uint8_t* file, size_t size) {
+  EvilAudioPackage package;
+  package.error = ParseClipPackage(file, size, kMagic, package.clips.data(), package.clips.size());
   return package;
 }
 
@@ -74,13 +82,8 @@ const EvilAudioPackage* LoadedEvilAudio() {
   if (!g_tried) {
     g_tried = true;
     g_package.error = "open file";
-    std::ifstream in(g_directory / kEvilRyuAudioFile, std::ios::binary | std::ios::ate);
-    const std::streamoff size = in ? std::streamoff(in.tellg()) : std::streamoff(0);
-    if (size > 0 && size <= kMaxFileSize) {
-      std::vector<uint8_t> bytes(static_cast<size_t>(size));
-      in.seekg(0);
-      if (in.read(reinterpret_cast<char*>(bytes.data()), size)) g_package = ParseEvilAudio(bytes.data(), bytes.size());
-    }
+    const std::vector<uint8_t> bytes = ReadClipPackage(g_directory / kEvilRyuAudioFile);
+    if (!bytes.empty()) g_package = ParseEvilAudio(bytes.data(), bytes.size());
   }
   return g_package.error ? nullptr : &g_package;
 }
@@ -88,15 +91,17 @@ const EvilAudioPackage* LoadedEvilAudio() {
 uint16_t EvilSoundFor(uint16_t sound, const EvilSoundState& state) {
   const auto voice = [&](int side, uint16_t first, uint16_t base) -> uint16_t {
     if (!state.evil[side]) return 0;
-    if (sound == first && state.raging_demon[side]) return uint16_t(base + kEvilRagingDemonOffset);
+    const bool carrier = sound == first + (kRyuHadokenSound - kRyuShoryukenSound);
+    if (carrier && state.raging_demon[side]) return uint16_t(base + kEvilRagingDemonOffset);
     return uint16_t(base + (sound - first));
   };
-  if (sound >= kRyuHadokenSound && sound <= kRyuTatsumakiSound) return voice(0, kRyuHadokenSound, kEvilVoiceP1);
-  const uint16_t p2 = kRyuHadokenSound + kPlayerTwoVoiceOffset;
-  if (sound >= p2 && sound <= p2 + (kRyuTatsumakiSound - kRyuHadokenSound)) return voice(1, p2, kEvilVoiceP2);
-  if (sound == kRyuKoSound) {
-    if (state.ko_side < 0 || state.ko_side > 1 || !state.evil[state.ko_side]) return 0;
-    return state.ko_side == 0 ? kEvilKoP1 : kEvilKoP2;
+  if (sound >= kRyuShoryukenSound && sound <= kRyuTatsumakiSound) return voice(0, kRyuShoryukenSound, kEvilVoiceP1);
+  const uint16_t p2 = kRyuShoryukenSound + kPlayerTwoVoiceOffset;
+  if (sound >= p2 && sound <= p2 + (kRyuTatsumakiSound - kRyuShoryukenSound)) return voice(1, p2, kEvilVoiceP2);
+  const int ko_side = KoSideForSound(sound, kRyuKoSound, state.round_end_ko_side);
+  if (ko_side >= 0) {
+    if (ko_side > 1 || !state.evil[ko_side]) return 0;
+    return ko_side == 0 ? kEvilKoP1 : kEvilKoP2;
   }
   if (sound == kRyuAnnouncerNameSound && state.announce_name) return kEvilAnnouncerName;
   return 0;

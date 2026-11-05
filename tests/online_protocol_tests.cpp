@@ -267,17 +267,17 @@ void TestSecretCharactersOnTheWire() {
   fields.player = "ABCD-2345";
   fields.secret = caps;
   const std::string hello = EncodeHello(1, fields);
-  CHECK(Contains(hello, "\"secret\":{\"supports\":{\"akuma\":true,\"evil_ryu\":true},\"enabled\":{\"akuma\":true,"
-                        "\"evil_ryu\":false}}"));
+  CHECK(Contains(hello, "\"secret\":{\"supports\":{\"akuma\":true,\"evil_ryu\":true,\"violent_ken\":false},\"enabled\":{\"akuma\":true,"
+                        "\"evil_ryu\":false,\"violent_ken\":false}}"));
   // A client that supports nothing says so, and cannot enable what it does not support.
-  CHECK(Contains(EncodeHello(1, HelloFields{}), "\"secret\":{\"supports\":{\"akuma\":false,\"evil_ryu\":false},"
-                                                "\"enabled\":{\"akuma\":false,\"evil_ryu\":false}}"));
+  CHECK(Contains(EncodeHello(1, HelloFields{}), "\"secret\":{\"supports\":{\"akuma\":false,\"evil_ryu\":false,\"violent_ken\":false},"
+                                                "\"enabled\":{\"akuma\":false,\"evil_ryu\":false,\"violent_ken\":false}}"));
   SecretCapabilities lying;
   lying.enabled = {true, true};
   CHECK(Contains(EncodeHello(1, [&] { HelloFields f; f.secret = lying; return f; }()), "\"enabled\":{\"akuma\":false,"
-                                                                                       "\"evil_ryu\":false}"));
+                                                                                       "\"evil_ryu\":false,\"violent_ken\":false}"));
   CHECK(EncodeSecretUpdate(4, caps) == "{\"op\":\"secret.update\",\"seq\":4,\"secret\":{\"supports\":{\"akuma\":true,"
-                                       "\"evil_ryu\":true},\"enabled\":{\"akuma\":true,\"evil_ryu\":false}}}");
+                                       "\"evil_ryu\":true,\"violent_ken\":false},\"enabled\":{\"akuma\":true,\"evil_ryu\":false,\"violent_ken\":false}}}");
 
   const auto greeting = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"capabilities\":{\"protocol_version\":3,"
                                             "\"secret_characters\":true}}");

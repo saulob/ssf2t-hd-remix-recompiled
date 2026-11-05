@@ -79,31 +79,48 @@ void TestRouting() {
   }
 
   state = State(true, false);
-  Check(EvilSoundFor(kRyuHadokenSound, state) == kEvilVoiceP1, "P1 Evil Ryu: P1 Hadoken swaps");
-  Check(EvilSoundFor(kRyuShoryukenSound, state) == kEvilVoiceP1 + 1, "P1 Evil Ryu: P1 Shoryuken swaps");
+  Check(EvilSoundFor(kRyuShoryukenSound, state) == kEvilVoiceP1, "P1 Evil Ryu: P1 Shoryuken swaps");
+  Check(EvilSoundFor(kRyuHadokenSound, state) == kEvilVoiceP1 + 1, "P1 Evil Ryu: P1 Hadoken swaps");
   Check(EvilSoundFor(kRyuTatsumakiSound, state) == kEvilVoiceP1 + 2, "P1 Evil Ryu: P1 Tatsumaki swaps");
   Check(EvilSoundFor(p2_hadoken, state) == 0, "P1 Evil / P2 Ryu: P2 keeps Ryu's voice");
   Check(EvilSoundFor(p2_tatsumaki, state) == 0, "P1 Evil / P2 Ryu: P2 keeps Ryu's Tatsumaki");
 
   state = State(false, true);
   Check(EvilSoundFor(kRyuHadokenSound, state) == 0, "P1 Ryu / P2 Evil: P1 keeps Ryu's voice");
-  Check(EvilSoundFor(p2_hadoken, state) == kEvilVoiceP2, "P1 Ryu / P2 Evil: P2 Hadoken swaps");
+  Check(EvilSoundFor(p2_hadoken, state) == kEvilVoiceP2 + 1, "P1 Ryu / P2 Evil: P2 Hadoken swaps");
   Check(EvilSoundFor(p2_tatsumaki, state) == kEvilVoiceP2 + 2, "P1 Ryu / P2 Evil: P2 Tatsumaki swaps");
 
   state = State(true, true);
   Check(EvilSoundFor(kRyuHadokenSound, state) != EvilSoundFor(p2_hadoken, state),
         "Evil vs Evil: each side has its own source voice");
 
-  state = State(false, true);
-  state.ko_side = 0;
-  Check(EvilSoundFor(kRyuKoSound, state) == 0, "the KO of a Ryu or a Dhalsim on the other side is untouched");
-  state.ko_side = 1;
-  Check(EvilSoundFor(kRyuKoSound, state) == kEvilKoP2, "Evil Ryu's KO");
-  state = State(true, true);
-  state.ko_side = 0;
-  Check(EvilSoundFor(kRyuKoSound, state) == kEvilKoP1, "Evil vs Evil KO names the loser");
-  state.ko_side = 7;
-  Check(EvilSoundFor(kRyuKoSound, state) == 0, "an unset loser changes nothing");
+  const uint16_t p2_ko = kRyuKoSound + kPlayerTwoVoiceOffset;
+  const struct {
+    const char* what;
+    bool p1_evil, p2_evil;
+    uint16_t sound;
+    int round_end_side;
+    uint16_t expected;
+  } kKoCases[] = {
+      {"P2 Evil, hit KO of P2", false, true, p2_ko, -1, kEvilKoP2},
+      {"P2 Evil, round end KO of P2", false, true, kRyuKoSound, 1, kEvilKoP2},
+      {"P2 Evil, hit KO of the P1 Ryu or Dhalsim", false, true, kRyuKoSound, -1, 0},
+      {"P2 Evil, round end KO of the P1 Ryu or Dhalsim", false, true, kRyuKoSound, 0, 0},
+      {"P1 Evil, hit KO of P1", true, false, kRyuKoSound, -1, kEvilKoP1},
+      {"P1 Evil, round end KO of P1", true, false, kRyuKoSound, 0, kEvilKoP1},
+      {"P1 Evil, hit KO of the P2 Ryu or Dhalsim", true, false, p2_ko, -1, 0},
+      {"P1 Evil, round end KO of the P2 Ryu or Dhalsim", true, false, kRyuKoSound, 1, 0},
+      {"Evil vs Evil, hit KO of P1", true, true, kRyuKoSound, -1, kEvilKoP1},
+      {"Evil vs Evil, hit KO of P2", true, true, p2_ko, -1, kEvilKoP2},
+      {"Evil vs Evil, round end KO of P2", true, true, kRyuKoSound, 1, kEvilKoP2},
+      {"an impossible loser changes nothing", true, true, kRyuKoSound, 7, 0},
+      {"Ryu vs Ryu keeps the P2 scream", false, false, p2_ko, -1, 0},
+  };
+  for (const auto& test : kKoCases) {
+    state = State(test.p1_evil, test.p2_evil);
+    state.round_end_ko_side = test.round_end_side;
+    Check(EvilSoundFor(test.sound, state) == test.expected, test.what);
+  }
 
   state = State(true, false);
   Check(EvilSoundFor(kRyuAnnouncerNameSound, state) == 0, "the name call only swaps for an Evil Ryu winner");
@@ -114,7 +131,36 @@ void TestRouting() {
   state = State(true, false);
   state.raging_demon = {true, false};
   Check(EvilSoundFor(kRyuHadokenSound, state) == kEvilVoiceP1 + kEvilRagingDemonOffset, "the marked voice is the super");
-  Check(EvilSoundFor(kRyuShoryukenSound, state) == kEvilVoiceP1 + 1, "the mark only carries on the Hadoken id");
+  Check(EvilSoundFor(kRyuShoryukenSound, state) == kEvilVoiceP1, "the mark only carries on the Hadoken id");
+
+  Check(HostVoiceQueues(true, 1, false), "a real frame queues the Shun Goku Satsu voice");
+  Check(!HostVoiceQueues(true, 1, true), "a replayed frame leaves no mark for the next real voice");
+}
+
+void TestVoiceIds() {
+  Check(kRyuShoryukenSound == 96 && kRyuHadokenSound == 97 && kRyuTatsumakiSound == 98, "Ryu's P1 voice ids");
+  const EvilSoundState state = State(true, true);
+  const struct {
+    uint16_t sound, slot;
+    EvilClip clip;
+  } kVoices[] = {
+      {96, kEvilVoiceP1 + 0, EvilClip::kShoryuken}, {97, kEvilVoiceP1 + 1, EvilClip::kHadoken},
+      {98, kEvilVoiceP1 + 2, EvilClip::kTatsumaki}, {310, kEvilVoiceP2 + 0, EvilClip::kShoryuken},
+      {311, kEvilVoiceP2 + 1, EvilClip::kHadoken},  {312, kEvilVoiceP2 + 2, EvilClip::kTatsumaki},
+  };
+  for (const auto& voice : kVoices) {
+    Check(EvilSoundFor(voice.sound, state) == voice.slot, "each Ryu voice reaches its slot");
+    bool found = false;
+    for (const EvilSound& sound : kEvilSounds) {
+      if (sound.id != voice.slot) continue;
+      found = sound.clip == voice.clip && sound.carrier == voice.sound;
+    }
+    Check(found, "the slot holds the clip of its event and copies its id's flags");
+  }
+  for (const EvilSound& sound : kEvilSounds) {
+    if (sound.clip != EvilClip::kShunGokuSatsu) continue;
+    Check(sound.carrier == 97 || sound.carrier == 311, "Shun Goku Satsu rides a real Hadoken voice");
+  }
 }
 
 void TestTable() {
@@ -167,6 +213,7 @@ void TestRealPackage() {
 int main() {
   TestParser();
   TestRouting();
+  TestVoiceIds();
   TestTable();
   TestAnnouncerTiming();
   TestRealPackage();

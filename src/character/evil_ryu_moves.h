@@ -6,6 +6,8 @@
 #include <cstring>
 #include <type_traits>
 
+#include "character/violent_ken_moves.h"
+
 namespace ssf2t::character {
 
 // Fighter-relative direction nibbles of the guest input word.
@@ -54,7 +56,7 @@ struct DashParameters {
   uint16_t threshold = 0;
 };
 
-// USF2 cActionControl17 teleport tables as {velocity, deceleration} and stop thresholds per variant, in 8.8 pixels.
+// USF2 cActionControl18 teleport tables as {velocity, deceleration} and stop thresholds per variant, in 8.8 pixels.
 DashParameters DashFor(int variant, bool facing_flag);
 
 struct DashState {
@@ -70,23 +72,69 @@ struct DashState {
 constexpr int16_t TeleportSlide(uint8_t event) { return event < 0x11 ? event : int16_t(-(event - 16)); }
 constexpr bool TeleportBodyVisible(uint32_t frame) { return (frame & 1) != 0; }
 
-// USF2 Shun Goku Satsu: E56 holds for 21 ticks, then a far teleport dash that whiffs at 3 pixels per tick.
+// USF2 Shun Goku Satsu: E56 holds for 21 ticks, then a far teleport dash that whiffs at 4 pixels per tick.
 inline constexpr uint8_t kDemonStartupFrames = 21;
-inline constexpr int16_t kDemonDashVelocity = 0xB80;
-inline constexpr int16_t kDemonDashDeceleration = 0x30;
-inline constexpr int16_t kDemonWhiffVelocity = 0x300;
+inline constexpr int16_t kDemonDashVelocity = 0x8A0;
+inline constexpr int16_t kDemonDashDeceleration = 0x24;
+inline constexpr int16_t kDemonWhiffVelocity = 0x400;
 inline constexpr uint8_t kDemonDashTimeout = 0x7F;
 
 constexpr bool DemonDashSpent(int16_t velocity) {
   return (velocity < 0 ? -int32_t(velocity) : int32_t(velocity)) <= kDemonWhiffVelocity;
 }
 
-enum class HostMoveKind : uint8_t { kNone, kTeleport, kRagingDemon, kSenpuKyaku };
+// The guest stores a special's strength as 0, 2 or 4.
+constexpr uint8_t TatsuSpins(uint8_t strength) { return uint8_t(strength >> 1); }
+uint8_t ShakunetsuRecovery(uint8_t strength);
+
+// The guest's half circle runs back to forward; USF2 Evil Ryu's runs forward to back, so its tracker sees him mirrored.
+constexpr uint16_t MirrorDirections(uint16_t input) {
+  return uint16_t((input & ~3u) | ((input & 1u) << 1) | ((input >> 1) & 1u));
+}
+
+// Senpu Kyaku is forward + medium kick: a hop from frame 1 until frame kSenpuHoldFrame, which holds until the landing.
+bool SenpuInput(uint8_t nibble, uint16_t pad_current, uint16_t pad_previous);
+inline constexpr int16_t kSenpuHopVelocityX = 0x480;
+inline constexpr int16_t kSenpuHopDecelerationX = 0x20;
+inline constexpr int16_t kSenpuHopVelocityY = 0x300;
+inline constexpr int16_t kSenpuHopDecelerationY = 0x50;
+inline constexpr uint32_t kSenpuHoldFrame = 6;
+
+enum class HostMoveKind : uint8_t { kNone, kTeleport, kRagingDemon, kSenpuKyaku, kRasetsu, kInazuma, kShinbu };
 
 inline constexpr uint32_t kSenpuTimeoutTicks = 240;
-enum class HostMovePhase : uint8_t { kStartup, kDash, kTail, kRecovery };
+enum class HostMovePhase : uint8_t { kStartup, kDash, kTail, kRecovery, kRise, kFreeze, kRiseStartup, kLand };
 
 inline constexpr int kTeleportTailFrames = 5;
+
+// The standing height is the last height the fighter held for a while; a lowest-ever height is polluted by landings that
+// dip below the floor and by an earlier fight.
+struct GroundHeight {
+  int32_t y = 0;
+  int32_t last = 0;
+  uint8_t still = 0;
+  bool known = false;
+};
+
+inline constexpr uint8_t kGroundStillTicks = 8;
+inline constexpr int32_t kAirborneMargin = 4 << 16;
+
+constexpr void ObserveGround(GroundHeight& ground, int32_t y, bool frozen) {
+  if (!ground.known) {
+    ground = {y, y, 0, true};
+    return;
+  }
+  if (frozen) return;
+  if (y != ground.last) {
+    ground.last = y;
+    ground.still = 0;
+  } else if (ground.still < kGroundStillTicks) {
+    ++ground.still;
+  }
+  if (ground.still >= kGroundStillTicks) ground.y = y;
+}
+
+constexpr bool AboveGround(const GroundHeight& ground, int32_t y) { return y > ground.y + kAirborneMargin; }
 
 struct HostMove {
   HostMoveKind kind = HostMoveKind::kNone;
@@ -97,6 +145,11 @@ struct HostMove {
   DashState dash;
   TeleportRecognizer teleport;
   RagingDemonRecognizer raging_demon;
+  RasetsuRecognizer rasetsu;
+  ShinbuRecognizer shinbu;
+  int32_t rise_velocity = 0;
+  int32_t ground_y = 0;
+  GroundHeight ground;
 };
 
 enum class EvilRenderState : uint8_t {

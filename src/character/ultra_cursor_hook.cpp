@@ -34,17 +34,19 @@ void PlaceCursor(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const uint32_t object = LoadBE32(GuestHost(base, G::kFightWork - 4), 0);
   if (object < 0x10000 || object >= 0xFFFF0000u) return original(ctx, base);
   const int side = *GuestHost(base, object + kObjectSideOffset);
-  if (side < 0 || side > 1 || !GlobalUltraNavigation().OnEvilRyu(side)) return original(ctx, base);
+  if (side < 0 || side > 1 || !GlobalUltraNavigation().OnUltraCell(side)) return original(ctx, base);
 
+  const bool violent = GlobalUltraNavigation().OnViolentKen(side);
+  const uint8_t cursor = violent ? kViolentKenCursorLive : kEvilRyuCursorLive;
   for (const auto [table, layout] : {std::pair{C::kHdPositions, SelectLayout::kArcade},
                                      std::pair{C::kVersusPositions, SelectLayout::kVersus}}) {
-    const uint32_t entry = table + uint32_t(kEvilRyuCursorLive) * 4;
+    const uint32_t entry = table + uint32_t(cursor) * 4;
     StoreBE16(base, entry, EvilRyuCursorX(layout));
-    StoreBE16(base, entry + 2, kEvilRyuCursorY);
+    StoreBE16(base, entry + 2, violent ? kViolentKenCursorY : kEvilRyuCursorY);
   }
   uint8_t* live = base + C::kLive + side;
   const uint8_t carrier = *live;
-  *live = kEvilRyuCursorLive;
+  *live = cursor;
   original(ctx, base);
   *live = carrier;
 }

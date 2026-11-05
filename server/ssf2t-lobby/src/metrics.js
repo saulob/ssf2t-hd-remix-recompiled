@@ -325,7 +325,7 @@ export class Metrics {
   }
 }
 
-// Per fight start: the fight includes the character, and the mirror and cross pairings of the two secret characters.
+// Per fight start: the fight includes the character, and the mirror and cross pairings of the secret characters.
 function secretFightValues(p1, p2) {
   const [a, b] = [SECRET_CHARACTER[p1], SECRET_CHARACTER[p2]];
   const values = [];
@@ -333,7 +333,7 @@ function secretFightValues(p1, p2) {
     if (a === key || b === key) values.push(key);
     if (a === key && b === key) values.push(`${key}_mirror`);
   }
-  if ((a === 'akuma' && b === 'evil_ryu') || (a === 'evil_ryu' && b === 'akuma')) values.push('akuma_vs_evil_ryu');
+  if (a && b && a !== b) values.push(SECRET_KEYS.filter((key) => key === a || key === b).join('_vs_'));
   return values;
 }
 

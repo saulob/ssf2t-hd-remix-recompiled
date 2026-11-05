@@ -9,11 +9,12 @@
 namespace ssf2t::online {
 
 // The game's internal character ids (its own name table, 0 to 16) and the port's own identities after them; the
-// Worker has the same list. Evil Ryu plays on Ryu's guest id but is reported as his own character.
+// Worker has the same list. Evil Ryu and Violent Ken play on guest ids but are reported as their own characters.
 inline constexpr int kGuestCharacterCount = 17;
-inline constexpr int kCharacterCount = 18;
+inline constexpr int kCharacterCount = 19;
 inline constexpr int kAkumaCharacter = 16;
 inline constexpr int kEvilRyuCharacter = 17;
+inline constexpr int kViolentKenCharacter = 18;
 
 // What the guest itself can hold in a fighter; the port's own identities come on top of it.
 constexpr bool IsGuestCharacter(int id) { return id >= 0 && id < kGuestCharacterCount; }

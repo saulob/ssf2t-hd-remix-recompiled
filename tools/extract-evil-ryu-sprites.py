@@ -99,14 +99,24 @@ def read_assets(path):
     return images
 
 
-def indexed_record(record, width, height, source):
+def fit_canvas(art, width, height, fill):
+    """Portraits fill the guest texture edge to edge, as its own portraits do: the quad that shows it is narrower than
+    the texture, so art authored at the quad's aspect is stretched to the texture."""
     from PIL import Image
 
-    art = Image.frombytes("RGBA", source[:2], source[2])
+    if fill:
+        return art.resize((width, height), Image.LANCZOS)
     scale = min(width / art.width, height / art.height)
     art = art.resize((max(1, round(art.width * scale)), max(1, round(art.height * scale))), Image.LANCZOS)
     canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     canvas.paste(art, ((width - art.width) // 2, (height - art.height) // 2))
+    return canvas
+
+
+def indexed_record(record, width, height, source, fill=False):
+    from PIL import Image
+
+    canvas = fit_canvas(Image.frombytes("RGBA", source[:2], source[2]), width, height, fill)
     alpha = canvas.getchannel("A").point(lambda v: 255 if v >= 128 else 0)
     quantized = canvas.convert("RGB").quantize(colors=255, method=Image.MEDIANCUT, dither=Image.FLOYDSTEINBERG)
     colours = quantized.getpalette()[:255 * 3]
@@ -156,7 +166,7 @@ def main():
             fail("missing " + entry)
         width, height, indices = decode_indices(entries[entry])
         payload += struct.pack("<4I", pose, width, height, 0) + indices
-    payload += indexed_record(*PORTRAIT_IMAGE, assets[ASSET_PORTRAIT])
+    payload += indexed_record(*PORTRAIT_IMAGE, assets[ASSET_PORTRAIT], fill=True)
     payload += indexed_record(*NAME_IMAGE, assets[ASSET_NAME])
     payload += indexed_record(*HUD_NAME_IMAGE, assets[ASSET_NAME])
     args.out.parent.mkdir(parents=True, exist_ok=True)

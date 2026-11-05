@@ -2542,16 +2542,16 @@ void TestHelloAdvertisesWhatThisBuildSupportsAndWhatIsOn() {
   rig.secret_caps = Caps(true, false);
   SignInToSecretService(rig);
   const std::string hello = rig.LastRequest("hello");
-  CHECK(Contains(hello, "\"secret\":{\"supports\":{\"akuma\":true,\"evil_ryu\":true},\"enabled\":{\"akuma\":true,"
-                        "\"evil_ryu\":false}}"));
+  CHECK(Contains(hello, "\"secret\":{\"supports\":{\"akuma\":true,\"evil_ryu\":true,\"violent_ken\":false},\"enabled\":{\"akuma\":true,"
+                        "\"evil_ryu\":false,\"violent_ken\":false}}"));
   CHECK(rig.CountLogs("online secret-cap local akuma=1 evil=0") == 1);
   CHECK(rig.CountLogs("online secret-cap service supported=true") == 1);
 
   Rig bare;
   SignInToSecretService(bare);
   CHECK(Contains(bare.LastRequest("hello"),
-                 "\"secret\":{\"supports\":{\"akuma\":false,\"evil_ryu\":false},\"enabled\":{\"akuma\":false,"
-                 "\"evil_ryu\":false}}"));
+                 "\"secret\":{\"supports\":{\"akuma\":false,\"evil_ryu\":false,\"violent_ken\":false},\"enabled\":{\"akuma\":false,"
+                 "\"evil_ryu\":false,\"violent_ken\":false}}"));
 }
 
 void TestEveryOnOffCombinationIsDeterministic() {
@@ -2652,7 +2652,7 @@ void TestAnOptionChangeIsSentOnceAndRecomputesTheRoom() {
   rig.secret_caps = Caps(true, true);
   rig.Tick();
   CHECK(rig.Count("secret.update") == 1);
-  CHECK(Contains(rig.LastRequest("secret.update"), "\"enabled\":{\"akuma\":true,\"evil_ryu\":true}"));
+  CHECK(Contains(rig.LastRequest("secret.update"), "\"enabled\":{\"akuma\":true,\"evil_ryu\":true,\"violent_ken\":false}"));
   CHECK(!rig.service->SecretEffective().Any());
   for (int i = 0; i < 5; ++i) rig.Tick(1.0);
   CHECK(rig.Count("secret.update") == 1);

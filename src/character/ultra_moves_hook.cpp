@@ -13,6 +13,7 @@
 #include "character/ultra_audio.h"
 #include "character/ultra_navigation.h"
 #include "character/ultra_fight.h"
+#include "character/violent_ken_actions.h"
 #include "guest_memory.h"
 #include "netplay/fight_snapshot.h"
 #include "netplay/guest_netplay.h"
@@ -22,6 +23,7 @@
 
 REX_EXTERN(__imp__base013_sub_82265228);
 REX_EXTERN(__imp__base013_sub_82265040);
+REX_EXTERN(__imp__base013_sub_8225E1F0);
 REX_EXTERN(__imp__base013_sub_821C01F8);
 REX_EXTERN(__imp__base013_sub_821C1E70);
 REX_EXTERN(__imp__base013_sub_823A03A0);
@@ -29,15 +31,29 @@ REX_EXTERN(__imp__base013_sub_823A0660);
 REX_EXTERN(__imp__base013_sub_823A2F58);
 REX_EXTERN(__imp__base013_sub_823A4860);
 REX_EXTERN(__imp__base013_sub_823A5DF8);
+REX_EXTERN(__imp__base013_sub_8228E440);
+REX_EXTERN(__imp__base013_sub_8228E488);
+REX_EXTERN(__imp__base013_sub_8228D890);
+REX_EXTERN(__imp__base013_sub_8228D8F8);
+REX_EXTERN(__imp__base013_sub_8228D960);
+REX_EXTERN(__imp__base013_sub_82195568);
+REX_EXTERN(__imp__base013_sub_821B41F8);
+REX_EXTERN(__imp__base013_sub_8218BB30);
+REX_EXTERN(base013_sub_82377AC0);
 REX_EXTERN(base013_sub_823146C0);
 REX_EXTERN(base013_sub_823782B0);
 REX_EXTERN(base013_sub_82383400);
 REX_EXTERN(base013_sub_82386E20);
+REX_EXTERN(__imp__base013_sub_82264F78);
+REX_EXTERN(base013_sub_8225DED8);
+REX_EXTERN(base013_sub_82282868);
+REX_EXTERN(base013_sub_822826A0);
 REX_EXTERN(base013_sub_82391B10);
 REX_EXTERN(base013_sub_82379AB0);
 #if SSF2T_TITLE_UPDATE_IMAGE
 REX_EXTERN(__imp__tu023_sub_82265698);
 REX_EXTERN(__imp__tu023_sub_822654B0);
+REX_EXTERN(__imp__tu023_sub_8225E228);
 REX_EXTERN(__imp__tu023_sub_821C0318);
 REX_EXTERN(__imp__tu023_sub_821C1F90);
 REX_EXTERN(__imp__tu023_sub_823A0390);
@@ -45,10 +61,23 @@ REX_EXTERN(__imp__tu023_sub_823A0650);
 REX_EXTERN(__imp__tu023_sub_823A2F48);
 REX_EXTERN(__imp__tu023_sub_823A4850);
 REX_EXTERN(__imp__tu023_sub_823A5DE8);
+REX_EXTERN(__imp__tu023_sub_8228ED10);
+REX_EXTERN(__imp__tu023_sub_8228ED58);
+REX_EXTERN(__imp__tu023_sub_8228E160);
+REX_EXTERN(__imp__tu023_sub_8228E1C8);
+REX_EXTERN(__imp__tu023_sub_8228E230);
+REX_EXTERN(__imp__tu023_sub_821953A0);
+REX_EXTERN(__imp__tu023_sub_821B4318);
+REX_EXTERN(__imp__tu023_sub_8218B998);
+REX_EXTERN(tu023_sub_82377B90);
 REX_EXTERN(tu023_sub_82314600);
 REX_EXTERN(tu023_sub_82378380);
 REX_EXTERN(tu023_sub_823834D0);
 REX_EXTERN(tu023_sub_82386EF0);
+REX_EXTERN(__imp__tu023_sub_822653E8);
+REX_EXTERN(tu023_sub_8225DF10);
+REX_EXTERN(tu023_sub_82282F60);
+REX_EXTERN(tu023_sub_82282D98);
 REX_EXTERN(tu023_sub_82391118);
 REX_EXTERN(tu023_sub_82379B80);
 #endif
@@ -64,7 +93,11 @@ struct Base013Moves {
   static void ClampToWalls(PPCContext& ctx, uint8_t* base) { base013_sub_82383400(ctx, base); }
   static void ReturnToIdle(PPCContext& ctx, uint8_t* base) { base013_sub_82386E20(ctx, base); }
   static void MoveStarted(PPCContext& ctx, uint8_t* base) { base013_sub_82391B10(ctx, base); }
+  static void StartShakunetsu(PPCContext& ctx, uint8_t* base) { base013_sub_8225DED8(ctx, base); }
+  static void StartKenShoryuken(PPCContext& ctx, uint8_t* base) { base013_sub_82282868(ctx, base); }
+  static void StartKenTatsumaki(PPCContext& ctx, uint8_t* base) { base013_sub_822826A0(ctx, base); }
   static void AdvanceAnimation(PPCContext& ctx, uint8_t* base) { base013_sub_82379AB0(ctx, base); }
+  static void SuperFreeze(PPCContext& ctx, uint8_t* base) { base013_sub_82377AC0(ctx, base); }
 };
 
 #if SSF2T_TITLE_UPDATE_IMAGE
@@ -76,7 +109,11 @@ struct TitleUpdate023Moves {
   static void ClampToWalls(PPCContext& ctx, uint8_t* base) { tu023_sub_823834D0(ctx, base); }
   static void ReturnToIdle(PPCContext& ctx, uint8_t* base) { tu023_sub_82386EF0(ctx, base); }
   static void MoveStarted(PPCContext& ctx, uint8_t* base) { tu023_sub_82391118(ctx, base); }
+  static void StartShakunetsu(PPCContext& ctx, uint8_t* base) { tu023_sub_8225DF10(ctx, base); }
+  static void StartKenShoryuken(PPCContext& ctx, uint8_t* base) { tu023_sub_82282F60(ctx, base); }
+  static void StartKenTatsumaki(PPCContext& ctx, uint8_t* base) { tu023_sub_82282D98(ctx, base); }
   static void AdvanceAnimation(PPCContext& ctx, uint8_t* base) { tu023_sub_82379B80(ctx, base); }
+  static void SuperFreeze(PPCContext& ctx, uint8_t* base) { tu023_sub_82377B90(ctx, base); }
 };
 #endif
 
@@ -90,6 +127,13 @@ constexpr uint8_t kClassSpecial = 12;
 constexpr uint8_t kRagingDemonMoveId = 10;
 constexpr uint8_t kTeleportMoveId = 14;
 constexpr uint8_t kSenpuMoveId = kTeleportMoveId;
+constexpr uint8_t kShakunetsuMoveId = 6;
+constexpr uint8_t kFireballWindupStep = 2;
+constexpr uint8_t kFireballRecoveryStep = 4;
+constexpr uint8_t kUniqueHeavyPunch = 8;
+constexpr uint8_t kCloseHeavyPunch = 4;
+constexpr uint8_t kFarHeavyPunch = 5;
+constexpr uint16_t kCloseHeavyPunchRange = 0x29;
 constexpr uint8_t kAkumaSlot = 16;
 constexpr uint8_t kClassicSlotOffset = 17;
 constexpr uint8_t kDemonArmStep = 2;
@@ -97,6 +141,9 @@ constexpr uint8_t kDemonWaitStep = 4;
 constexpr uint8_t kDemonDashStep = 6;
 constexpr uint8_t kDemonCaughtStep = 8;
 constexpr uint8_t kFullMeter = 0x30;
+constexpr uint8_t kStandAction = 0x00;
+constexpr uint8_t kCrouchAction = 0x02;
+constexpr uint8_t kStandSubs = 4;
 constexpr const char* kTeleportNames[] = {"forward-punch", "forward-kick", "back-punch", "back-kick"};
 
 constexpr uint32_t kState = 3;
@@ -113,6 +160,7 @@ constexpr uint32_t kWallFlag = 0x48;
 constexpr uint32_t kSlide = 0x52;
 constexpr uint32_t kMoveId = 0x88;
 constexpr uint32_t kPositionX = 8;
+constexpr uint32_t kPositionY = 0xC;
 constexpr uint32_t kVelocity = 0x3C;
 constexpr uint32_t kVelocityY = 0x3E;
 constexpr uint32_t kDeceleration = 0x40;
@@ -135,7 +183,30 @@ constexpr uint32_t kInputRelativePrevious = 0x3A6;
 constexpr uint32_t kPadCurrent = 0x390;
 constexpr uint32_t kPadPrevious = 0x392;
 constexpr uint32_t kTatsuStrength = 0x93;
+constexpr uint32_t kShakunetsuStrength = 0xE3;
+constexpr uint32_t kFireballStrength = 0x97;
+constexpr uint32_t kShoryukenStrength = 0x9B;
+constexpr uint32_t kTatsumakiAirborne = 0x9C;
+constexpr uint8_t kShoryukenMoveId = 4;
+constexpr uint8_t kTatsumakiMoveId = 2;
+constexpr uint8_t kHeavyStrength = 4;
+constexpr uint32_t kWalkRow = 0x30;
+constexpr uint32_t kAttackSelection = 0x180;
+constexpr uint32_t kOpponentRange = 0x182;
 constexpr uint16_t kAnimationEnd = 0x8000;
+constexpr uint32_t kFrameDuration = 0;
+constexpr uint32_t kSuperField62 = 0x62;
+constexpr uint32_t kSuperField70 = 0x70;
+constexpr uint32_t kOpponentPause = 0x1FA;
+constexpr uint32_t kSuperFreezing = 0x2AD;
+constexpr uint32_t kSuperActive = 0x2B5;
+constexpr uint32_t kCpuSpecialArmed = 0x148;
+constexpr uint32_t kCpuSpecialId = 0x186;
+constexpr uint32_t kCpuScriptByte = 0x205;
+constexpr uint32_t kCpuScriptFallback = 0x206;
+constexpr uint32_t kCpuScriptArgument = 0x207;
+constexpr uint8_t kCpuSpecialScripted = 2;
+constexpr int kCpuRetries = 4;
 
 uint8_t U8(const uint8_t* base, uint32_t address) { return *GuestHost(base, address); }
 void SetU8(uint8_t* base, uint32_t address, uint8_t value) { GuestStore8(base, address, value); }
@@ -202,7 +273,10 @@ void EndHostMove(uint8_t* base, uint32_t fighter, int side) {
     GuestStoreBE16(base, fighter + kSlide, 0);
     ClearVelocity(base, fighter);
   }
+  if (move.kind == HostMoveKind::kShinbu) SetU8(base, fighter + kOpponentPause, 0);
+  const GroundHeight ground = move.ground;
   move = HostMove{};
+  move.ground = ground;
 }
 
 template <typename H>
@@ -250,6 +324,37 @@ void UseEvilPack(uint8_t* base, uint32_t fighter) {
   REXLOG_INFO("DEBUG_SAULO EVIL_RYU box-pack source={:08X} patches={}", pack, applied);
 }
 
+struct WalkRows {
+  std::array<uint32_t, 2> source{};
+  std::array<uint32_t, 2> memory{};
+  size_t next = 0;
+};
+
+// Walk speeds are read through the fighter's own row pointer, so the carrier keeps the shared table.
+void UseWalkRow(uint8_t* base, uint32_t fighter, WalkRows& rows, int16_t forward, int16_t back) {
+  const uint32_t row = LoadBE32(GuestHost(base, fighter + kWalkRow), 0);
+  if (row < 0x10000 || row >= 0xFFFF0000u || row == rows.memory[0] || row == rows.memory[1]) return;
+  for (size_t i = 0; i < rows.source.size(); ++i) {
+    if (rows.source[i] == row) return GuestStoreBE32(base, fighter + kWalkRow, rows.memory[i]);
+  }
+  const size_t slot = rows.next++ % rows.source.size();
+  if (rows.memory[slot] == 0) rows.memory[slot] = GuestAlloc(kEvilWalkBytes);
+  if (rows.memory[slot] == 0 || !BuildWalkRow(base, row, rows.memory[slot], forward, back)) return;
+  rows.source[slot] = row;
+  GuestStoreBE32(base, fighter + kWalkRow, rows.memory[slot]);
+  REXLOG_INFO("DEBUG_SAULO ULTRA walk-row source={:08X} forward={:X}", row, forward);
+}
+
+void UseEvilWalk(uint8_t* base, uint32_t fighter) {
+  static WalkRows rows;
+  UseWalkRow(base, fighter, rows, kEvilWalkForward, kEvilWalkBack);
+}
+
+void UseViolentWalk(uint8_t* base, uint32_t fighter) {
+  static WalkRows rows;
+  UseWalkRow(base, fighter, rows, kViolentWalkForward, kViolentWalkBack);
+}
+
 template <typename H>
 bool StartTeleport(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side, int variant) {
   const EvilActionTable* table = TableFor<H>(base, fighter);
@@ -280,6 +385,18 @@ void QueueRagingDemonVoice(PPCContext& ctx, uint8_t* base, int side) {
 }
 
 template <typename H>
+void QueueViolentMoveVoice(PPCContext& ctx, uint8_t* base, int side, ViolentMoveVoice voice) {
+  if (!MarkViolentMoveVoice(side, voice)) return;
+  const PPCContext saved = ctx;
+  ctx.r3.u64 = 0;
+  ctx.r4.u64 = side == 0 ? kKenHadokenSound : kKenHadokenSound + kPlayerTwoVoiceOffset;
+  ctx.r5.u64 = 0;
+  ctx.r6.u64 = 0;
+  H::QueueSound(ctx, base);
+  ctx = saved;
+}
+
+template <typename H>
 bool StartRagingDemon(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side) {
   if (!TableFor<H>(base, fighter)) return false;
   BeginMove<H>(ctx, base, fighter, kRagingDemonMoveId);
@@ -289,7 +406,156 @@ bool StartRagingDemon(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side
   return true;
 }
 
-// Evil Ryu has no recognised command for this action yet, so it is only entered from the debug hotkey.
+template <typename H>
+const ViolentActionTable* ViolentTableFor(uint8_t* base, uint32_t fighter) {
+  const uint32_t address = ActionTableAddress<H>(base, fighter);
+  const ViolentKenGameplay* gameplay = LoadedViolentKenGameplay();
+  if (!gameplay || address < 0x10000 || address >= 0xFFFF0000u) return nullptr;
+  auto& tables = GlobalViolentActionTables();
+  for (const ViolentActionTable& table : tables) {
+    if (table.table() == address) return &table;
+  }
+  static std::array<uint32_t, 2> memory{};
+  static size_t next = 0;
+  const size_t slot = next++ % tables.size();
+  if (memory[slot] == 0) memory[slot] = GuestAlloc(kViolentActionBytes);
+  if (memory[slot] == 0 || !tables[slot].Build(base, address, memory[slot], kViolentActionBytes, *gameplay)) {
+    return nullptr;
+  }
+  REXLOG_INFO("DEBUG_SAULO VIOLENT_KEN actions table={:08X} skipped={}", address, tables[slot].skipped());
+  return &tables[slot];
+}
+
+// The fighter reads its boxes through its own pack pointer, so swapping it changes Violent Ken without touching Ken.
+void UseViolentPack(uint8_t* base, uint32_t fighter) {
+  static std::array<uint32_t, 2> source{};
+  static std::array<uint32_t, 2> memory{};
+  static size_t next = 0;
+  const ViolentKenGameplay* gameplay = LoadedViolentKenGameplay();
+  const uint32_t pack = LoadBE32(GuestHost(base, fighter + kBoxPack), 0);
+  if (!gameplay || pack < 0x10000 || pack >= 0xFFFF0000u || pack == memory[0] || pack == memory[1]) return;
+  for (size_t i = 0; i < source.size(); ++i) {
+    if (source[i] == pack) return GuestStoreBE32(base, fighter + kBoxPack, memory[i]);
+  }
+  const size_t slot = next++ % source.size();
+  if (memory[slot] == 0) memory[slot] = GuestAlloc(kViolentPackBytes);
+  if (memory[slot] == 0) return;
+  const int applied = BuildViolentPack(base, pack, memory[slot], *gameplay);
+  source[slot] = pack;
+  GuestStoreBE32(base, fighter + kBoxPack, memory[slot]);
+  REXLOG_INFO("DEBUG_SAULO VIOLENT_KEN box-pack source={:08X} attacks={}", pack, applied);
+}
+
+int32_t FacingSign(const uint8_t* base, uint32_t fighter) { return U8(base, fighter + kFacing) != 0 ? 1 : -1; }
+
+template <typename H>
+bool StartViolentMove(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side, HostMoveKind kind, uint8_t action,
+                      uint8_t sub) {
+  const ViolentActionTable* table = ViolentTableFor<H>(base, fighter);
+  const uint32_t record = table ? table->Find(action, sub) : 0;
+  if (record == 0) return false;
+  BeginMove<H>(ctx, base, fighter, kTeleportMoveId);
+  ClearVelocity(base, fighter);
+  SetFighterAnimation(base, fighter, record);
+  HostMove& move = GlobalHostMoves().For(side);
+  move.kind = kind;
+  move.phase = HostMovePhase::kDash;
+  move.ticks = 0;
+  move.ground_y = int32_t(LoadBE32(GuestHost(base, fighter + kPositionY), 0));
+  REXLOG_INFO("DEBUG_SAULO VIOLENT_KEN move side={} kind={} sub={}", side + 1, int(kind), sub);
+  return true;
+}
+
+template <typename H>
+bool StartRasetsu(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side, int strength) {
+  if (!StartViolentMove<H>(ctx, base, fighter, side, HostMoveKind::kRasetsu, kRasetsuAction, uint8_t(strength))) {
+    return false;
+  }
+  const RasetsuDash dash = RasetsuDashFor(strength, U8(base, fighter + kFacing) != 0);
+  GlobalHostMoves().For(side).dash = {dash.velocity, dash.deceleration, dash.threshold};
+  QueueViolentMoveVoice<H>(ctx, base, side, ViolentMoveVoice::kRasetsu);
+  return true;
+}
+
+template <typename H>
+bool StartShinbu(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side) {
+  if (!StartViolentMove<H>(ctx, base, fighter, side, HostMoveKind::kShinbu, kShinbuAction, kShinbuRushSub)) return false;
+  // Ken's Shoryureppa start: the guest's own freeze, flash and meter reset.
+  SetU8(base, fighter + kSuperField62, 8);
+  SetU8(base, fighter + kSuperField70, 0xA);
+  SetU8(base, fighter + kOpponentPause, 1);
+  const PPCContext saved = ctx;
+  H::SuperFreeze(ctx, base);
+  ctx = saved;
+  HostMove& move = GlobalHostMoves().For(side);
+  move.phase = HostMovePhase::kFreeze;
+  move.dash.velocity = kShinbuRushVelocity;
+  move.tail = 0;
+  QueueViolentMoveVoice<H>(ctx, base, side, ViolentMoveVoice::kShinbu);
+  return true;
+}
+
+template <typename H>
+bool OnNeutralRecord(const uint8_t* base, uint32_t fighter, const ViolentActionTable& table) {
+  const uint32_t record = LoadBE32(GuestHost(base, fighter + kAnimationRecord), 0);
+  const uint32_t guest = table.SourceFrame(record) ? table.SourceFrame(record) : record;
+  for (uint8_t action : {kStandAction, kCrouchAction}) {
+    const uint32_t subs = table.table() + U16(base, table.table() + action);
+    for (uint8_t sub = 0; sub < kStandSubs; ++sub) {
+      const uint32_t start = subs + U16(base, subs + uint32_t(sub) * 2);
+      const uint32_t offset = guest - start;
+      if (guest >= start && offset < 8 * kActionFrameBytes && offset % kActionFrameBytes == 0) return true;
+    }
+  }
+  return false;
+}
+
+// The guest's ground line is not a constant the port knows. Heights are not sampled while the guest holds the frame.
+template <typename H>
+void TrackGround(const uint8_t* base, uint32_t fighter, HostMove& move) {
+  const uint32_t game = GameState<H>(base);
+  const bool frozen = U8(base, game + 0x3A5) != 0 || U8(base, game + 0x584) != 0 || U8(base, game + 0x590) != 0;
+  ObserveGround(move.ground, int32_t(LoadBE32(GuestHost(base, fighter + kPositionY), 0)), frozen);
+}
+
+template <typename H>
+void DetectViolentMoves(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side) {
+  HostMove& move = GlobalHostMoves().For(side);
+  const uint8_t nibble = uint8_t(U16(base, fighter + kInputRelative) & 0xF);
+  const uint16_t current = U16(base, fighter + kPadCurrent);
+  const uint16_t previous = U16(base, fighter + kPadPrevious);
+  const int strength = move.rasetsu.Update(nibble, current, previous);
+  const bool shinbu = move.shinbu.Update(nibble, current, previous);
+  const bool inazuma = InazumaInput(nibble, current, previous);
+  const int32_t y = int32_t(LoadBE32(GuestHost(base, fighter + kPositionY), 0));
+  if (AboveGround(move.ground, y)) return;
+  if (shinbu && CanStartMove<H>(base, fighter, true, false)) {
+    StartShinbu<H>(ctx, base, fighter, side);
+  } else if (strength >= 0 && CanStartMove<H>(base, fighter, false, true)) {
+    StartRasetsu<H>(ctx, base, fighter, side, strength);
+  } else if (inazuma && CanStartMove<H>(base, fighter, false, true)) {
+    const ViolentActionTable* table = ViolentTableFor<H>(base, fighter);
+    if (table && OnNeutralRecord<H>(base, fighter, *table)) {
+      StartViolentMove<H>(ctx, base, fighter, side, HostMoveKind::kInazuma, kInazumaAction, 0);
+    }
+  }
+}
+
+template <typename H>
+bool OnEvilNeutralRecord(const uint8_t* base, uint32_t fighter, const EvilActionTable& table) {
+  const uint32_t record = LoadBE32(GuestHost(base, fighter + kAnimationRecord), 0);
+  const uint32_t guest = table.SourceFrame(record) ? table.SourceFrame(record) : record;
+  for (uint8_t action : {kStandAction, kCrouchAction}) {
+    const uint32_t subs = table.table() + U16(base, table.table() + action);
+    for (uint8_t sub = 0; sub < kStandSubs; ++sub) {
+      const uint32_t start = subs + U16(base, subs + uint32_t(sub) * 2);
+      const uint32_t offset = guest - start;
+      if (guest >= start && offset < 8 * kActionFrameBytes && offset % kActionFrameBytes == 0) return true;
+    }
+  }
+  return false;
+}
+
 template <typename H>
 bool StartSenpuKyaku(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side) {
   const EvilActionTable* table = TableFor<H>(base, fighter);
@@ -298,7 +564,10 @@ bool StartSenpuKyaku(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side)
   BeginMove<H>(ctx, base, fighter, kSenpuMoveId);
   ClearVelocity(base, fighter);
   SetFighterAnimation(base, fighter, record);
-  GlobalHostMoves().For(side).kind = HostMoveKind::kSenpuKyaku;
+  HostMove& move = GlobalHostMoves().For(side);
+  move.kind = HostMoveKind::kSenpuKyaku;
+  move.phase = HostMovePhase::kStartup;
+  move.ground_y = int32_t(LoadBE32(GuestHost(base, fighter + kPositionY), 0));
   REXLOG_INFO("DEBUG_SAULO EVIL_RYU senpu-kyaku side={} state=start", side + 1);
   return true;
 }
@@ -310,10 +579,15 @@ void DetectMoves(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side) {
   const int variant =
       move.teleport.Update(uint8_t(relative & 0xF), U16(base, fighter + kPadCurrent), U16(base, fighter + kPadPrevious));
   const bool demon = move.raging_demon.Update(relative, U16(base, fighter + kInputRelativePrevious));
+  const bool senpu =
+      SenpuInput(uint8_t(relative & 0xF), U16(base, fighter + kPadCurrent), U16(base, fighter + kPadPrevious));
   if (demon && CanStartMove<H>(base, fighter, true, false)) {
     StartRagingDemon<H>(ctx, base, fighter, side);
   } else if (variant >= 0 && CanStartMove<H>(base, fighter, false, true)) {
     StartTeleport<H>(ctx, base, fighter, side, variant);
+  } else if (senpu && CanStartMove<H>(base, fighter, false, true)) {
+    const EvilActionTable* table = TableFor<H>(base, fighter);
+    if (table && OnEvilNeutralRecord<H>(base, fighter, *table)) StartSenpuKyaku<H>(ctx, base, fighter, side);
   }
 }
 
@@ -327,15 +601,48 @@ void LogFightStart(int side) {
 
 // DEBUG_SAULO: hotkey entry into the move start functions above; the key handler only posts a request.
 template <typename H>
-void PublishDebugFight(const uint8_t* base) {
-  const bool online = U8(base, H::Netplay::kGameMode) == kOnlineGameMode ||
-                      rex::cvar::GetFlagByName(kNetplayRoleSetting) != kNetplayRoleOff;
-  GlobalDebugBridge().PublishFight(DebugNowMs(), online, EvilRyuOnSide<typename H::Netplay>(base, 0));
+bool DebugOnline(const uint8_t* base) {
+  return U8(base, H::Netplay::kGameMode) == kOnlineGameMode ||
+         rex::cvar::GetFlagByName(kNetplayRoleSetting) != kNetplayRoleOff;
 }
 
+template <typename H>
+void PublishDebugFight(const uint8_t* base) {
+  using G = typename H::Netplay;
+  const DebugFighter p1 = EvilRyuOnSide<G>(base, 0)      ? DebugFighter::kEvilRyu
+                          : ViolentKenOnSide<G>(base, 0) ? DebugFighter::kViolentKen
+                                                         : DebugFighter::kNone;
+  GlobalDebugBridge().PublishFight(DebugNowMs(), DebugOnline<H>(base), p1);
+}
+
+const char* DebugLogName(DebugMove move) { return IsViolentDebugMove(move) ? "VIOLENT_KEN" : "EVIL_RYU"; }
+
 void LogDebugRejected(DebugMove move, DebugReject reason) {
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU debug-hotkey key={} move={} side=1 accepted=0 reason={}", DebugKeyLabel(move),
-              DebugMoveName(move), DebugRejectName(reason));
+  REXLOG_INFO("DEBUG_SAULO {} debug-hotkey key={} move={} side=1 accepted=0 reason={}", DebugLogName(move),
+              DebugKeyLabel(move), DebugMoveName(move), DebugRejectName(reason));
+}
+
+void LogDebugBlocked(DebugMove move, bool active, bool airborne, bool cannot_start) {
+  REXLOG_INFO("DEBUG_SAULO {} debug-hotkey key={} move={} side=1 accepted=0 reason=incompatible-state active={} airborne={} "
+              "start-blocked={}",
+              DebugLogName(move), DebugKeyLabel(move), DebugMoveName(move), active, airborne, cannot_start);
+}
+
+void LogDebugAccepted(DebugMove move) {
+  REXLOG_INFO("DEBUG_SAULO {} debug-hotkey key={} move={} side=1 accepted=1", DebugLogName(move), DebugKeyLabel(move),
+              DebugMoveName(move));
+}
+
+bool FighterAirborne(const uint8_t* base, uint32_t fighter, const HostMove& move) {
+  return AboveGround(move.ground, int32_t(LoadBE32(GuestHost(base, fighter + kPositionY), 0)));
+}
+
+// Enters the guest's own starter the way its command tracker does.
+template <typename H>
+void CallGuestStarter(PPCContext& ctx, uint8_t* base, PPCFunc* starter) {
+  const PPCContext saved = ctx;
+  starter(ctx, base);
+  ctx = saved;
 }
 
 bool DebugMoveReady(const EvilActionTable* table, DebugMove move) {
@@ -350,8 +657,19 @@ void RunDebugMove(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side, De
   const EvilActionTable* table = TableFor<H>(base, fighter);
   if (!DebugMoveReady(table, move)) return LogDebugRejected(move, DebugReject::kFighterNotReady);
   const bool teleport = IsTeleportMove(move);
-  if (GlobalHostMoves().Active(side) || !CanStartMove<H>(base, fighter, false, teleport)) {
-    return LogDebugRejected(move, DebugReject::kIncompatibleState);
+  const HostMove& host = GlobalHostMoves().For(side);
+  const bool active = GlobalHostMoves().Active(side);
+  const bool airborne = FighterAirborne(base, fighter, host);
+  const bool cannot_start = !CanStartMove<H>(base, fighter, false, teleport);
+  if (StartRejection(move, active, airborne, cannot_start) != DebugReject::kNone) {
+    return LogDebugBlocked(move, active, airborne, cannot_start);
+  }
+  if (move == DebugMove::kShakunetsu) {
+    LogDebugAccepted(move);
+    SetU8(base, fighter + kMoveId, kShakunetsuMoveId);
+    SetU8(base, fighter + kShakunetsuStrength, kHeavyStrength);
+    SetU8(base, fighter + kFireballStrength, kHeavyStrength);
+    return CallGuestStarter<H>(ctx, base, H::StartShakunetsu);
   }
   if (move == DebugMove::kRagingDemon) {
     const uint8_t meter_before = U8(base, fighter + kMeter);
@@ -371,9 +689,53 @@ void RunDebugMove(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side, De
 }
 
 template <typename H>
-void RunDebugRequest(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side) {
+void RunViolentDebugMove(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side, DebugMove move) {
+  if (!ViolentTableFor<H>(base, fighter)) return LogDebugRejected(move, DebugReject::kFighterNotReady);
+  const HostMove& host = GlobalHostMoves().For(side);
+  const bool airborne = FighterAirborne(base, fighter, host);
+  const bool active = GlobalHostMoves().Active(side);
+  const bool cannot_start = !CanStartMove<H>(base, fighter, false, false);
+  const DebugReject reject = StartRejection(move, active, airborne, cannot_start);
+  if (reject == DebugReject::kNotAirborne) return LogDebugRejected(move, reject);
+  if (reject != DebugReject::kNone) return LogDebugBlocked(move, active, airborne, cannot_start);
+  LogDebugAccepted(move);
+  switch (move) {
+    case DebugMove::kRasetsuLight:
+    case DebugMove::kRasetsuMedium:
+    case DebugMove::kRasetsuHeavy:
+      StartRasetsu<H>(ctx, base, fighter, side, RasetsuStrengthFor(move));
+      break;
+    case DebugMove::kInazuma:
+      StartViolentMove<H>(ctx, base, fighter, side, HostMoveKind::kInazuma, kInazumaAction, 0);
+      break;
+    case DebugMove::kShinbu:
+      SetU8(base, fighter + kMeter, kFullMeter);
+      StartShinbu<H>(ctx, base, fighter, side);
+      break;
+    case DebugMove::kShoryukenHeavy:
+      SetU8(base, fighter + kMoveId, kShoryukenMoveId);
+      SetU8(base, fighter + kShoryukenStrength, kHeavyStrength);
+      CallGuestStarter<H>(ctx, base, H::StartKenShoryuken);
+      break;
+    case DebugMove::kAirTatsumaki:
+      SetU8(base, fighter + kTatsumakiAirborne, 1);
+      SetU8(base, fighter + kMoveId, kTatsumakiMoveId);
+      SetU8(base, fighter + kTatsuStrength, kHeavyStrength);
+      CallGuestStarter<H>(ctx, base, H::StartKenTatsumaki);
+      break;
+    default:
+      break;
+  }
+}
+
+template <typename H>
+void RunDebugRequest(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side, bool violent) {
   const DebugMove move = GlobalDebugBridge().Take(DebugNowMs());
-  if (move != DebugMove::kNone) RunDebugMove<H>(ctx, base, fighter, side, move);
+  if (move == DebugMove::kNone) return;
+  if (DebugOnline<H>(base)) return LogDebugRejected(move, DebugReject::kOnline);
+  if (IsViolentDebugMove(move) != violent) return LogDebugRejected(move, DebugReject::kWrongFighter);
+  if (violent) return RunViolentDebugMove<H>(ctx, base, fighter, side, move);
+  RunDebugMove<H>(ctx, base, fighter, side, move);
 }
 
 // Runs before the guest's own special trackers so the three-button teleports win over the single-button moves.
@@ -385,13 +747,87 @@ void TrackSpecials(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const int side = EvilSide<H>(base, fighter);
   if (side < 0) return original(ctx, base);
   UseEvilPack(base, fighter);
-  if (GlobalHostMoves().Active(side)) {
-    if (U8(base, fighter + kState) != kClassSpecial) EndHostMove(base, fighter, side);
-  } else {
-    if (side == 0) RunDebugRequest<H>(ctx, base, fighter, side);
-    if (!GlobalHostMoves().Active(side)) DetectMoves<H>(ctx, base, fighter, side);
+  UseEvilWalk(base, fighter);
+  TrackGround<H>(base, fighter, GlobalHostMoves().For(side));
+  if (GlobalHostMoves().Active(side) && U8(base, fighter + kState) != kClassSpecial) {
+    EndHostMove(base, fighter, side);
   }
+  if (side == 0) RunDebugRequest<H>(ctx, base, fighter, side, false);
+  if (!GlobalHostMoves().Active(side)) DetectMoves<H>(ctx, base, fighter, side);
   original(ctx, base);
+}
+
+// Ken has his own tracker and special runner in the per-character tables 83A29498 and 83A291D8; Ryu's never see him.
+template <typename H>
+void TrackKenSpecials(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  if (!UltraFightersEnabled()) return original(ctx, base);
+  PublishDebugFight<H>(base);
+  const uint32_t fighter = ActiveFighter<H>(base);
+  const int violent = ViolentKenSide<typename H::Netplay>(base, fighter);
+  if (violent < 0) return original(ctx, base);
+  UseViolentPack(base, fighter);
+  UseViolentWalk(base, fighter);
+  TrackGround<H>(base, fighter, GlobalHostMoves().For(violent));
+  if (GlobalHostMoves().Active(violent) && U8(base, fighter + kState) != kClassSpecial) {
+    EndHostMove(base, fighter, violent);
+  }
+  if (violent == 0) RunDebugRequest<H>(ctx, base, fighter, violent, true);
+  if (!GlobalHostMoves().Active(violent)) DetectViolentMoves<H>(ctx, base, fighter, violent);
+  original(ctx, base);
+}
+
+// Evil Ryu's half circle is USF2's 63214; everyone else keeps the guest's. Only this one tracker sees him mirrored.
+template <typename H>
+void TrackHalfCircle(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  if (!UltraFightersEnabled()) return original(ctx, base);
+  const uint32_t fighter = ActiveFighter<H>(base);
+  if (EvilSide<H>(base, fighter) < 0) return original(ctx, base);
+  const uint16_t input = U16(base, fighter + kInputRelative);
+  GuestStoreBE16(base, fighter + kInputRelative, MirrorDirections(input));
+  original(ctx, base);
+  GuestStoreBE16(base, fighter + kInputRelative, input);
+}
+
+// The three kick commands are the only writers of move ids 8, 10, 12 and of their deferred form at +0x16A.
+template <typename H>
+void TrackKenKickCommand(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  if (UltraFightersEnabled() && ViolentKenSide<typename H::Netplay>(base, ActiveFighter<H>(base)) >= 0) return;
+  original(ctx, base);
+}
+
+// A scripted CPU special the character does not have takes the guest's own refusal: the script moves to its next byte.
+template <typename H>
+void SelectCpuMove(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  original(ctx, base);
+  if (!UltraFightersEnabled()) return;
+  const uint32_t fighter = ActiveFighter<H>(base);
+  if (ViolentKenSide<typename H::Netplay>(base, fighter) < 0) return;
+  for (int retry = 0; retry < kCpuRetries; ++retry) {
+    if (U8(base, fighter + kCpuSpecialArmed) != kCpuSpecialScripted) return;
+    if (!ViolentCpuSpecialRemoved(U8(base, fighter + kCpuSpecialId))) return;
+    SetU8(base, fighter + kCpuSpecialId, 0);
+    SetU8(base, fighter + kCpuScriptByte, U8(base, fighter + kCpuScriptFallback));
+    SetU8(base, fighter + kCpuScriptArgument, 0);
+    original(ctx, base);
+  }
+  SetU8(base, fighter + kCpuSpecialArmed, 0);
+  SetU8(base, fighter + kCpuSpecialId, 0);
+}
+
+// The guest's jump table is one runtime block for all fighters, so the row is replaced after the guest has stored it.
+// The human and CPU jump starts share this.
+template <typename H>
+void StartJump(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  original(ctx, base);
+  if (!UltraFightersEnabled()) return;
+  const uint32_t fighter = ActiveFighter<H>(base);
+  if (ViolentKenSide<typename H::Netplay>(base, fighter) < 0) return;
+  const int32_t sign = U8(base, fighter + kFacing) != 0 ? 1 : -1;
+  const JumpRow row = ViolentJumpRow(sign * int16_t(U16(base, fighter + kVelocity)));
+  GuestStoreBE16(base, fighter + kVelocity, uint16_t(sign * row.vx));
+  GuestStoreBE16(base, fighter + kDeceleration, uint16_t(sign * row.ax));
+  GuestStoreBE16(base, fighter + kVelocityY, uint16_t(row.vy));
+  GuestStoreBE16(base, fighter + kDecelerationY, uint16_t(row.ay));
 }
 
 template <typename H>
@@ -453,15 +889,201 @@ void StepTeleport(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side) {
     case HostMovePhase::kRecovery:
       if ((U16(base, fighter + kAnimationFlags) & kAnimationEnd) == 0) return AdvanceAnimation<H>(ctx, base);
       return FinishHostMove<H>(ctx, base, fighter, side);
+    default:
+      return;
+  }
+}
+
+void MoveFighter(uint8_t* base, uint32_t fighter, uint32_t axis, int32_t delta) {
+  const int32_t position = int32_t(LoadBE32(GuestHost(base, fighter + axis), 0));
+  GuestStoreBE32(base, fighter + axis, uint32_t(position + delta));
+}
+
+template <typename H>
+void ClampFighter(PPCContext& ctx, uint8_t* base) {
+  const PPCContext saved = ctx;
+  H::ClampToWalls(ctx, base);
+  ctx = saved;
+}
+
+bool AnimationEnded(const uint8_t* base, uint32_t fighter) {
+  return (U16(base, fighter + kAnimationFlags) & kAnimationEnd) != 0;
+}
+
+void LandSenpuKyaku(uint8_t* base, uint32_t fighter, const HostMove& move) {
+  GuestStoreBE32(base, fighter + kPositionY, uint32_t(move.ground_y));
+  SetU8(base, fighter + kUntargetable, 0);
+  ClearVelocity(base, fighter);
+}
+
+// USF2 cActionControl18 category 57: the frame event starts the hop, and the hold frame waits for the landing.
+template <typename H>
+void StepSenpuKyaku(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side) {
+  HostMove& move = GlobalHostMoves().For(side);
+  if (++move.ticks >= kSenpuTimeoutTicks) {
+    LandSenpuKyaku(base, fighter, move);
+    return FinishHostMove<H>(ctx, base, fighter, side);
+  }
+  switch (move.phase) {
+    case HostMovePhase::kStartup:
+      AdvanceAnimation<H>(ctx, base);
+      if (U8(base, fighter + kAnimationEvent) == 0) return;
+      move.phase = HostMovePhase::kDash;
+      move.dash.velocity = kSenpuHopVelocityX;
+      move.rise_velocity = kSenpuHopVelocityY;
+      SetU8(base, fighter + kUntargetable, 1);
+      return;
+    case HostMovePhase::kDash: {
+      const EvilActionTable* table = TableFor<H>(base, fighter);
+      const uint32_t start = table ? table->Find(kUniqueAction, kSenpuSub, 0) : 0;
+      if (start == 0) {
+        LandSenpuKyaku(base, fighter, move);
+        return FinishHostMove<H>(ctx, base, fighter, side);
+      }
+      move.dash.velocity -= kSenpuHopDecelerationX;
+      move.rise_velocity -= kSenpuHopDecelerationY;
+      MoveFighter(base, fighter, kPositionX, FacingSign(base, fighter) * move.dash.velocity * 256);
+      MoveFighter(base, fighter, kPositionY, move.rise_velocity * 256);
+      ClampFighter<H>(ctx, base);
+      const uint32_t hold = start + kSenpuHoldFrame * kActionFrameBytes;
+      const bool landed = int32_t(LoadBE32(GuestHost(base, fighter + kPositionY), 0)) <= move.ground_y;
+      if (landed) GuestStoreBE32(base, fighter + kPositionY, uint32_t(move.ground_y));
+      if (LoadBE32(GuestHost(base, fighter + kAnimationRecord), 0) != hold) return AdvanceAnimation<H>(ctx, base);
+      if (!landed) return;
+      LandSenpuKyaku(base, fighter, move);
+      move.phase = HostMovePhase::kRecovery;
+      SetFighterAnimation(base, fighter, hold + kActionFrameBytes);
+      return;
+    }
+    default:
+      if (AnimationEnded(base, fighter)) return FinishHostMove<H>(ctx, base, fighter, side);
+      return AdvanceAnimation<H>(ctx, base);
   }
 }
 
 template <typename H>
-void StepSenpuKyaku(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side) {
+void StepInazuma(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side) {
   HostMove& move = GlobalHostMoves().For(side);
-  const bool ended = (U16(base, fighter + kAnimationFlags) & kAnimationEnd) != 0 || ++move.ticks >= kSenpuTimeoutTicks;
-  if (!ended) return AdvanceAnimation<H>(ctx, base);
-  FinishHostMove<H>(ctx, base, fighter, side);
+  if (AnimationEnded(base, fighter) || ++move.ticks >= kUltraMoveTimeoutTicks) {
+    return FinishHostMove<H>(ctx, base, fighter, side);
+  }
+  AdvanceAnimation<H>(ctx, base);
+}
+
+// USF2 category 73: the first frame holds while the speed falls to the threshold; the mover is never stopped, so the
+// remaining speed carries through the recovery.
+template <typename H>
+void StepRasetsu(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side) {
+  HostMove& move = GlobalHostMoves().For(side);
+  if (++move.ticks >= kUltraMoveTimeoutTicks) return FinishHostMove<H>(ctx, base, fighter, side);
+  if (move.phase == HostMovePhase::kDash) {
+    const int32_t carried = int16_t(move.dash.velocity - move.dash.deceleration);
+    int32_t position = int32_t(LoadBE32(GuestHost(base, fighter + kPositionX), 0));
+    const bool finished = move.dash.Step(position, U8(base, fighter + kWallFlag));
+    GuestStoreBE32(base, fighter + kPositionX, uint32_t(position));
+    ClampFighter<H>(ctx, base);
+    if (finished) {
+      move.phase = HostMovePhase::kRecovery;
+      move.rise_velocity = carried;
+    }
+    return;
+  }
+  if (AnimationEnded(base, fighter)) return FinishHostMove<H>(ctx, base, fighter, side);
+  const int32_t sign = move.rise_velocity < 0 ? -1 : 1;
+  move.rise_velocity = sign * DecayTowardZero(sign * move.rise_velocity, kRasetsuDecelerationMagnitude);
+  MoveFighter(base, fighter, kPositionX, move.rise_velocity * 256);
+  ClampFighter<H>(ctx, base);
+  AdvanceAnimation<H>(ctx, base);
+}
+
+template <typename H>
+void ShowShinbuAction(uint8_t* base, uint32_t fighter, uint8_t sub) {
+  if (const ViolentActionTable* table = ViolentTableFor<H>(base, fighter)) {
+    if (const uint32_t record = table->Find(kShinbuAction, sub)) SetFighterAnimation(base, fighter, record);
+  }
+}
+
+// True once the last frame's duration has run out, which is when USF2 raises its animation-finished flag at +0x6D.
+bool ShinbuFrameRunOut(const uint8_t* base, uint32_t fighter, HostMove& move) {
+  if (!AnimationEnded(base, fighter)) return false;
+  if (move.tail == 0) {
+    const uint32_t record = LoadBE32(GuestHost(base, fighter + kAnimationRecord), 0);
+    move.tail = uint8_t(U16(base, record + kFrameDuration));
+  }
+  return move.tail == 0 || --move.tail == 0;
+}
+
+// USF2 cActionControl19 category 78, steps 0, 1, 2, 5, 6, 7, 8 of table 0xb9c3cc.
+template <typename H>
+void StepShinbu(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side) {
+  HostMove& move = GlobalHostMoves().For(side);
+  if (move.phase == HostMovePhase::kFreeze) {
+    if (U8(base, fighter + kSuperFreezing) != 0) return;
+    SetU8(base, fighter + kOpponentPause, 0);
+    SetU8(base, fighter + kSuperActive, 1);
+    move.phase = HostMovePhase::kDash;
+    return;
+  }
+  if (++move.ticks >= kUltraMoveTimeoutTicks) return FinishHostMove<H>(ctx, base, fighter, side);
+  const int32_t sign = FacingSign(base, fighter);
+  switch (move.phase) {
+    case HostMovePhase::kDash:
+      if (ShinbuFrameRunOut(base, fighter, move)) {
+        move.phase = HostMovePhase::kRiseStartup;
+        move.dash.velocity = kShinbuRiseVelocityX;
+        move.rise_velocity = kShinbuRiseVelocityY;
+        ShowShinbuAction<H>(base, fighter, kShinbuRiseSub);
+        return;
+      }
+      MoveFighter(base, fighter, kPositionX, sign * move.dash.velocity * 256);
+      ClampFighter<H>(ctx, base);
+      move.dash.velocity = DecayTowardZero(move.dash.velocity, kShinbuRushDeceleration);
+      break;
+    case HostMovePhase::kRiseStartup:
+      if (U8(base, fighter + kAnimationEvent) != 0) break;
+      move.phase = HostMovePhase::kRise;
+      SetU8(base, fighter + kUntargetable, 1);
+      [[fallthrough]];
+    case HostMovePhase::kRise: {
+      MoveFighter(base, fighter, kPositionX, sign * move.dash.velocity * 256);
+      MoveFighter(base, fighter, kPositionY, move.rise_velocity * 256);
+      ClampFighter<H>(ctx, base);
+      move.dash.velocity = DecayTowardZero(move.dash.velocity, kShinbuRiseDecelerationX);
+      move.rise_velocity -= kShinbuRiseDecelerationY;
+      const int32_t y = int32_t(LoadBE32(GuestHost(base, fighter + kPositionY), 0));
+      if (move.rise_velocity < 0 && y <= move.ground_y) {
+        GuestStoreBE32(base, fighter + kPositionY, uint32_t(move.ground_y));
+        SetU8(base, fighter + kUntargetable, 0);
+        move.phase = HostMovePhase::kLand;
+        ShowShinbuAction<H>(base, fighter, kShinbuLandSub);
+        return;
+      }
+      break;
+    }
+    case HostMovePhase::kLand:
+      if (AnimationEnded(base, fighter)) {
+        move.phase = HostMovePhase::kRecovery;
+        ShowShinbuAction<H>(base, fighter, kShinbuRecoverySub);
+        return;
+      }
+      break;
+    default:
+      if (AnimationEnded(base, fighter)) return FinishHostMove<H>(ctx, base, fighter, side);
+      break;
+  }
+  if (!AnimationEnded(base, fighter)) AdvanceAnimation<H>(ctx, base);
+}
+
+template <typename H>
+void StepViolentMove(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side) {
+  const uint8_t countdown = U8(base, fighter + kCountdown);
+  if (countdown != 0) return SetU8(base, fighter + kCountdown, uint8_t(countdown - 1));
+  switch (GlobalHostMoves().For(side).kind) {
+    case HostMoveKind::kRasetsu: return StepRasetsu<H>(ctx, base, fighter, side);
+    case HostMoveKind::kInazuma: return StepInazuma<H>(ctx, base, fighter, side);
+    case HostMoveKind::kShinbu: return StepShinbu<H>(ctx, base, fighter, side);
+    default: return FinishHostMove<H>(ctx, base, fighter, side);
+  }
 }
 
 void ArmDemonDash(uint8_t* base, uint32_t fighter) {
@@ -499,12 +1121,34 @@ void RunSpecialClass(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (!UltraFightersEnabled()) return original(ctx, base);
   const uint32_t fighter = ActiveFighter<H>(base);
   const int side = EvilSide<H>(base, fighter);
-  if (side < 0 || !GlobalHostMoves().Active(side)) return original(ctx, base);
+  if (side < 0) return original(ctx, base);
+  if (!GlobalHostMoves().Active(side)) {
+    const uint8_t step = U8(base, fighter + kStep);
+    original(ctx, base);
+    // The guest has just picked its own Hadoken recovery; USF2 gives the half circle fireball a longer one.
+    if (U8(base, fighter + kMoveId) == kShakunetsuMoveId && step == kFireballWindupStep &&
+        U8(base, fighter + kStep) == kFireballRecoveryStep) {
+      SetU8(base, fighter + kStepTimer, ShakunetsuRecovery(U8(base, fighter + kShakunetsuStrength)));
+    }
+    return;
+  }
   if (GlobalHostMoves().For(side).kind == HostMoveKind::kTeleport) return StepTeleport<H>(ctx, base, fighter, side);
-  if (GlobalHostMoves().For(side).kind == HostMoveKind::kSenpuKyaku) return StepSenpuKyaku<H>(ctx, base, fighter, side);
   const uint8_t countdown = U8(base, fighter + kCountdown);
   if (countdown != 0) return SetU8(base, fighter + kCountdown, uint8_t(countdown - 1));
+  if (GlobalHostMoves().For(side).kind == HostMoveKind::kSenpuKyaku) return StepSenpuKyaku<H>(ctx, base, fighter, side);
   StepRagingDemon<H>(ctx, base, fighter);
+}
+
+template <typename H>
+void RunKenSpecialClass(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  if (!UltraFightersEnabled()) return original(ctx, base);
+  const uint32_t fighter = ActiveFighter<H>(base);
+  const int violent = ViolentKenSide<typename H::Netplay>(base, fighter);
+  if (violent < 0) return original(ctx, base);
+  if (GlobalHostMoves().Active(violent)) return StepViolentMove<H>(ctx, base, fighter, violent);
+  if (!ViolentMoveRemoved(U8(base, fighter + kMoveId))) return original(ctx, base);
+  REXLOG_INFO("DEBUG_SAULO VIOLENT_KEN removed-move side={} id={}", violent + 1, U8(base, fighter + kMoveId));
+  FinishHostMove<H>(ctx, base, fighter, violent);
 }
 
 void LogInstalledRecord(const uint8_t* base, uint32_t fighter, uint8_t action, uint32_t table, uint32_t record) {
@@ -518,12 +1162,51 @@ void LogInstalledRecord(const uint8_t* base, uint32_t fighter, uint8_t action, u
               U8(base, record + kActionRecordCompared));
 }
 
+template <typename H>
+bool LookupViolentAction(PPCContext& ctx, uint8_t* base, PPCFunc* original, uint32_t fighter) {
+  const ViolentActionTable* table = ViolentTableFor<H>(base, fighter);
+  if (!table) return false;
+  const uint32_t work = H::Netplay::kFightWork;
+  const uint32_t guest_table = LoadBE32(GuestHost(base, H::kActionTables + U16(base, work - kActionTableIndexBelow)), 0);
+  if (guest_table != table->table()) return false;
+  const uint8_t action = U8(base, work - kActionD1Below);
+  const uint32_t record = table->Find(action, U8(base, work - kActionD0Below));
+  if (record == 0) return false;
+  if (GuestHasAction(base, table->table(), action)) original(ctx, base);
+  GuestStoreBE32(base, work + kActionPointerAbove, record);
+  SetFighterAnimation(base, fighter, record);
+  return true;
+}
+
+// Both run where the guest selects the action, the one point the human and the CPU paths of each move share. The Shoryuken
+// selection follows the guest's velocity store; the air Tatsumaki one follows a first integration with Ken's values.
+void ApplyViolentMovement(uint8_t* base, uint32_t fighter, uint32_t work) {
+  const uint8_t action = U8(base, work - kActionD1Below);
+  const uint8_t sub = U8(base, work - kActionD0Below);
+  if (action == kShoryukenAction && sub < kShoryukenSubs) {
+    GuestStoreBE16(base, fighter + kVelocity, uint16_t(kViolentShoryukenVelocity[sub]));
+  } else if (IsViolentAirTatsu(action, sub)) {
+    const int32_t speed = FacingSign(base, fighter) * kViolentAirTatsuVelocity[sub - kAirTatsuFirstSub];
+    MoveFighter(base, fighter, kPositionX, (speed - int16_t(U16(base, fighter + kVelocity))) * 256);
+    MoveFighter(base, fighter, kPositionY, -int32_t(int16_t(U16(base, fighter + kVelocityY))) * 256);
+    GuestStoreBE16(base, fighter + kVelocity, uint16_t(speed));
+    GuestStoreBE16(base, fighter + kVelocityY, 0);
+    GuestStoreBE16(base, fighter + kDeceleration, 0);
+    GuestStoreBE16(base, fighter + kDecelerationY, 0);
+  }
+}
+
 // Evil Ryu's changed and added actions resolve to his own copy. The fighter's first selection comes from its init, so
 // this is where the identity takes effect.
 template <typename H>
 void LookupAction(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (!UltraFightersEnabled()) return original(ctx, base);
   const uint32_t fighter = ActiveFighter<H>(base);
+  if (ViolentKenSide<typename H::Netplay>(base, fighter) >= 0) {
+    if (!LookupViolentAction<H>(ctx, base, original, fighter)) original(ctx, base);
+    ApplyViolentMovement(base, fighter, H::Netplay::kFightWork);
+    return;
+  }
   const int side = EvilSide<H>(base, fighter);
   if (side < 0) return original(ctx, base);
   LogFightStart(side);
@@ -540,7 +1223,20 @@ void LookupAction(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (GuestHasAction(base, table->table(), action)) original(ctx, base);
   GuestStoreBE32(base, work + kActionPointerAbove, record);
   SetFighterAnimation(base, fighter, record);
+  // The guest set Ryu's spin count just before selecting this action.
+  if (action == kTatsuAction) SetU8(base, fighter + kStepTimer, TatsuSpins(U8(base, fighter + kTatsuStrength)));
   LogInstalledRecord(base, fighter, action, table->table(), record);
+}
+
+// USF2 Evil Ryu has no forward + heavy punch unique: the guest's choice falls back to the plain heavy punch.
+template <typename H>
+void HeavyPunch(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  original(ctx, base);
+  if (!UltraFightersEnabled()) return;
+  const uint32_t fighter = ActiveFighter<H>(base);
+  if (EvilSide<H>(base, fighter) < 0 || U8(base, fighter + kAttackSelection) != kUniqueHeavyPunch) return;
+  const bool close = U16(base, fighter + kOpponentRange) < kCloseHeavyPunchRange;
+  SetU8(base, fighter + kAttackSelection, close ? kCloseHeavyPunch : kFarHeavyPunch);
 }
 
 void LogEmittedFrame(int side, uint32_t record, uint32_t source) {
@@ -557,12 +1253,13 @@ template <typename H>
 void EmitSprites(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (!UltraFightersEnabled()) return original(ctx, base);
   const uint32_t object = LoadBE32(GuestHost(base, H::Netplay::kFightWork + kEmittedObjectAbove), 0);
-  const int side = EvilSide<H>(base, object);
+  const bool violent = ViolentKenSide<typename H::Netplay>(base, object) >= 0;
+  const int side = violent ? 0 : EvilSide<H>(base, object);
   if (side < 0) return original(ctx, base);
   const uint32_t record = LoadBE32(GuestHost(base, object + kAnimationRecord), 0);
-  const uint32_t source = EvilSourceFrame(record);
+  const uint32_t source = violent ? ViolentSourceFrame(record) : EvilSourceFrame(record);
   if (source == 0) return original(ctx, base);
-  LogEmittedFrame(side, record, source);
+  if (!violent) LogEmittedFrame(side, record, source);
   GuestStoreBE32(base, object + kAnimationRecord, source);
   original(ctx, base);
   GuestStoreBE32(base, object + kAnimationRecord, record);
@@ -583,11 +1280,17 @@ void LoadGrabRange(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
 }  // namespace
 }  // namespace ssf2t::character
 
+REX_HOOK_RAW(base013_sub_82264F78) {
+  ssf2t::character::TrackHalfCircle<ssf2t::character::Base013Moves>(ctx, base, __imp__base013_sub_82264F78);
+}
 REX_HOOK_RAW(base013_sub_82265228) {
   ssf2t::character::TrackSpecials<ssf2t::character::Base013Moves>(ctx, base, __imp__base013_sub_82265228);
 }
 REX_HOOK_RAW(base013_sub_82265040) {
   ssf2t::character::RunSpecialClass<ssf2t::character::Base013Moves>(ctx, base, __imp__base013_sub_82265040);
+}
+REX_HOOK_RAW(base013_sub_8225E1F0) {
+  ssf2t::character::HeavyPunch<ssf2t::character::Base013Moves>(ctx, base, __imp__base013_sub_8225E1F0);
 }
 REX_HOOK_RAW(base013_sub_821C01F8) {
   ssf2t::character::LookupAction<ssf2t::character::Base013Moves>(ctx, base, __imp__base013_sub_821C01F8);
@@ -611,12 +1314,67 @@ REX_HOOK_RAW(base013_sub_823A5DF8) {
   ssf2t::character::EmitSprites<ssf2t::character::Base013Moves>(ctx, base, __imp__base013_sub_823A5DF8);
 }
 
+REX_HOOK_RAW(base013_sub_8228E440) {
+  ssf2t::character::TrackKenSpecials<ssf2t::character::Base013Moves>(ctx, base, __imp__base013_sub_8228E440);
+}
+REX_HOOK_RAW(base013_sub_8228E488) {
+  ssf2t::character::RunKenSpecialClass<ssf2t::character::Base013Moves>(ctx, base, __imp__base013_sub_8228E488);
+}
+REX_HOOK_RAW(base013_sub_8228D890) {
+  ssf2t::character::TrackKenKickCommand<ssf2t::character::Base013Moves>(ctx, base, __imp__base013_sub_8228D890);
+}
+REX_HOOK_RAW(base013_sub_8228D8F8) {
+  ssf2t::character::TrackKenKickCommand<ssf2t::character::Base013Moves>(ctx, base, __imp__base013_sub_8228D8F8);
+}
+REX_HOOK_RAW(base013_sub_8228D960) {
+  ssf2t::character::TrackKenKickCommand<ssf2t::character::Base013Moves>(ctx, base, __imp__base013_sub_8228D960);
+}
+REX_HOOK_RAW(base013_sub_821B41F8) {
+  ssf2t::character::StartJump<ssf2t::character::Base013Moves>(ctx, base, __imp__base013_sub_821B41F8);
+}
+REX_HOOK_RAW(base013_sub_8218BB30) {
+  ssf2t::character::StartJump<ssf2t::character::Base013Moves>(ctx, base, __imp__base013_sub_8218BB30);
+}
+REX_HOOK_RAW(base013_sub_82195568) {
+  ssf2t::character::SelectCpuMove<ssf2t::character::Base013Moves>(ctx, base, __imp__base013_sub_82195568);
+}
+
 #if SSF2T_TITLE_UPDATE_IMAGE
+REX_HOOK_RAW(tu023_sub_8228ED10) {
+  ssf2t::character::TrackKenSpecials<ssf2t::character::TitleUpdate023Moves>(ctx, base, __imp__tu023_sub_8228ED10);
+}
+REX_HOOK_RAW(tu023_sub_8228ED58) {
+  ssf2t::character::RunKenSpecialClass<ssf2t::character::TitleUpdate023Moves>(ctx, base, __imp__tu023_sub_8228ED58);
+}
+REX_HOOK_RAW(tu023_sub_8228E160) {
+  ssf2t::character::TrackKenKickCommand<ssf2t::character::TitleUpdate023Moves>(ctx, base, __imp__tu023_sub_8228E160);
+}
+REX_HOOK_RAW(tu023_sub_8228E1C8) {
+  ssf2t::character::TrackKenKickCommand<ssf2t::character::TitleUpdate023Moves>(ctx, base, __imp__tu023_sub_8228E1C8);
+}
+REX_HOOK_RAW(tu023_sub_8228E230) {
+  ssf2t::character::TrackKenKickCommand<ssf2t::character::TitleUpdate023Moves>(ctx, base, __imp__tu023_sub_8228E230);
+}
+REX_HOOK_RAW(tu023_sub_821B4318) {
+  ssf2t::character::StartJump<ssf2t::character::TitleUpdate023Moves>(ctx, base, __imp__tu023_sub_821B4318);
+}
+REX_HOOK_RAW(tu023_sub_8218B998) {
+  ssf2t::character::StartJump<ssf2t::character::TitleUpdate023Moves>(ctx, base, __imp__tu023_sub_8218B998);
+}
+REX_HOOK_RAW(tu023_sub_821953A0) {
+  ssf2t::character::SelectCpuMove<ssf2t::character::TitleUpdate023Moves>(ctx, base, __imp__tu023_sub_821953A0);
+}
+REX_HOOK_RAW(tu023_sub_822653E8) {
+  ssf2t::character::TrackHalfCircle<ssf2t::character::TitleUpdate023Moves>(ctx, base, __imp__tu023_sub_822653E8);
+}
 REX_HOOK_RAW(tu023_sub_82265698) {
   ssf2t::character::TrackSpecials<ssf2t::character::TitleUpdate023Moves>(ctx, base, __imp__tu023_sub_82265698);
 }
 REX_HOOK_RAW(tu023_sub_822654B0) {
   ssf2t::character::RunSpecialClass<ssf2t::character::TitleUpdate023Moves>(ctx, base, __imp__tu023_sub_822654B0);
+}
+REX_HOOK_RAW(tu023_sub_8225E228) {
+  ssf2t::character::HeavyPunch<ssf2t::character::TitleUpdate023Moves>(ctx, base, __imp__tu023_sub_8225E228);
 }
 REX_HOOK_RAW(tu023_sub_821C0318) {
   ssf2t::character::LookupAction<ssf2t::character::TitleUpdate023Moves>(ctx, base, __imp__tu023_sub_821C0318);

@@ -9,6 +9,7 @@
 
 #include "character/character_moves.h"
 #include "character/evil_ryu_results.h"
+#include "character/ultra_ending.h"
 #include "character/ultra_fighters.h"
 #include "guest_memory.h"
 #include "online_menu.h"
@@ -65,7 +66,9 @@ struct OnlineMenuHooks {
       if (moves) REXLOG_INFO("DEBUG_SAULO EVIL_RYU character-moves screen patched guest={}", G::kName);
       const bool results = ultra && ssf2t::character::PatchResultsScreen(moves_xml);
       if (results) REXLOG_INFO("DEBUG_SAULO EVIL_RYU results screen patched guest={}", G::kName);
-      if ((!patch && !moves && !results) || !ParsePatched(ctx, base, original, moves_xml)) {
+      const bool ending = ultra && ssf2t::character::PatchEndingScreen(moves_xml);
+      if (ending) REXLOG_INFO("DEBUG_SAULO ULTRA_ENDING screen patched guest={}", G::kName);
+      if ((!patch && !moves && !results && !ending) || !ParsePatched(ctx, base, original, moves_xml)) {
         REXLOG_INFO("multiplayer menu layout original guest={}", G::kName);
         original(ctx, base);
         return;
@@ -99,9 +102,10 @@ struct OnlineMenuHooks {
       std::string descriptors = guest_text;
       const bool grid = ssf2t::character::PatchResultsGrid(descriptors);
       const bool animations = ssf2t::character::PatchResultsAnimations(descriptors);
-      if ((grid || animations) && ParsePatched(ctx, base, original, descriptors)) {
-        REXLOG_INFO("DEBUG_SAULO EVIL_RYU results descriptors patched grid={} animations={} guest={}", grid, animations,
-                    G::kName);
+      const bool ending = ssf2t::character::PatchEndingAnimations(descriptors);
+      if ((grid || animations || ending) && ParsePatched(ctx, base, original, descriptors)) {
+        REXLOG_INFO("DEBUG_SAULO EVIL_RYU results descriptors patched grid={} animations={} ending={} guest={}", grid,
+                    animations, ending, G::kName);
         return;
       }
     }

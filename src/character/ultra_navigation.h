@@ -11,10 +11,11 @@ namespace ssf2t::character {
 enum class PadDirection { kUp, kDown, kLeft, kRight };
 
 enum class UltraMoveAction {
-  kNone,   // The guest handles the move.
-  kEnter,  // Right from the last original top-row cell: the guest moves, the host selects Evil Ryu.
-  kLeave,  // Left from Evil Ryu: back to the last original top-row cell, the guest move is skipped.
-  kHold,   // Any other move while Evil Ryu is selected: the guest move is skipped.
+  kNone,    // The guest handles the move.
+  kEnter,   // Right from a row's last original cell: the guest moves, the host selects that row's Ultra fighter.
+  kLeave,   // Left from an Ultra cell: back to that row's last original cell, the guest move is skipped.
+  kSwitch,  // Up or Down between the two Ultra cells: the carrier changes, the guest move is skipped.
+  kHold,    // Any other move on an Ultra cell: the guest move is skipped.
 };
 
 struct UltraMove {
@@ -32,22 +33,46 @@ inline constexpr uint16_t kEvilRyuCursorX = 336;
 inline constexpr uint16_t kEvilRyuCursorXVersus = 304;
 inline constexpr uint16_t kEvilRyuCursorY = 48;
 
+inline constexpr uint8_t kViolentKenCarrierLive = uint8_t(kKenGuestCharacter);
+// Id 8 ends the bottom row in both layouts.
+inline constexpr uint8_t kViolentKenNeighbourLive = 8;
+inline constexpr uint8_t kViolentKenCursorLive = 19;
+inline constexpr uint16_t kViolentKenCursorY = 16;
+
 constexpr uint16_t EvilRyuCursorX(SelectLayout layout) {
   return layout == SelectLayout::kArcade ? kEvilRyuCursorX : kEvilRyuCursorXVersus;
 }
 
-// Host-only Evil Ryu cell. While it is selected the guest selection stays on Ryu, the carrier of the fight.
+enum class UltraClassicGuard {
+  kNone,
+  kClearClassic,  // Remix style: the fighter keeps the cell and loses the guest's classic flag.
+  kLeaveCell,     // Classic style: the side goes back to its plain carrier, which keeps any classic flag.
+};
+
+// USF2 has no classic Ultra fighter. Pure in guest state and the rollback-saved cell, so both peers agree on every frame.
+constexpr UltraClassicGuard GuardUltraClassic(uint8_t hd_style, bool on_ultra_cell, uint8_t classic_flag) {
+  if (!on_ultra_cell) return UltraClassicGuard::kNone;
+  if (hd_style == 0) return UltraClassicGuard::kLeaveCell;
+  return classic_flag != 0 ? UltraClassicGuard::kClearClassic : UltraClassicGuard::kNone;
+}
+
+// Host-only Ultra cells. While one is selected the guest selection stays on its carrier, Ryu or Ken. Each cell has its
+// own availability: online, the two are negotiated separately.
 class UltraNavigation {
  public:
-  UltraMove Resolve(bool enabled, int side, uint8_t live, PadDirection direction);
+  UltraMove Resolve(bool evil_ryu_available, bool violent_ken_available, int side, uint8_t live,
+                    PadDirection direction);
   bool OnEvilRyu(int side) const;
+  bool OnViolentKen(int side) const;
+  bool OnUltraCell(int side) const { return OnEvilRyu(side) || OnViolentKen(side); }
+  void Leave(int side);
   void Reset();
   uint8_t Mask() const { return mask_.load(std::memory_order_relaxed); }
   // Puts the cell selection back as a rollback saved it, requested identities included.
   void Restore(uint8_t mask);
 
  private:
-  void Set(int side, bool selected);
+  void Set(int side, FighterIdentity identity);
 
   std::atomic<uint8_t> mask_{0};
 };

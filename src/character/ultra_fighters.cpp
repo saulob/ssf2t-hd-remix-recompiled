@@ -16,4 +16,10 @@ bool EvilRyuAvailableFor(bool online_select) {
 
 bool EvilRyuAvailable(uint8_t game_mode) { return EvilRyuAvailableFor(OnlineSelectMode(game_mode)); }
 
+bool ViolentKenAvailableFor(bool online_select) {
+  return SecretAvailable(online_select, UltraFightersEnabled(), online_select && ActiveOnlineSecrets().violent_ken);
+}
+
+bool ViolentKenAvailable(uint8_t game_mode) { return ViolentKenAvailableFor(OnlineSelectMode(game_mode)); }
+
 }  // namespace ssf2t::character

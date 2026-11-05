@@ -51,6 +51,78 @@ struct Feature {
 };
 
 inline constexpr Feature kFeatures[] = {
+    {"Akuma",
+     "Move::kHdStyle,Move::kLive,Move::kMode,Move::kPad,Move::kSpecial,UltraHooks::kUnlockAkuma1,"
+     "UltraHooks::kNavigateSelect1",
+     "UltraHooks::kUnlockAkuma1,UltraHooks::kNavigateSelect1",
+     "kEnableAkumaSetting", "", "", "", "",
+     "src/character/akuma.cpp,src/character/akuma_navigation.cpp,src/character/akuma_overlay.cpp,"
+     "src/character/akuma_portrait.cpp,src/character/akuma_select.cpp",
+     "", "", "", "", "tests/secret_select_tests.cpp", "kEnableAkumaLabel"},
+    {"Ultra fighters (Evil Ryu and Violent Ken)",
+     "Audio::kSoundFlags,Audio::kSoundQueue,Audio::kSoundQueueHead,Audio::kSoundQueueTail,"
+     "Audio::kSoundSlots,Confirm::kHdStyle,Cursor::kHdPositions,Cursor::kLive,Cursor::kVersusPositions,"
+     "Ending::kEndingCharacter,Hd::kBeatenSide,Hd::kColourP1,Hd::kColourP2,Hd::kContinuePortraits,"
+     "Hd::kLoserPortraitSlot,Hd::kLosingPortraits,Hd::kMysteryLargePortrait,Hd::kPortraitPaletteRows,"
+     "Hd::kRyuPaletteSlot10,Hud::kFightHudActive,Hud::kWidgets,Moves::kActionTables,"
+     "Palette::kPaletteRamPointer,Quote::kTaunts,Results::kLocalRecords,Results::kMatchWinner,"
+     "Select::kLayout,Select::kLive,Select::kMode,UltraHooks::kPlayerCharacterIndex1,"
+     "UltraHooks::kAnnounceWinnerName1,UltraHooks::kLoadSounds1,UltraHooks::kRequestSound1,"
+     "UltraHooks::kRoundEndScream1,UltraHooks::kObserveLock1,UltraHooks::kPlaceCursor1,"
+     "UltraHooks::kPlayEnding1,UltraHooks::kGateSuper1,UltraHooks::kDrawPortraits1,"
+     "UltraHooks::kDrawSprite1,UltraHooks::kUpdateHud1,UltraHooks::kEmitSprites1,"
+     "UltraHooks::kEmitSprites2,UltraHooks::kEmitSprites3,UltraHooks::kEmitSprites4,"
+     "UltraHooks::kEmitSprites5,UltraHooks::kHeavyPunch1,UltraHooks::kTrackHalfCircle1,UltraHooks::kLoadGrabRange1,"
+     "UltraHooks::kLookupAction1,UltraHooks::kRunKenSpecialClass1,UltraHooks::kRunSpecialClass1,"
+     "UltraHooks::kSelectCpuMove1,UltraHooks::kStartJump1,UltraHooks::kStartJump2,"
+     "UltraHooks::kTrackKenKickCommand1,UltraHooks::kTrackKenKickCommand2,"
+     "UltraHooks::kTrackKenKickCommand3,UltraHooks::kTrackKenSpecials1,UltraHooks::kTrackSpecials1,"
+     "UltraHooks::kApplyEvilRyuPalette1,UltraHooks::kPlayerResults1,"
+     "UltraHooks::kPlayerResultsCharacter1,UltraHooks::kRecordMatch1,UltraHooks::kResetPlayerResults1,"
+     "UltraHooks::kShowQuote1,UltraHooks::kShowWinText1",
+     "UltraHooks::kPlayerCharacterIndex1,UltraHooks::kAnnounceWinnerName1,UltraHooks::kLoadSounds1,"
+     "UltraHooks::kRequestSound1,UltraHooks::kRoundEndScream1,UltraHooks::kObserveLock1,"
+     "UltraHooks::kPlaceCursor1,UltraHooks::kPlayEnding1,UltraHooks::kGateSuper1,"
+     "UltraHooks::kDrawPortraits1,UltraHooks::kDrawSprite1,UltraHooks::kUpdateHud1,"
+     "UltraHooks::kEmitSprites1,UltraHooks::kEmitSprites2,UltraHooks::kEmitSprites3,"
+     "UltraHooks::kEmitSprites4,UltraHooks::kEmitSprites5,UltraHooks::kHeavyPunch1,UltraHooks::kTrackHalfCircle1,"
+     "UltraHooks::kLoadGrabRange1,UltraHooks::kLookupAction1,UltraHooks::kRunKenSpecialClass1,"
+     "UltraHooks::kRunSpecialClass1,UltraHooks::kSelectCpuMove1,UltraHooks::kStartJump1,"
+     "UltraHooks::kStartJump2,UltraHooks::kTrackKenKickCommand1,UltraHooks::kTrackKenKickCommand2,"
+     "UltraHooks::kTrackKenKickCommand3,UltraHooks::kTrackKenSpecials1,UltraHooks::kTrackSpecials1,"
+     "UltraHooks::kApplyEvilRyuPalette1,UltraHooks::kPlayerResults1,"
+     "UltraHooks::kPlayerResultsCharacter1,UltraHooks::kRecordMatch1,UltraHooks::kResetPlayerResults1,"
+     "UltraHooks::kShowQuote1,UltraHooks::kShowWinText1",
+     "kEnableUltraFightersSetting", "", "", "", "",
+     "src/character/character_moves.cpp,src/character/character_moves_hook.cpp,"
+     "src/character/evil_ryu_actions.cpp,src/character/evil_ryu_assets.cpp,"
+     "src/character/evil_ryu_audio.cpp,src/character/evil_ryu_debug.cpp,"
+     "src/character/evil_ryu_debug_keys.cpp,src/character/evil_ryu_moves.cpp,"
+     "src/character/evil_ryu_palette.cpp,src/character/evil_ryu_results.cpp,"
+     "src/character/evil_ryu_sprites.cpp,src/character/fighter_identity.cpp,"
+     "src/character/host_rollback.cpp,src/character/ultra_audio_hook.cpp,"
+     "src/character/ultra_confirm_hook.cpp,src/character/ultra_cursor_hook.cpp,"
+     "src/character/ultra_ending.cpp,src/character/ultra_ending_hook.cpp,"
+     "src/character/ultra_fighters.cpp,src/character/ultra_gameplay_hook.cpp,"
+     "src/character/ultra_hd_palette_hook.cpp,src/character/ultra_hud_hook.cpp,"
+     "src/character/ultra_moves_hook.cpp,src/character/ultra_navigation.cpp,"
+     "src/character/ultra_palette_hook.cpp,src/character/ultra_portrait_overlay.cpp,"
+     "src/character/ultra_portraits.cpp,src/character/ultra_results_hook.cpp,"
+     "src/character/ultra_winner_hook.cpp,src/character/violent_ken_actions.cpp,"
+     "src/character/violent_ken_audio.cpp,src/character/violent_ken_data.cpp,"
+     "src/character/violent_ken_moves.cpp",
+     "", "", "", "", "tests/violent_ken_tests.cpp,tests/violent_ken_audio_tests.cpp,tests/secret_select_tests.cpp,"
+     "tests/ultra_ending_tests.cpp",
+     "kEnableUltraFightersLabel"},
+    {"Arcade final-boss shortcut (DEBUG_SAULO, F1)",
+     "UltraHooks::kArcadeFrame1,UltraHooks::kArcadeEnding1,UltraHooks::kArcadeLadderInit1,"
+     "UltraHooks::kArcadeNextOpponent1,UltraHooks::kArcadeBossOnlyFlag,UltraHooks::kArcadeAkumaOnlyFlag",
+     "UltraHooks::kArcadeFrame1,UltraHooks::kArcadeEnding1,UltraHooks::kArcadeLadderInit1,"
+     "UltraHooks::kArcadeNextOpponent1",
+     "", "", "", "", "",
+     "src/character/ultra_arcade_debug.cpp,src/character/ultra_arcade_debug_hook.cpp,"
+     "src/character/ultra_arcade_debug_keys.cpp",
+     "", "", "", "", "tests/arcade_debug_tests.cpp"},
     {"Game files and Title Update", "", "", "", "", "", "", "",
      "src/game_files.cpp,src/stfs.cpp,src/guest_image.cpp,src/title_update_image.h", "", "", "", "",
      "tests/game_files_tests.cpp,tests/game_files_base_only_tests.cpp,tests/guest_build_tests.cpp"},
@@ -272,6 +344,19 @@ inline constexpr Exception kExceptions[] = {
      "src/connection_test_gate.h"},
 };
 
+// Sources left on disk that no target builds. The gates skip them; none may gain a build target unreviewed.
+struct DormantSource {
+  const char* file;
+  const char* reason;
+};
+
+inline constexpr DormantSource kDormantSources[] = {
+    {"src/character/character_hook.cpp", "replaced by ultra_fight.h; delete at final review"},
+    {"src/character/character_select_debug.cpp", "DEBUG_SAULO select tracer, never in CMake; delete at final review"},
+    {"src/character/ultra_name_hook.cpp", "replaced by the name tile swap; delete at final review"},
+    {"src/character/ultra_presentation_hook.cpp", "replaced by the portrait loans; delete at final review"},
+};
+
 // Source files with platform or build conditionals that belong to no feature's list above: what the conditional
 // selects and why it changes no feature.
 struct GateReview {
@@ -328,6 +413,10 @@ inline constexpr GateReview kAvailabilityMessages[] = {
     {"src/updater/update_job.cpp", "the update job file is from another program version"},
     {"src/user_data.cpp", "the portable user data folder cannot be written"},
     {"src/online_page.cpp", "the online service cannot be reached"},
+    {"src/character/ultra_audio_hook.cpp", "the local Ultra fighter audio package is missing"},
+    {"src/character/ultra_ending_hook.cpp", "the local Ultra fighter ending package is missing"},
+    {"src/character/ultra_hd_palette_hook.cpp", "the local Ultra fighter art package is missing"},
+    {"src/character/ultra_hud_hook.cpp", "the local Ultra fighter HUD icon package is missing"},
     {"src/online/connection_test.cpp", "the router offers no automatic port setup"},
     {"src/online/online_service.cpp", "the online service lacks a capability"},
     {"src/online/secret_view.cpp", "the online service or the opponent lacks a capability"},

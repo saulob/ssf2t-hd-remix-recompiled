@@ -41,6 +41,10 @@ constexpr bool HudShowsEvilRyu(bool ultra_fighters_enabled, FighterIdentity requ
   return ultra_fighters_enabled && requested == FighterIdentity::kEvilRyu && hud_character == kRyuGuestCharacter;
 }
 
+constexpr bool HudShowsViolentKen(bool ultra_fighters_enabled, FighterIdentity requested, int hud_character) {
+  return ultra_fighters_enabled && requested == FighterIdentity::kViolentKen && hud_character == kKenGuestCharacter;
+}
+
 // Set by the Character Select integration when the player explicitly chooses an Ultra fighter. kGuest means the
 // normal guest selection is used.
 void SetRequestedIdentity(int side, FighterIdentity identity);

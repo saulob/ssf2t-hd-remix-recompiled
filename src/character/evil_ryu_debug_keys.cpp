@@ -14,10 +14,12 @@
 namespace ssf2t::character {
 namespace {
 
-constexpr size_t kInputZOrder = 1000;
+// One layer above the port's other key listeners so the debug keys are offered the event first.
+constexpr size_t kInputZOrder = 1001;
 
 DebugKey KeyFor(rex::ui::VirtualKey key) {
   switch (key) {
+    case rex::ui::VirtualKey::kF4: return DebugKey::kF4;
     case rex::ui::VirtualKey::kF5: return DebugKey::kF5;
     case rex::ui::VirtualKey::kF6: return DebugKey::kF6;
     case rex::ui::VirtualKey::kF7: return DebugKey::kF7;
@@ -32,25 +34,32 @@ class DebugKeys final : public rex::ui::WindowInputListener {
 
   void OnKeyDown(rex::ui::KeyEvent& e) override {
     const DebugKey key = KeyFor(e.virtual_key());
-    if (e.target() != window_ || !window_->HasFocus() || key == DebugKey::kNone) return;
+    if (key == DebugKey::kNone) return;
+    const bool focused = window_->HasFocus();
+    if (!e.prev_state()) {
+      REXLOG_INFO("DEBUG_SAULO ULTRA debug-key key=F{} shift={} ctrl={} alt={} focus={}", 3 + int(key),
+                  e.is_shift_pressed(), e.is_ctrl_pressed(), e.is_alt_pressed(), focused);
+    }
+    if (e.target() != window_ || !focused || e.is_alt_pressed()) return;
     const bool shift = e.is_shift_pressed();
-    if (DebugMoveFor(key, shift) == DebugMove::kNone) return;
+    const bool ctrl = e.is_ctrl_pressed();
     const int64_t now = DebugNowMs();
-    const DebugReject reason =
-        HostGate(UltraFightersEnabled(), CharacterSelectActive(), GlobalDebugBridge().Status(now));
-    const DebugMove move = DebugMoveForPress(key, shift, e.prev_state());
+    const DebugFightStatus status = GlobalDebugBridge().Status(now);
+    const DebugReject reason = HostGate(UltraFightersEnabled(), CharacterSelectActive(), status);
     if (reason != DebugReject::kNone) {
-      if (move != DebugMove::kNone) LogRejected(move, reason);
+      if (!e.prev_state()) LogRejected(key, reason);
       return;
     }
+    if (DebugMoveFor(status.p1, key, shift, ctrl) == DebugMove::kNone) return;
+    const DebugMove move = DebugMoveForPress(status.p1, key, shift, ctrl, e.prev_state());
     e.set_handled(true);
     if (move != DebugMove::kNone) GlobalDebugBridge().Post(move, now);
   }
 
  private:
-  static void LogRejected(DebugMove move, DebugReject reason) {
-    REXLOG_INFO("DEBUG_SAULO EVIL_RYU debug-hotkey key={} move={} side=1 accepted=0 reason={}",
-                DebugKeyLabel(move), DebugMoveName(move), DebugRejectName(reason));
+  static void LogRejected(DebugKey key, DebugReject reason) {
+    REXLOG_INFO("DEBUG_SAULO ULTRA debug-hotkey key=F{} side=1 accepted=0 reason={}", 3 + int(key),
+                DebugRejectName(reason));
   }
 
   rex::ui::Window* window_;

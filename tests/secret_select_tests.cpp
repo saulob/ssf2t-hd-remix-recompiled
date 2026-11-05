@@ -137,18 +137,18 @@ void TestSelectionIsValidatedPerSide() {
   const SecretSet none;
   const SecretSet akuma{true, false};
   const SecretSet evil{false, true};
-  CHECK(ValidateSecretSelection(kRyuGuestCharacter, false, none) == SelectionVerdict::kAccepted);
-  CHECK(ValidateSecretSelection(kKenGuestCharacter, false, none) == SelectionVerdict::kAccepted);
-  CHECK(ValidateSecretSelection(kAkumaGuestCharacter, false, none) == SelectionVerdict::kAkuma);
-  CHECK(ValidateSecretSelection(kAkumaGuestCharacter, false, evil) == SelectionVerdict::kAkuma);
-  CHECK(ValidateSecretSelection(kAkumaGuestCharacter, false, akuma) == SelectionVerdict::kAccepted);
-  CHECK(ValidateSecretSelection(kRyuGuestCharacter, true, none) == SelectionVerdict::kEvilRyu);
-  CHECK(ValidateSecretSelection(kRyuGuestCharacter, true, akuma) == SelectionVerdict::kEvilRyu);
-  CHECK(ValidateSecretSelection(kRyuGuestCharacter, true, evil) == SelectionVerdict::kAccepted);
-  CHECK(ValidateSecretSelection(kRyuGuestCharacter, false, evil) == SelectionVerdict::kAccepted);
+  CHECK(ValidateSecretSelection(kRyuGuestCharacter, FighterIdentity::kGuest, none) == SelectionVerdict::kAccepted);
+  CHECK(ValidateSecretSelection(kKenGuestCharacter, FighterIdentity::kGuest, none) == SelectionVerdict::kAccepted);
+  CHECK(ValidateSecretSelection(kAkumaGuestCharacter, FighterIdentity::kGuest, none) == SelectionVerdict::kAkuma);
+  CHECK(ValidateSecretSelection(kAkumaGuestCharacter, FighterIdentity::kGuest, evil) == SelectionVerdict::kAkuma);
+  CHECK(ValidateSecretSelection(kAkumaGuestCharacter, FighterIdentity::kGuest, akuma) == SelectionVerdict::kAccepted);
+  CHECK(ValidateSecretSelection(kRyuGuestCharacter, FighterIdentity::kEvilRyu, none) == SelectionVerdict::kEvilRyu);
+  CHECK(ValidateSecretSelection(kRyuGuestCharacter, FighterIdentity::kEvilRyu, akuma) == SelectionVerdict::kEvilRyu);
+  CHECK(ValidateSecretSelection(kRyuGuestCharacter, FighterIdentity::kEvilRyu, evil) == SelectionVerdict::kAccepted);
+  CHECK(ValidateSecretSelection(kRyuGuestCharacter, FighterIdentity::kGuest, evil) == SelectionVerdict::kAccepted);
   const SecretSet both{true, true};
-  CHECK(ValidateSecretSelection(kAkumaGuestCharacter, false, both) == SelectionVerdict::kAccepted);
-  CHECK(ValidateSecretSelection(kRyuGuestCharacter, true, both) == SelectionVerdict::kAccepted);
+  CHECK(ValidateSecretSelection(kAkumaGuestCharacter, FighterIdentity::kGuest, both) == SelectionVerdict::kAccepted);
+  CHECK(ValidateSecretSelection(kRyuGuestCharacter, FighterIdentity::kEvilRyu, both) == SelectionVerdict::kAccepted);
 }
 
 void TestReportsKeepRyuAndEvilRyuApart() {
@@ -173,13 +173,13 @@ void TestEveryPairingOfSecretAndNormalFightersIsAccepted() {
   const Pick akuma{kAkumaGuestCharacter, false};
   for (const Pick& p1 : {ryu, evil, akuma}) {
     for (const Pick& p2 : {ryu, evil, akuma}) {
-      CHECK(ValidateSecretSelection(p1.guest, p1.evil, both) == SelectionVerdict::kAccepted);
-      CHECK(ValidateSecretSelection(p2.guest, p2.evil, both) == SelectionVerdict::kAccepted);
+      CHECK(ValidateSecretSelection(p1.guest, p1.evil ? FighterIdentity::kEvilRyu : FighterIdentity::kGuest, both) == SelectionVerdict::kAccepted);
+      CHECK(ValidateSecretSelection(p2.guest, p2.evil ? FighterIdentity::kEvilRyu : FighterIdentity::kGuest, both) == SelectionVerdict::kAccepted);
     }
   }
   CHECK(ReportsEvilRyu(evil.guest, FighterIdentity::kEvilRyu, true) && !ReportsEvilRyu(ryu.guest, FighterIdentity::kGuest, true));
-  CHECK(ValidateSecretSelection(akuma.guest, akuma.evil, SecretSet{false, true}) == SelectionVerdict::kAkuma);
-  CHECK(ValidateSecretSelection(evil.guest, evil.evil, SecretSet{true, false}) == SelectionVerdict::kEvilRyu);
+  CHECK(ValidateSecretSelection(akuma.guest, akuma.evil ? FighterIdentity::kEvilRyu : FighterIdentity::kGuest, SecretSet{false, true}) == SelectionVerdict::kAkuma);
+  CHECK(ValidateSecretSelection(evil.guest, evil.evil ? FighterIdentity::kEvilRyu : FighterIdentity::kGuest, SecretSet{true, false}) == SelectionVerdict::kEvilRyu);
   CHECK(!navigation.OnEvilRyu(0));
 }
 
@@ -187,15 +187,15 @@ void TestEveryPairingOfSecretAndNormalFightersIsAccepted() {
 void TestBothSidesCanSelectEvilRyuIndependently() {
   ResetIdentities();
   UltraNavigation navigation;
-  const UltraMove first = navigation.Resolve(true, 0, kEvilRyuNeighbourLive, PadDirection::kRight);
+  const UltraMove first = navigation.Resolve(true, false, 0, kEvilRyuNeighbourLive, PadDirection::kRight);
   CHECK(first.action == UltraMoveAction::kEnter);
   CHECK(navigation.OnEvilRyu(0) && !navigation.OnEvilRyu(1));
   CHECK(RequestedIdentity(0) == FighterIdentity::kEvilRyu && RequestedIdentity(1) == FighterIdentity::kGuest);
-  const UltraMove second = navigation.Resolve(true, 1, kEvilRyuNeighbourLive, PadDirection::kRight);
+  const UltraMove second = navigation.Resolve(true, false, 1, kEvilRyuNeighbourLive, PadDirection::kRight);
   CHECK(second.action == UltraMoveAction::kEnter);
   CHECK(navigation.OnEvilRyu(0) && navigation.OnEvilRyu(1));
   CHECK(navigation.Mask() == 3);
-  navigation.Resolve(true, 0, kEvilRyuCarrierLive, PadDirection::kLeft);
+  navigation.Resolve(true, false, 0, kEvilRyuCarrierLive, PadDirection::kLeft);
   CHECK(!navigation.OnEvilRyu(0) && navigation.OnEvilRyu(1));
   ResetIdentities();
 }
@@ -209,7 +209,7 @@ void TestRollbackRestoresTheHostSelection() {
   std::vector<uint8_t> saved(kHostRollbackBytes);
   SaveHostRollback(ultra, akuma, moves, saved.data());
 
-  ultra.Resolve(true, 1, kEvilRyuNeighbourLive, PadDirection::kRight);
+  ultra.Resolve(true, false, 1, kEvilRyuNeighbourLive, PadDirection::kRight);
   uint8_t parked = 0;
   akuma.Resolve(true, SelectLayout::kVersus, 0, 2, NavDirection::kUp, parked);
   moves.For(0).kind = HostMoveKind::kTeleport;
@@ -241,7 +241,7 @@ void TestAnOnlineSelectStartsFromNothing() {
   UltraNavigation ultra;
   AkumaNavigation akuma;
   HostMoves moves;
-  ultra.Resolve(true, 0, kEvilRyuNeighbourLive, PadDirection::kRight);
+  ultra.Resolve(true, false, 0, kEvilRyuNeighbourLive, PadDirection::kRight);
   moves.For(1).kind = HostMoveKind::kRagingDemon;
   uint8_t next = 0;
   akuma.Resolve(true, SelectLayout::kArcade, 1, 3, NavDirection::kUp, next);

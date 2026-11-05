@@ -10,6 +10,8 @@ inline constexpr uint32_t kEvilActionBytes = 0x4000;
 inline constexpr uint32_t kEvilPackBytes = 0x1800;
 
 inline constexpr uint8_t kShakunetsuAction = 0x4C;
+// Move id 0 (236P) selects sub 0..2 and move id 6 (the half circle) sub 3..5.
+inline constexpr uint8_t kShakunetsuSub = 3;
 inline constexpr uint8_t kTatsuAction = 0x50;
 inline constexpr uint8_t kRagingDemonAction = 0x5E;
 inline constexpr uint8_t kUniqueAction = 0x40;
@@ -86,6 +88,16 @@ bool GuestHasAction(const uint8_t* base, uint32_t table, uint8_t action);
 // Copies the fighter box pack at `pack` to `memory` and applies the Evil Ryu box changes. A patch whose original bytes
 // differ from Ryu's USF2 values is skipped, because the HD ruleset renumbers some records. Returns the patches applied.
 int BuildEvilPack(uint8_t* base, uint32_t pack, uint32_t memory);
+
+inline constexpr uint32_t kEvilWalkBytes = 16;
+inline constexpr int16_t kEvilWalkForward = 0x398;
+inline constexpr int16_t kEvilWalkBack = 0x268;
+
+// Copies the fighter's walk row at `row` to `memory` with these speeds. False for a row without walk speeds.
+bool BuildWalkRow(uint8_t* base, uint32_t row, uint32_t memory, int16_t forward, int16_t back);
+inline bool BuildEvilWalk(uint8_t* base, uint32_t row, uint32_t memory) {
+  return BuildWalkRow(base, row, memory, kEvilWalkForward, kEvilWalkBack);
+}
 
 inline constexpr uint8_t kAttackSenpu = 74;
 inline constexpr uint8_t kAttackTatsuStart = 75;

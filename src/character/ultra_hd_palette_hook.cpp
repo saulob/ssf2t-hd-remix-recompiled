@@ -16,6 +16,8 @@
 #include "character/ultra_fighters.h"
 #include "character/ultra_navigation.h"
 #include "character/ultra_select_presentation.h"
+#include "character/violent_ken_actions.h"
+#include "character/violent_ken_data.h"
 #include "guest_memory.h"
 #include "netplay/fight_snapshot.h"
 #include "netplay/guest_netplay.h"
@@ -47,6 +49,9 @@ struct Base013Hd {
   static constexpr uint32_t kMysteryLargePortrait = 0x83BE59E4;
   static constexpr uint32_t kLoserPortraitSlot = 0x83BE5A74;
   static constexpr uint32_t kPortraitPaletteRows = 0x83BE3608;
+  static constexpr uint32_t kContinuePortraits = 0x83BE2F40;
+  static constexpr uint32_t kLosingPortraits = 0x83BE2F88;
+  static constexpr uint32_t kBeatenSide = 0x83BE5BD4;
   static void CreateSheet(PPCContext& ctx, uint8_t* base) { base013_sub_823FDF88(ctx, base); }
   static void LockPalette(PPCContext& ctx, uint8_t* base) { base013_sub_823F88C8(ctx, base); }
   static void UnlockPalette(PPCContext& ctx, uint8_t* base) { base013_sub_823F8938(ctx, base); }
@@ -63,6 +68,9 @@ struct TitleUpdate023Hd {
   static constexpr uint32_t kMysteryLargePortrait = 0x83BE5A64;
   static constexpr uint32_t kLoserPortraitSlot = 0x83BE5AF4;
   static constexpr uint32_t kPortraitPaletteRows = 0x83BE3688;
+  static constexpr uint32_t kContinuePortraits = 0x83BE2FC0;
+  static constexpr uint32_t kLosingPortraits = 0x83BE3008;
+  static constexpr uint32_t kBeatenSide = 0x83BE5C54;
   static void CreateSheet(PPCContext& ctx, uint8_t* base) { tu023_sub_823FE638(ctx, base); }
   static void LockPalette(PPCContext& ctx, uint8_t* base) { tu023_sub_823F9038(ctx, base); }
   static void UnlockPalette(PPCContext& ctx, uint8_t* base) { tu023_sub_823F90A8(ctx, base); }
@@ -97,6 +105,8 @@ constexpr uint32_t kSheetWrapperSize = 84;
 constexpr uint32_t kSheetObjectOffset = 4;
 constexpr uint32_t kDummySheetName = 0x82000A1C;
 constexpr int kEvilPaletteSlot = 10;
+// Palette rows are per character slot, 12 colour words each; Ken is slot 4.
+constexpr uint32_t kKenPaletteRowOffset = 4 * 48;
 
 bool PlausibleGuestPointer(uint32_t address) { return address >= 0x10000 && address < 0xFFFF0000u; }
 
@@ -113,6 +123,15 @@ bool IsRyuBody(uint16_t code) {
   return slot == kRyuBodySlot || slot == kRyuBodySlotAlt;
 }
 
+constexpr uint16_t kKenBodySlot = 0x04;
+constexpr uint16_t kKenBodySlotAlt = 0x15;
+
+bool IsKenBody(uint16_t code) {
+  if ((code & 0xFE00) != 0xCA00) return false;
+  const uint16_t slot = code & 0xFF;
+  return slot == kKenBodySlot || slot == kKenBodySlotAlt;
+}
+
 struct EvilSheet {
   uint32_t wrapper = 0;
   int written_colour = -1;
@@ -122,8 +141,8 @@ struct EvilSheet {
 // The guest picks a sprite's palette texture from a per-colour table; a spare table slot holds a palette texture
 // built with the guest's own texture constructor so it can be rewritten for the Evil Ryu colour.
 template <typename H>
-bool PrepareSheet(EvilSheet& sheet, int side, int index, const EvilRyuHdPalette& palette, PPCContext& ctx,
-                  uint8_t* base) {
+bool PrepareSheet(EvilSheet& sheet, int side, int index, const EvilRyuHdPalette& palette, uint32_t row_offset,
+                  PPCContext& ctx, uint8_t* base) {
   if (sheet.failed) return false;
   if (sheet.wrapper == 0) {
     const PPCContext saved = ctx;
@@ -145,7 +164,7 @@ bool PrepareSheet(EvilSheet& sheet, int side, int index, const EvilRyuHdPalette&
     REXLOG_INFO("DEBUG_SAULO EVIL_RYU hd-palette sheet side={} created", side + 1);
   }
   // The guest clears this row whenever it rebuilds its sprite tables.
-  GuestStoreBE32(base, H::kRyuPaletteSlot10 + uint32_t(side) * 4, sheet.wrapper);
+  GuestStoreBE32(base, H::kRyuPaletteSlot10 + row_offset + uint32_t(side) * 4, sheet.wrapper);
   if (sheet.written_colour == index) return true;
   const PPCContext saved = ctx;
   ctx.r3.u64 = sheet.wrapper + kSheetObjectOffset;
@@ -241,19 +260,28 @@ bool UploadArt(EvilTexture& texture, const EvilSpriteImage& image, bool mirrored
 }
 
 template <typename H>
-const EvilTexture* TextureFor(EvilArt art, PPCContext& ctx, uint8_t* base) {
-  static std::array<EvilTexture, kEvilArtCount> textures;
-  EvilTexture& texture = textures[size_t(art)];
+const EvilTexture* TextureFor(EvilArt art, PPCContext& ctx, uint8_t* base, bool violent = false) {
+  static std::array<std::array<EvilTexture, kEvilArtCount>, 2> textures;
+  EvilTexture& texture = textures[violent ? 1 : 0][size_t(art)];
   if (texture.failed) return nullptr;
   if (texture.object != 0) return &texture;
-  const EvilSpriteImage* image = LoadedEvilArt(art);
-  if (!image || !UploadArt<H>(texture, *image, art == EvilArt::kLargePortrait, ctx, base)) {
+  const EvilSpriteImage* image = violent ? LoadedViolentKenArt(art) : LoadedEvilArt(art);
+  const bool mirrored = art == EvilArt::kLargePortrait || art == EvilArt::kLosePortrait;
+  if (!image || !UploadArt<H>(texture, *image, mirrored, ctx, base)) {
     texture.failed = true;
     REXLOG_ERROR("DEBUG_SAULO EVIL_RYU art={} unavailable", int(art));
     return nullptr;
   }
   REXLOG_INFO("DEBUG_SAULO EVIL_RYU art={} uploaded", int(art));
   return &texture;
+}
+
+// The USF2 beaten face; a package without one falls back on the fighter's large portrait, never on the carrier's.
+template <typename H>
+const EvilTexture* BeatenTexture(bool violent, PPCContext& ctx, uint8_t* base) {
+  const EvilSpriteImage* image = violent ? LoadedViolentKenArt(EvilArt::kLosePortrait) : LoadedEvilArt(EvilArt::kLosePortrait);
+  const bool own_art = image && !image->indices.empty();
+  return TextureFor<H>(own_art ? EvilArt::kLosePortrait : EvilArt::kLargePortrait, ctx, base, violent);
 }
 
 struct SpriteRestore {
@@ -334,10 +362,15 @@ template <typename H>
 bool DrawEvilName(uint32_t sprite, uint16_t code, PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const uint16_t attr = LoadBE16(GuestHost(base, sprite + kSpriteAttrOffset), 0);
   const int x = int16_t(LoadBE16(GuestHost(base, sprite + kSpriteXOffset), 0));
-  const int side = RyuNameSide(code, attr, x);
+  const int ryu_side = RyuNameSide(code, attr, x);
+  const int ken_side = KenNameSide(code, attr, x);
+  const int side = ryu_side >= 0 ? ryu_side : ken_side;
   LogNameTile(code, attr, x, side);
-  if (side < 0 || RequestedIdentity(side) != FighterIdentity::kEvilRyu) return false;
-  const EvilTexture* texture = TextureFor<H>(code == kRyuHudNameTile ? EvilArt::kHudName : EvilArt::kName, ctx, base);
+  if (side < 0) return false;
+  const bool violent = ken_side >= 0;
+  if (RequestedIdentity(side) != (violent ? FighterIdentity::kViolentKen : FighterIdentity::kEvilRyu)) return false;
+  const bool hud = code == kRyuHudNameTile || code == kKenHudNameTile;
+  const EvilTexture* texture = TextureFor<H>(hud ? EvilArt::kHudName : EvilArt::kName, ctx, base, violent);
   if (!texture) return false;
   const SpriteRestore restore = ReplaceSprite(sprite, *texture, {}, base);
   original(ctx, base);
@@ -355,6 +388,40 @@ void LogBodyDraw(int side, uint16_t code, EvilRenderState state, const uint8_t* 
               LoadBE16(GuestHost(base, sprite + kSpriteAttrOffset), 0), int(state));
 }
 
+// Violent Ken shares every sheet with Ken except the one dash pose, so only the palette and that pose differ here.
+template <typename H>
+void DrawViolentSprite(uint32_t sprite, uint16_t code, int side, bool both, PPCContext& ctx, uint8_t* base,
+                       PPCFunc* original) {
+  const bool body = IsKenBody(code);
+  const uint32_t block = LoadBE32(GuestHost(base, H::Netplay::kFighterBlockPointer), 0);
+  const uint32_t fighter = block + netplay::kFighterOffsets[side];
+  const bool stance = body && ViolentStanceAtRecord(LoadBE32(GuestHost(base, fighter + kAnimationRecordOffset), 0));
+  if (body) {
+    const bool special = *GuestHost(base, fighter + kFighterClassOffset) == kFighterClassSpecial;
+    const EvilRenderState state = RenderStateFor(GlobalHostMoves().For(side), special, stance);
+    if (BodySuppressed(state, GlobalHostMoves().For(side).ticks)) return;
+  }
+  const EvilRyuHdPalette* palette = LoadedViolentKenHdPalette();
+  uint8_t* colour_byte = base + (side == 0 ? H::kColourP1 : H::kColourP2);
+  const int colour = *colour_byte;
+  if (!palette || colour >= kPaletteColours) return original(ctx, base);
+  static std::array<EvilSheet, 2> sheets;
+  const int entry = HdPaletteEntry(colour, side, both);
+  if (!PrepareSheet<H>(sheets[side], side, entry, *palette, kKenPaletteRowOffset, ctx, base)) {
+    return original(ctx, base);
+  }
+  SpriteRestore restore;
+  if (stance) {
+    if (const EvilTexture* texture = TextureFor<H>(EvilArt::kPowerStance, ctx, base, true)) {
+      restore = ReplaceSprite(sprite, *texture, kViolentStancePlacement, base);
+    }
+  }
+  *colour_byte = uint8_t(kEvilPaletteSlot + side);
+  original(ctx, base);
+  *colour_byte = uint8_t(colour);
+  RestoreSprite(sprite, restore, base);
+}
+
 template <typename H>
 void DrawSprite(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (!UltraFightersEnabled()) return original(ctx, base);
@@ -365,8 +432,13 @@ void DrawSprite(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (CharacterSelectActive()) return original(ctx, base);
   const bool evil_p1 = EvilRyuOnSide<typename H::Netplay>(base, 0);
   const bool evil_p2 = EvilRyuOnSide<typename H::Netplay>(base, 1);
-  if (!evil_p1 && !evil_p2) return original(ctx, base);
+  const bool violent_p1 = ViolentKenOnSide<typename H::Netplay>(base, 0);
+  const bool violent_p2 = ViolentKenOnSide<typename H::Netplay>(base, 1);
+  if (!evil_p1 && !evil_p2 && !violent_p1 && !violent_p2) return original(ctx, base);
   const int side = IsPlayerOneFamily(code) ? 0 : 1;
+  if (side == 0 ? violent_p1 : violent_p2) {
+    return DrawViolentSprite<H>(sprite, code, side, violent_p1 && violent_p2, ctx, base, original);
+  }
   if (!(side == 0 ? evil_p1 : evil_p2)) return original(ctx, base);
   const bool body = IsRyuBody(code);
   const EvilPose pose = body ? PoseOf<H>(base, side) : EvilPose::kNone;
@@ -386,7 +458,7 @@ void DrawSprite(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   }
   static std::array<EvilSheet, 2> sheets;
   const int entry = HdPaletteEntry(colour, side, evil_p1 && evil_p2);
-  if (!PrepareSheet<H>(sheets[side], side, entry, *palette, ctx, base)) return original(ctx, base);
+  if (!PrepareSheet<H>(sheets[side], side, entry, *palette, 0, ctx, base)) return original(ctx, base);
   // The USF2 sprites carry no palette of their own, so they are only shown once the Evil Ryu palette is in place.
   SpriteRestore restore;
   if (pose != EvilPose::kNone) {
@@ -407,6 +479,10 @@ constexpr uint32_t kEvilPortraitId = kEvilPortraitSlot;
 constexpr uint32_t kPortraitPaletteColumns = 10;
 constexpr uint32_t kPortraitRowBytes = kPortraitPaletteColumns * 4;
 constexpr std::array<uint32_t, 4> kSharedPortraitModes = {2, 3, 5, 9};
+constexpr uint32_t kLosingMode = 6;
+constexpr uint32_t kContinueMode = 7;
+
+constexpr bool UsesBeatenPortrait(uint32_t mode) { return mode == kLosingMode || mode == kContinueMode; }
 
 bool UsesSharedPortraits(uint32_t mode) {
   for (const uint32_t shared : kSharedPortraitModes) {
@@ -419,7 +495,7 @@ void LogSelectPresentation(const SelectPresentation& presentation, const std::ar
                            const std::array<bool, 2>& on_cell, const std::array<uint32_t, 2>& hover) {
   static std::array<uint32_t, 2> last{{~0u, ~0u}};
   for (int side = 0; side < 2; ++side) {
-    const uint32_t state = uint32_t(presentation.evil[side]) | uint32_t(presentation.hide[side]) << 1 |
+    const uint32_t state = uint32_t(presentation.evil[side] || presentation.violent[side]) | uint32_t(presentation.hide[side]) << 1 |
                            uint32_t(requested[side]) << 2 | uint32_t(on_cell[side]) << 8 | (hover[side] & 0xFF) << 16;
     if (state == last[side]) continue;
     last[side] = state;
@@ -429,50 +505,136 @@ void LogSelectPresentation(const SelectPresentation& presentation, const std::ar
   }
 }
 
+// Lends one unused portrait id to an Ultra fighter's texture for the length of a draw.
+template <typename H>
+class PortraitLoan {
+ public:
+  PortraitLoan(uint32_t id, const EvilTexture* texture, const EvilTexture* beaten, uint8_t* base)
+      : base_(base), id_(id), texture_(texture) {
+    if (!texture_) return;
+    const uint32_t offset = (id - kEvilPortraitId) * 4;
+    large_ = H::kMysteryLargePortrait + offset;
+    loser_ = H::kLoserPortraitSlot + offset;
+    row_ = H::kPortraitPaletteRows + id * kPortraitRowBytes;
+    saved_large_ = LoadBE32(GuestHost(base, large_), 0);
+    saved_loser_ = LoadBE32(GuestHost(base, loser_), 0);
+    std::memcpy(saved_row_.data(), GuestHost(base, row_), kPortraitRowBytes);
+    GuestStoreBE32(base, large_, texture_->wrapper);
+    GuestStoreBE32(base, loser_, (beaten ? beaten : texture_)->wrapper);
+    for (uint32_t column = 0; column < kPortraitPaletteColumns; ++column) {
+      GuestStoreBE32(base, row_ + column * 4, texture_->wrapper);
+    }
+  }
+
+  ~PortraitLoan() {
+    if (!texture_) return;
+    GuestStoreBE32(base_, large_, saved_large_);
+    GuestStoreBE32(base_, loser_, saved_loser_);
+    std::memcpy(base_ + row_, saved_row_.data(), kPortraitRowBytes);
+  }
+
+  uint32_t Replacement() const { return texture_ ? id_ : kNoPortrait; }
+
+ private:
+  uint8_t* base_;
+  uint32_t id_;
+  const EvilTexture* texture_;
+  uint32_t large_ = 0;
+  uint32_t loser_ = 0;
+  uint32_t row_ = 0;
+  uint32_t saved_large_ = 0;
+  uint32_t saved_loser_ = 0;
+  std::array<uint8_t, kPortraitRowBytes> saved_row_{};
+};
+
+// The Losing and Continue tables stop at the last guest character, so unlike the shared tables they have no spare id: the
+// carrier's own entries are lent for the draw. All ten frames name the one image, which keeps the guest's frame counter
+// and its count table. The art shares its palette with the large portrait, so the row may hold that wrapper or this one.
+template <typename H>
+class CarrierPortraitLoan {
+ public:
+  CarrierPortraitLoan(uint32_t carrier, const EvilTexture& texture, uint8_t* base) : base_(base) {
+    continue_ = H::kContinuePortraits + carrier * 4;
+    losing_ = H::kLosingPortraits + carrier * kPortraitRowBytes;
+    row_ = H::kPortraitPaletteRows + carrier * kPortraitRowBytes;
+    saved_continue_ = LoadBE32(GuestHost(base, continue_), 0);
+    std::memcpy(saved_losing_.data(), GuestHost(base, losing_), kPortraitRowBytes);
+    std::memcpy(saved_row_.data(), GuestHost(base, row_), kPortraitRowBytes);
+    GuestStoreBE32(base, continue_, texture.wrapper);
+    for (uint32_t column = 0; column < kPortraitPaletteColumns; ++column) {
+      GuestStoreBE32(base, losing_ + column * 4, texture.wrapper);
+      GuestStoreBE32(base, row_ + column * 4, texture.wrapper);
+    }
+  }
+
+  ~CarrierPortraitLoan() {
+    GuestStoreBE32(base_, continue_, saved_continue_);
+    std::memcpy(base_ + losing_, saved_losing_.data(), kPortraitRowBytes);
+    std::memcpy(base_ + row_, saved_row_.data(), kPortraitRowBytes);
+  }
+
+ private:
+  uint8_t* base_;
+  uint32_t continue_ = 0;
+  uint32_t losing_ = 0;
+  uint32_t row_ = 0;
+  uint32_t saved_continue_ = 0;
+  std::array<uint8_t, kPortraitRowBytes> saved_losing_{};
+  std::array<uint8_t, kPortraitRowBytes> saved_row_{};
+};
+
+// Modes 6 and 7 draw one portrait, the player named by the beaten-side word, whose carrier id stays in the hover word.
+template <typename H>
+void DrawBeatenPortrait(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  const int side = int(LoadBE32(GuestHost(base, H::kBeatenSide), 0)) - 1;
+  if (side < 0 || side > 1) return original(ctx, base);
+  std::array<FighterIdentity, 2> requested{RequestedIdentity(0), RequestedIdentity(1)};
+  std::array<bool, 2> on_cell{GlobalUltraNavigation().OnUltraCell(0), GlobalUltraNavigation().OnUltraCell(1)};
+  std::array<uint32_t, 2> hover{LoadBE32(GuestHost(base, kHoverWords[0]), 0),
+                                LoadBE32(GuestHost(base, kHoverWords[1]), 0)};
+  const SelectPresentation presentation = ResolveSelectPresentation(requested, on_cell, hover);
+  const bool violent = presentation.violent[size_t(side)];
+  if (!violent && !presentation.evil[size_t(side)]) return original(ctx, base);
+  const EvilTexture* texture = BeatenTexture<H>(violent, ctx, base);
+  if (!texture) return original(ctx, base);
+  CarrierPortraitLoan<H> loan(violent ? uint32_t(kKenGuestCharacter) : uint32_t(kRyuGuestCharacter), *texture, base);
+  original(ctx, base);
+}
+
 // Both sides read the same per-character portrait tables, so an Evil Ryu player gets the unused id after Akuma: its
 // large portrait slot holds the Evil Ryu texture. Its palette row names that same texture, which keeps the texture's own
 // palette; the winner screen only draws the native portrait frame for a character whose row is filled. That screen
 // reads the loser from a second table, loaded for the guest's hover ids only, so its id 17 entry is lent as well.
 template <typename H>
 void DrawPortraits(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
-  if (!UltraFightersEnabled() || !UsesSharedPortraits(LoadBE32(GuestHost(base, kPresentationMode), 0))) {
-    return original(ctx, base);
-  }
+  if (!UltraFightersEnabled()) return original(ctx, base);
+  const uint32_t mode = LoadBE32(GuestHost(base, kPresentationMode), 0);
+  if (UsesBeatenPortrait(mode)) return DrawBeatenPortrait<H>(ctx, base, original);
+  if (!UsesSharedPortraits(mode)) return original(ctx, base);
   std::array<FighterIdentity, 2> requested{RequestedIdentity(0), RequestedIdentity(1)};
-  std::array<bool, 2> on_cell{GlobalUltraNavigation().OnEvilRyu(0), GlobalUltraNavigation().OnEvilRyu(1)};
+  std::array<bool, 2> on_cell{GlobalUltraNavigation().OnUltraCell(0), GlobalUltraNavigation().OnUltraCell(1)};
   std::array<uint32_t, 2> hover{LoadBE32(GuestHost(base, kHoverWords[0]), 0),
                                 LoadBE32(GuestHost(base, kHoverWords[1]), 0)};
   const SelectPresentation presentation = ResolveSelectPresentation(requested, on_cell, hover);
   LogSelectPresentation(presentation, requested, on_cell, hover);
   if (!presentation.any()) return original(ctx, base);
-  const std::array<bool, 2>& evil = presentation.evil;
-  const EvilTexture* texture = TextureFor<H>(EvilArt::kLargePortrait, ctx, base);
-  const uint32_t replacement = texture ? kEvilPortraitId : kNoPortrait;
-  const uint32_t mystery = LoadBE32(GuestHost(base, H::kMysteryLargePortrait), 0);
-  const uint32_t loser = LoadBE32(GuestHost(base, H::kLoserPortraitSlot), 0);
-  const uint32_t row = H::kPortraitPaletteRows + kEvilPortraitId * kPortraitRowBytes;
-  std::array<uint8_t, kPortraitRowBytes> saved_row;
-  std::memcpy(saved_row.data(), GuestHost(base, row), kPortraitRowBytes);
-  if (texture) {
-    GuestStoreBE32(base, H::kMysteryLargePortrait, texture->wrapper);
-    GuestStoreBE32(base, H::kLoserPortraitSlot, texture->wrapper);
-    for (uint32_t column = 0; column < kPortraitPaletteColumns; ++column) {
-      GuestStoreBE32(base, row + column * 4, texture->wrapper);
-    }
-  }
+  const bool any_evil = presentation.evil[0] || presentation.evil[1];
+  const bool any_violent = presentation.violent[0] || presentation.violent[1];
+  PortraitLoan<H> evil_loan(kEvilPortraitId, any_evil ? TextureFor<H>(EvilArt::kLargePortrait, ctx, base) : nullptr,
+                           any_evil ? BeatenTexture<H>(false, ctx, base) : nullptr, base);
+  PortraitLoan<H> violent_loan(kViolentPortraitSlot,
+                               any_violent ? TextureFor<H>(EvilArt::kLargePortrait, ctx, base, true) : nullptr,
+                               any_violent ? BeatenTexture<H>(true, ctx, base) : nullptr, base);
   for (int side = 0; side < 2; ++side) {
-    if (evil[side]) GuestStoreBE32(base, kHoverWords[side], replacement);
+    if (presentation.evil[side]) GuestStoreBE32(base, kHoverWords[side], evil_loan.Replacement());
+    if (presentation.violent[side]) GuestStoreBE32(base, kHoverWords[side], violent_loan.Replacement());
     if (presentation.hide[side]) GuestStoreBE32(base, kHoverWords[side], kNoPortrait);
   }
   original(ctx, base);
   for (int side = 0; side < 2; ++side) {
-    if (evil[side]) GuestStoreBE32(base, kHoverWords[side], uint32_t(kRyuGuestCharacter));
-    if (presentation.hide[side]) GuestStoreBE32(base, kHoverWords[side], hover[side]);
-  }
-  if (texture) {
-    GuestStoreBE32(base, H::kMysteryLargePortrait, mystery);
-    GuestStoreBE32(base, H::kLoserPortraitSlot, loser);
-    std::memcpy(base + row, saved_row.data(), kPortraitRowBytes);
+    if (presentation.evil[side] || presentation.violent[side] || presentation.hide[side]) {
+      GuestStoreBE32(base, kHoverWords[side], hover[side]);
+    }
   }
 }
 

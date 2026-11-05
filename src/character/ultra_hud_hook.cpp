@@ -8,7 +8,9 @@
 
 #include "character/evil_ryu_sprites.h"
 #include "character/fighter_identity.h"
+#include "character/guest_argb_texture.h"
 #include "character/ultra_fighters.h"
+#include "character/violent_ken_data.h"
 #include "guest_memory.h"
 #include "title_update_image.h"
 
@@ -53,6 +55,8 @@ struct TitleUpdate023Hud {
 constexpr std::array<uint32_t, 2> kFirstNameWidget = {8, 32};
 constexpr int kNameWidgets = 6;
 constexpr std::array<uint32_t, 2> kRyuPortrait = {ElementHash("p1_portrait_Ryu"), ElementHash("p2_portrait_Ryu")};
+constexpr std::array<uint32_t, 2> kKenPortrait = {ElementHash("p1_portrait_Ken"), ElementHash("p2_portrait_Ken")};
+constexpr char kViolentKenHudName[] = "Violent Ken";
 
 constexpr uint32_t kElementType = 20;
 constexpr uint32_t kElementTypeGraphic = 3;
@@ -60,53 +64,11 @@ constexpr uint32_t kGraphicKind = 368;
 constexpr uint32_t kGraphicKindImage = 0;
 constexpr uint32_t kImageTextureCell = 384;
 
-constexpr uint32_t kIconFormat = 0x16;
-constexpr uint32_t kDummyName = 0x82000A1C;
-constexpr uint32_t kWrapperSize = 84;
-constexpr uint32_t kWrapperObject = 4;
-constexpr uint32_t kWrapperFileFlags = 104;
 constexpr uint8_t kIconFileFlags = 2;
-constexpr uint32_t kObjectSize = 20;
-constexpr uint32_t kIconStreamHeader = 5;
-constexpr uint32_t kIconRetile = 1;
 
 bool PlausibleGuestPointer(uint32_t address) { return address >= 0x10000 && address < 0xFFFF0000u; }
 
 uint32_t GuestAlloc(uint32_t bytes) { return REX_KERNEL_MEMORY()->SystemHeapAlloc(bytes); }
-
-// Built by the guest's own texture constructor and file reader from the stream layout of a HUD_Icon file, so the icon
-// is the same kind of texture the HUD draws for every other character.
-template <typename H>
-uint32_t BuildIconTexture(const EvilHudIcon& icon, PPCContext& ctx, uint8_t* base) {
-  const PPCContext saved = ctx;
-  ctx.r3.u64 = uint32_t(kHudIconSize);
-  ctx.r4.u64 = uint32_t(kHudIconSize);
-  ctx.r5.u64 = kIconFormat;
-  ctx.r6.u64 = 0;
-  ctx.r7.u64 = 0;
-  ctx.r8.u64 = kDummyName;
-  H::CreateTexture(ctx, base);
-  const uint32_t wrapper = ctx.r3.u32;
-  ctx = saved;
-  if (!PlausibleGuestPointer(wrapper) || LoadBE32(GuestHost(base, wrapper), 0) != kWrapperSize) return 0;
-  const uint32_t object = wrapper + kWrapperObject;
-  if (LoadBE32(GuestHost(base, object + kObjectSize), 0) != kHudIconBytes) return 0;
-  const uint32_t stream = GuestAlloc(kIconStreamHeader + uint32_t(kHudIconBytes));
-  const uint32_t cursor = GuestAlloc(4);
-  if (stream == 0 || cursor == 0) return 0;
-  GuestStore8(base, stream, 0);
-  GuestStoreBE32(base, stream + 1, kIconRetile);
-  std::memcpy(GuestHost(base, stream + kIconStreamHeader), icon.data(), kHudIconBytes);
-  GuestStoreBE32(base, cursor, stream);
-  ctx.r3.u64 = object;
-  ctx.r4.u64 = cursor;
-  H::ReadTexture(ctx, base);
-  ctx = saved;
-  REX_KERNEL_MEMORY()->SystemHeapFree(stream);
-  REX_KERNEL_MEMORY()->SystemHeapFree(cursor);
-  GuestStore8(base, wrapper + kWrapperFileFlags, kIconFileFlags);
-  return wrapper;
-}
 
 template <typename H>
 struct IconState {
@@ -116,12 +78,13 @@ struct IconState {
 };
 
 template <typename H>
-uint32_t IconCell(PPCContext& ctx, uint8_t* base) {
-  static IconState<H> state;
+uint32_t IconCell(bool violent, PPCContext& ctx, uint8_t* base) {
+  static std::array<IconState<H>, 2> states;
+  IconState<H>& state = states[violent ? 1 : 0];
   if (state.failed) return 0;
   if (state.cell == 0) {
-    const EvilHudIcon* icon = LoadedEvilHudIcon();
-    state.wrapper = icon ? BuildIconTexture<H>(*icon, ctx, base) : 0;
+    const EvilHudIcon* icon = violent ? LoadedViolentKenHudIcon() : LoadedEvilHudIcon();
+    state.wrapper = icon ? BuildArgbTexture<H>(icon->data(), kHudIconSize, kHudIconSize, kIconFileFlags, ctx, base) : 0;
     state.cell = state.wrapper != 0 ? GuestAlloc(4) : 0;
     if (state.cell == 0) {
       state.failed = true;
@@ -149,11 +112,12 @@ uint32_t FindImage(uint32_t hash, PPCContext& ctx, uint8_t* base) {
 }
 
 template <typename H>
-void ApplyPortrait(int side, bool evil, PPCContext& ctx, uint8_t* base) {
-  static std::array<uint32_t, 2> native_cell{};
-  const uint32_t element = FindImage<H>(kRyuPortrait[size_t(side)], ctx, base);
+void ApplyPortrait(int side, bool evil, bool violent, PPCContext& ctx, uint8_t* base) {
+  static std::array<std::array<uint32_t, 2>, 2> native_cells{};
+  const uint32_t element = FindImage<H>((violent ? kKenPortrait : kRyuPortrait)[size_t(side)], ctx, base);
   if (element == 0) return;
-  const uint32_t cell = IconCell<H>(ctx, base);
+  std::array<uint32_t, 2>& native_cell = native_cells[violent ? 1 : 0];
+  const uint32_t cell = IconCell<H>(violent, ctx, base);
   if (cell == 0) return;
   const uint32_t current = LoadBE32(GuestHost(base, element + kImageTextureCell), 0);
   const uint32_t routed = RoutePortraitCell(evil, current, cell, native_cell[size_t(side)]);
@@ -161,13 +125,21 @@ void ApplyPortrait(int side, bool evil, PPCContext& ctx, uint8_t* base) {
 }
 
 template <typename H>
-void ApplyName(int side, PPCContext& ctx, uint8_t* base) {
-  static uint32_t name = 0;
-  if (name == 0) {
-    name = GuestAlloc(sizeof(kEvilRyuHudName));
-    if (name == 0) return;
-    std::memcpy(GuestHost(base, name), kEvilRyuHudName, sizeof(kEvilRyuHudName));
-  }
+uint32_t HudNameText(bool violent, uint8_t* base) {
+  static std::array<uint32_t, 2> names{};
+  uint32_t& name = names[violent ? 1 : 0];
+  if (name != 0) return name;
+  const char* text = violent ? kViolentKenHudName : kEvilRyuHudName;
+  const size_t bytes = std::strlen(text) + 1;
+  name = GuestAlloc(uint32_t(bytes));
+  if (name != 0) std::memcpy(GuestHost(base, name), text, bytes);
+  return name;
+}
+
+template <typename H>
+void ApplyName(int side, bool violent, PPCContext& ctx, uint8_t* base) {
+  const uint32_t name = HudNameText<H>(violent, base);
+  if (name == 0) return;
   for (int i = 0; i < kNameWidgets; ++i) {
     const uint32_t slot = H::kWidgets + kFirstNameWidget[size_t(side)] + uint32_t(i) * 4;
     const uint32_t widget = LoadBE32(GuestHost(base, slot), 0);
@@ -186,17 +158,23 @@ template <typename H>
 void UpdateHud(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   original(ctx, base);
   if (LoadBE32(GuestHost(base, H::kWidgets), 0) == 0 || *GuestHost(base, H::kFightHudActive) == 0) return;
-  static std::array<bool, 2> applied{};
+  static std::array<std::array<bool, 2>, 2> applied{};
   for (int side = 0; side < 2; ++side) {
     const int character = int(LoadBE32(GuestHost(base, H::kCharacter[size_t(side)]), 0));
-    const bool evil = HudShowsEvilRyu(UltraFightersEnabled(), RequestedIdentity(side), character);
-    if (!evil && !applied[size_t(side)]) continue;
-    ApplyPortrait<H>(side, evil, ctx, base);
-    if (evil) ApplyName<H>(side, ctx, base);
-    if (evil != applied[size_t(side)]) {
-      REXLOG_INFO("DEBUG_SAULO EVIL_RYU hud side={} action={}", side + 1, evil ? "evil" : "restore");
+    const FighterIdentity requested = RequestedIdentity(side);
+    const std::array<bool, 2> shown = {HudShowsEvilRyu(UltraFightersEnabled(), requested, character),
+                                       HudShowsViolentKen(UltraFightersEnabled(), requested, character)};
+    for (int kind = 0; kind < 2; ++kind) {
+      const bool show = shown[size_t(kind)];
+      bool& was = applied[size_t(kind)][size_t(side)];
+      if (!show && !was) continue;
+      ApplyPortrait<H>(side, show, kind == 1, ctx, base);
+      if (show) ApplyName<H>(side, kind == 1, ctx, base);
+      if (show != was) {
+        REXLOG_INFO("DEBUG_SAULO ULTRA hud side={} kind={} action={}", side + 1, kind, show ? "ultra" : "restore");
+      }
+      was = show;
     }
-    applied[size_t(side)] = evil;
   }
 }
 

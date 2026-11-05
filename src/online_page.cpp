@@ -29,7 +29,8 @@ constexpr char kUnreachable[] = "Cannot reach the online service right now. Run 
 constexpr char kNoFriends[] = "No friends yet. Add someone with their friend code.";
 constexpr char kInfiniteTimeOff[] = "Infinite Time was turned off because Online play is on.";
 constexpr char kSecretHelp[] =
-    "Akuma and Evil Ryu are in an Online Match only when both players have them on. Turn them on in Gameplay.";
+    "Akuma, Evil Ryu and Violent Ken are in an Online Match only when both players have them on. Turn them on in "
+    "Gameplay.";
 
 int OnlineNameFilter(ImGuiInputTextCallbackData* data) {
   return data->EventChar < 0x80 && online::OnlineNameChar(char(data->EventChar)) ? 0 : 1;
@@ -288,9 +289,10 @@ void OnlinePage::DrawConnectionTestBody(trg::Ui& ui, const online::Snapshot& sta
 
 void OnlinePage::DrawSecretCharacters(trg::Ui& ui, const online::Snapshot& state) {
   online::SecretCapabilities edited;
-  edited.supports = {true, true};
-  edited.enabled = {ui.settings().GetBool(character::kEnableAkumaSetting, character::kDefaultEnableAkuma),
-                    ui.settings().GetBool(character::kEnableUltraFightersSetting, character::kDefaultEnableUltraFighters)};
+  const bool ultra =
+      ui.settings().GetBool(character::kEnableUltraFightersSetting, character::kDefaultEnableUltraFighters);
+  edited.supports = {true, true, true};
+  edited.enabled = {ui.settings().GetBool(character::kEnableAkumaSetting, character::kDefaultEnableAkuma), ultra, ultra};
   ui.Heading("Secret characters");
   for (const online::SecretRowView& row : online::DescribeSecretCharacters(state, edited)) {
     ui.Row(row.label.c_str());

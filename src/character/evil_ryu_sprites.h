@@ -14,8 +14,8 @@ namespace ssf2t::character {
 inline constexpr char kEvilRyuSpriteFile[] = "evil_ryu_sprites.bin";
 inline constexpr int kEvilPaletteBytes = 1024;
 
-enum class EvilArt : uint8_t { kBackTurned, kPowerStance, kLargePortrait, kName, kHudName };
-inline constexpr int kEvilArtCount = 5;
+enum class EvilArt : uint8_t { kBackTurned, kPowerStance, kLargePortrait, kName, kHudName, kLosePortrait };
+inline constexpr int kEvilArtCount = 6;
 
 // 8 bit palette indices, width * height, top row first; index 0 is transparent. Fight sprites have no palette of their
 // own and use the fighter's.

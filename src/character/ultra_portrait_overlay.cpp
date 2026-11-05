@@ -18,6 +18,7 @@
 #include "character/evil_ryu_sprites.h"
 #include "character/ultra_navigation.h"
 #include "character/ultra_portraits.h"
+#include "character/violent_ken_data.h"
 #include "presentation_setting.h"
 
 namespace ssf2t::character {
@@ -39,7 +40,9 @@ class UltraPortraitOverlay final : public rex::ui::ImGuiDialog {
  protected:
   void OnDraw(ImGuiIO& io) override {
     const bool online = CharacterSelectOnline();
-    const bool enabled = EvilRyuAvailableFor(online);
+    const bool evil_ryu = EvilRyuAvailableFor(online);
+    const bool violent_ken = ViolentKenAvailableFor(online) && ViolentKenGameplayReady();
+    const bool enabled = evil_ryu || violent_ken;
     const bool select_active = CharacterSelectActive();
     if (!enabled || !select_active) return;
     if (!loaded_) LoadTextures();
@@ -50,35 +53,36 @@ class UltraPortraitOverlay final : public rex::ui::ImGuiDialog {
         GuestView(io.DisplaySize.x, io.DisplaySize.y, float(guest_width) / float(kGuestHeight), letterbox);
     const SelectLayout layout = CharacterSelectLayout();
     for (const UltraPortrait which : kPortraits) {
-      if (online && which != UltraPortrait::kEvilRyu) continue;
+      if (!(which == UltraPortrait::kEvilRyu ? evil_ryu : violent_ken)) continue;
       const auto& texture = textures_[size_t(which)];
       if (!UltraPortraitVisible(enabled, select_active, immediate_drawer_ != nullptr, texture != nullptr)) continue;
       const ViewRect rect = UltraPortraitRect(view, float(guest_width), which, layout);
       ImGui::GetBackgroundDrawList()->AddImage(ImTextureRef(reinterpret_cast<ImTextureID>(texture.get())),
                                                ImVec2(rect.x, rect.y), ImVec2(rect.x + rect.width, rect.y + rect.height));
     }
-    DrawEvilRyuPresentation(view, float(guest_width));
+    DrawNames(view, float(guest_width));
   }
 
  private:
-  void DrawEvilRyuPresentation(const ViewRect& view, float guest_width) {
+  void DrawNames(const ViewRect& view, float guest_width) {
     ImDrawList* list = ImGui::GetBackgroundDrawList();
     for (int side = 0; side < 2; ++side) {
-      if (!GlobalUltraNavigation().OnEvilRyu(side)) continue;
+      if (!GlobalUltraNavigation().OnUltraCell(side)) continue;
+      const NameGraphic& name = names_[GlobalUltraNavigation().OnViolentKen(side) ? 1 : 0];
       const ViewRect portrait = LargePortraitPicture(side);
-      if (name_ && name_height_ > 0 && !GuestNameDrawnRecently(side)) {
+      if (name.texture && name.height > 0 && !GuestNameDrawnRecently(side)) {
         const float width = portrait.width * 0.9f;
         const ViewRect plate = {portrait.x + (portrait.width - width) * 0.5f, kNameTopY, width,
-                                width * float(name_height_) / float(name_width_)};
+                                width * float(name.height) / float(name.width)};
         const ViewRect rect = ToView(view, guest_width, plate);
-        list->AddImage(ImTextureRef(reinterpret_cast<ImTextureID>(name_.get())), ImVec2(rect.x, rect.y),
+        list->AddImage(ImTextureRef(reinterpret_cast<ImTextureID>(name.texture.get())), ImVec2(rect.x, rect.y),
                        ImVec2(rect.x + rect.width, rect.y + rect.height));
       }
     }
   }
 
-  std::unique_ptr<rex::ui::ImmediateTexture> CreateAsset(EvilRyuAsset which, int* width, int* height) {
-    const PortraitImage image = LoadEvilRyuAsset(game_dir_ / kEvilRyuAssetFile, which);
+  std::unique_ptr<rex::ui::ImmediateTexture> CreateAsset(const char* file, EvilRyuAsset which, int* width, int* height) {
+    const PortraitImage image = LoadEvilRyuAsset(game_dir_ / file, which);
     if (image.error) {
       REXLOG_ERROR("DEBUG_SAULO EVIL_RYU asset {} failed at '{}'", uint32_t(which), image.error);
       return nullptr;
@@ -116,15 +120,20 @@ class UltraPortraitOverlay final : public rex::ui::ImGuiDialog {
       }
       textures_[size_t(which)] = std::move(texture);
     }
-    name_ = CreateAsset(EvilRyuAsset::kNameGraphic, &name_width_, &name_height_);
+    names_[0].texture = CreateAsset(kEvilRyuAssetFile, EvilRyuAsset::kNameGraphic, &names_[0].width, &names_[0].height);
+    names_[1].texture =
+        CreateAsset("violent_ken_assets.bin", EvilRyuAsset::kNameGraphic, &names_[1].width, &names_[1].height);
   }
 
   rex::ui::ImmediateDrawer* immediate_drawer_;
   std::filesystem::path game_dir_;
   std::array<std::unique_ptr<rex::ui::ImmediateTexture>, kUltraPortraitCount> textures_;
-  std::unique_ptr<rex::ui::ImmediateTexture> name_;
-  int name_width_ = 0;
-  int name_height_ = 0;
+  struct NameGraphic {
+    std::unique_ptr<rex::ui::ImmediateTexture> texture;
+    int width = 0;
+    int height = 0;
+  };
+  std::array<NameGraphic, 2> names_;
   bool loaded_ = false;
 };
 

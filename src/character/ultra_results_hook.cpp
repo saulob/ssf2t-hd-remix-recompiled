@@ -38,10 +38,14 @@ constexpr uint32_t kCellBytes = 12;
 constexpr uint32_t kResultSlots = 8;
 constexpr uint32_t kListEntries = kResultsRows * kResultsColumns;
 
-struct GuestRow {
-  uint32_t list = 0;
+struct GuestCells {
   uint32_t wins = 0;
   uint32_t losses = 0;
+};
+
+struct GuestRow {
+  uint32_t list = 0;
+  std::array<GuestCells, kResultsHostRows> cells{};
 };
 
 template <typename H>
@@ -51,29 +55,37 @@ void TakeBack(uint8_t* base, int side, uint32_t counter) {
   if (value > 0) GuestStoreBE32(base, address, value - 1);
 }
 
-// The match record the guest keeps for the results table. It raises Ryu's row for a carrier fight, so an Evil Ryu match
-// is moved to the host book afterwards, by side and identity. Totals stay, since both are that player's wins.
+// The match record the guest keeps for the results table. It raises the carrier's row for an Ultra fighter, so such a
+// match is moved to that fighter's host book afterwards, by side and identity. Totals stay, since both are that player's
+// wins.
 template <typename H>
 void RecordMatch(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
-  std::array<bool, 2> evil{};
+  std::array<std::array<bool, 2>, kResultsHostRows> fought{};
+  bool any = false;
   if (UltraFightersEnabled()) {
-    for (int side = 0; side < 2; ++side) {
-      evil[size_t(side)] = RequestedIdentity(side) == FighterIdentity::kEvilRyu &&
-                           LoadBE32(GuestHost(base, H::kMatchCharacter[size_t(side)]), 0) == uint32_t(kRyuGuestCharacter);
+    for (size_t host = 0; host < fought.size(); ++host) {
+      const HostResultsRow& row = kHostResultsRows[host];
+      for (int side = 0; side < 2; ++side) {
+        fought[host][size_t(side)] = RequestedIdentity(side) == row.identity &&
+                                     LoadBE32(GuestHost(base, H::kMatchCharacter[size_t(side)]), 0) == uint32_t(row.carrier);
+        any = any || fought[host][size_t(side)];
+      }
     }
   }
   original(ctx, base);
-  if (!evil[0] && !evil[1]) {
-    GlobalEvilResults().Record(-1, evil);
-    return;
+  const int winner = any ? int(LoadBE32(GuestHost(base, H::kMatchWinner), 0)) : -1;
+  for (size_t host = 0; host < fought.size(); ++host) {
+    HostResultsBook& book = GlobalHostResults(int(host));
+    const ResultsCorrection correction = book.Record(winner, fought[host]);
+    const uint32_t carrier = uint32_t(kHostResultsRows[host].carrier) * 4;
+    if (correction.carrier_win_side >= 0) TakeBack<H>(base, correction.carrier_win_side, kRecordWins + carrier);
+    if (correction.carrier_loss_side >= 0) TakeBack<H>(base, correction.carrier_loss_side, kRecordLosses + carrier);
+    if (fought[host][0] || fought[host][1]) {
+      REXLOG_INFO("DEBUG_SAULO ULTRA results {} winner={} sides={}{} p1={}-{} p2={}-{}", kHostResultsRows[host].label,
+                  winner + 1, int(fought[host][0]), int(fought[host][1]), book.wins(0), book.losses(0), book.wins(1),
+                  book.losses(1));
+    }
   }
-  const int winner = int(LoadBE32(GuestHost(base, H::kMatchWinner), 0));
-  const ResultsCorrection correction = GlobalEvilResults().Record(winner, evil);
-  if (correction.ryu_win_side >= 0) TakeBack<H>(base, correction.ryu_win_side, kRecordWins);
-  if (correction.ryu_loss_side >= 0) TakeBack<H>(base, correction.ryu_loss_side, kRecordLosses);
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU results winner={} evil={}{} p1={}-{} p2={}-{}", winner + 1, int(evil[0]),
-              int(evil[1]), GlobalEvilResults().wins(0), GlobalEvilResults().losses(0), GlobalEvilResults().wins(1),
-              GlobalEvilResults().losses(1));
 }
 
 void WriteCell(uint8_t* base, uint32_t cell, const char* text) {
@@ -88,14 +100,19 @@ GuestRow& RowFor(uint32_t slot) {
 
 bool EnsureRow(GuestRow& row) {
   if (row.list) return true;
-  row.list = REX_KERNEL_MEMORY()->SystemHeapAlloc(kListEntries * 4);
-  row.wins = REX_KERNEL_MEMORY()->SystemHeapAlloc(kCellBytes);
-  row.losses = REX_KERNEL_MEMORY()->SystemHeapAlloc(kCellBytes);
-  return row.list && row.wins && row.losses;
+  const uint32_t list = REX_KERNEL_MEMORY()->SystemHeapAlloc(kListEntries * 4);
+  if (!list) return false;
+  for (GuestCells& cells : row.cells) {
+    cells.wins = REX_KERNEL_MEMORY()->SystemHeapAlloc(kCellBytes);
+    cells.losses = REX_KERNEL_MEMORY()->SystemHeapAlloc(kCellBytes);
+    if (!cells.wins || !cells.losses) return false;
+  }
+  row.list = list;
+  return true;
 }
 
 // The grid takes the list this native returns and reads rows x columns entries, so once the grid has grown every call
-// must answer with the longer list, also in a lobby where the row stays blank and hidden.
+// must answer with the longer list, also in a lobby where the rows stay blank and hidden.
 void PlayerResults(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const uint32_t slot = ctx.r3.u32;
   original(ctx, base);
@@ -103,22 +120,25 @@ void PlayerResults(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (!ResultsRowReady() || native == 0 || slot >= kResultSlots) return;
   GuestRow& row = RowFor(slot);
   if (!EnsureRow(row)) return;
-  char wins[kCellBytes] = "";
-  char losses[kCellBytes] = "";
-  if (slot < 2) {
-    std::snprintf(wins, sizeof(wins), "%d", GlobalEvilResults().wins(int(slot)));
-    std::snprintf(losses, sizeof(losses), "%d", GlobalEvilResults().losses(int(slot)));
+  for (int host = 0; host < kResultsHostRows; ++host) {
+    char wins[kCellBytes] = "";
+    char losses[kCellBytes] = "";
+    if (slot < 2) {
+      std::snprintf(wins, sizeof(wins), "%d", GlobalHostResults(host).wins(int(slot)));
+      std::snprintf(losses, sizeof(losses), "%d", GlobalHostResults(host).losses(int(slot)));
+    }
+    WriteCell(base, row.cells[size_t(host)].wins, wins);
+    WriteCell(base, row.cells[size_t(host)].losses, losses);
   }
-  WriteCell(base, row.wins, wins);
-  WriteCell(base, row.losses, losses);
   for (int display = 0; display < kResultsRows; ++display) {
-    const int source = ResultsNativeRow(display);
     const uint32_t entry = row.list + uint32_t(display) * kResultsColumns * 4;
-    if (source < 0) {
-      GuestStoreBE32(base, entry, row.wins);
-      GuestStoreBE32(base, entry + 4, row.losses);
+    const int host = ResultsHostRow(display);
+    if (host >= 0) {
+      GuestStoreBE32(base, entry, row.cells[size_t(host)].wins);
+      GuestStoreBE32(base, entry + 4, row.cells[size_t(host)].losses);
       continue;
     }
+    const int source = ResultsNativeRow(display);
     const uint32_t from = native + uint32_t(source) * kResultsColumns * 4;
     GuestStoreBE32(base, entry, LoadBE32(GuestHost(base, from), 0));
     GuestStoreBE32(base, entry + 4, LoadBE32(GuestHost(base, from + 4), 0));
@@ -129,14 +149,20 @@ void PlayerResults(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
 void PlayerResultsCharacter(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const uint32_t slot = ctx.r3.u32;
   original(ctx, base);
-  if (!ResultsRowReady() || slot > 1 || ctx.r3.u32 != uint32_t(kRyuGuestCharacter)) return;
-  if (GlobalEvilResults().last_match_evil(int(slot))) ctx.r3.u64 = uint64_t(kEvilRyuResultsCharacter);
+  if (!ResultsRowReady() || slot > 1) return;
+  for (int host = 0; host < kResultsHostRows; ++host) {
+    const HostResultsRow& row = kHostResultsRows[size_t(host)];
+    if (ctx.r3.u32 == uint32_t(row.carrier) && GlobalHostResults(host).last_match(int(slot))) {
+      ctx.r3.u64 = uint64_t(row.character);
+      return;
+    }
+  }
 }
 
 void ResetPlayerResults(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const int slot = int(ctx.r3.u32);
   original(ctx, base);
-  GlobalEvilResults().Reset(slot);
+  for (int host = 0; host < kResultsHostRows; ++host) GlobalHostResults(host).Reset(slot);
 }
 
 }  // namespace

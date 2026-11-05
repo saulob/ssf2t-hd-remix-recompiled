@@ -53,7 +53,7 @@ const SCHEMA = [
      join_platform TEXT NOT NULL, reporting INTEGER NOT NULL, transport TEXT NOT NULL DEFAULT '',
      transport_counted INTEGER NOT NULL DEFAULT 0, established INTEGER, fights_started INTEGER NOT NULL DEFAULT 0,
      fights_completed INTEGER NOT NULL DEFAULT 0, secret_akuma INTEGER NOT NULL DEFAULT 0,
-     secret_evil_ryu INTEGER NOT NULL DEFAULT 0)`,
+     secret_evil_ryu INTEGER NOT NULL DEFAULT 0, secret_violent_ken INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS match_fights (match TEXT NOT NULL, fight INTEGER NOT NULL, p1 INTEGER NOT NULL,
      p2 INTEGER NOT NULL, completed INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (match, fight))`,
 ];
@@ -66,6 +66,7 @@ const ADDED_COLUMNS = [
   ['matches', 'host_secret', 'INTEGER NOT NULL DEFAULT 0'], ['matches', 'join_secret', 'INTEGER NOT NULL DEFAULT 0'],
   ['match_telemetry', 'secret_akuma', 'INTEGER NOT NULL DEFAULT 0'],
   ['match_telemetry', 'secret_evil_ryu', 'INTEGER NOT NULL DEFAULT 0'],
+  ['match_telemetry', 'secret_violent_ken', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -705,7 +706,7 @@ export class Hub {
     this.host.sql.run('DELETE FROM match_telemetry WHERE match = ?', row.id);
   }
 
-  // A secret character can start a fight only when both seats support and enabled it; violent_ken never can.
+  // A secret character can start a fight only when both seats support and enabled it.
   requireSecretCharacters(row, event) {
     const effective = effectiveSecret(secretFromMask(row.host_secret), secretFromMask(row.join_secret));
     for (const id of [event.p1, event.p2]) {

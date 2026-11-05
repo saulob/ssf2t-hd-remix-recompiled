@@ -331,7 +331,7 @@ void TestAnInvalidCharacterPairCreatesNoStart() {
   Collected out;
   FightReporter reporter(out.Sink());
   uint32_t fight = 0;
-  for (const int bad : {-1, 18, 255, 1000}) {
+  for (const int bad : {-1, 19, 255, 1000}) {
     reporter.Begin(1, fight++);
     reporter.Observe(Fight(bad, 4), true, 10, 10);
     reporter.End(Fight(bad, 4), true);
@@ -441,12 +441,13 @@ std::string Letters(const std::string& text) {
 constexpr int kGuestRoster = 17;
 
 void TestTheRosterIsTheSeventeenFightersAndEvilRyu() {
-  CHECK(kCharacterCount == kGuestRoster + 1 && kAkumaCharacter == 16 && kEvilRyuCharacter == 17);
+  CHECK(kCharacterCount == kGuestRoster + 2 && kAkumaCharacter == 16 && kEvilRyuCharacter == 17 &&
+        kViolentKenCharacter == 18);
   const char* expected[] = {"Ryu",     "E. Honda", "Blanka", "Guile",   "Ken",     "Chun-Li", "Zangief", "Dhalsim", "M. Bison",
-                            "Sagat",   "Balrog",   "Vega",   "Cammy",   "T. Hawk", "Fei Long", "Dee Jay", "Akuma", "Evil Ryu"};
+                            "Sagat",   "Balrog",   "Vega",   "Cammy",   "T. Hawk", "Fei Long", "Dee Jay", "Akuma", "Evil Ryu", "Violent Ken"};
   for (int id = 0; id < kCharacterCount; ++id) CHECK(std::strcmp(CharacterName(id), expected[id]) == 0);
   CHECK(std::strcmp(CharacterName(-1), "") == 0 && std::strcmp(CharacterName(kCharacterCount), "") == 0);
-  CHECK(IsCharacterId(0) && IsCharacterId(16) && IsCharacterId(17) && !IsCharacterId(18) && !IsCharacterId(-1));
+  CHECK(IsCharacterId(0) && IsCharacterId(16) && IsCharacterId(18) && !IsCharacterId(19) && !IsCharacterId(-1));
 }
 
 void TestTheRosterMatchesTheWorker() {

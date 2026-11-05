@@ -16,8 +16,10 @@ REXCVAR_DECLARE(bool, ssf2t_enable_ultra_fighters);
 
 bool UltraFightersEnabled();
 // Whether the Evil Ryu cell can be used now: the local option in Local and Arcade play, the negotiated result in an
-// Online Match. Violent Ken is never available online.
+// Online Match. Support for one Ultra fighter never implies the other.
 bool EvilRyuAvailableFor(bool online_select);
 bool EvilRyuAvailable(uint8_t game_mode);
+bool ViolentKenAvailableFor(bool online_select);
+bool ViolentKenAvailable(uint8_t game_mode);
 
 }  // namespace ssf2t::character

@@ -1,5 +1,6 @@
 #include "character/evil_ryu_actions.h"
 
+#include <cstdlib>
 #include <cstring>
 
 #include "guest_memory.h"
@@ -96,7 +97,7 @@ constexpr NewFrame kStrongTatsuFrames[] = {
     {4, 0, kPose154, kNoArt, 0, 0, 0, kAttackTatsuStart, 2, 26},
     {4, 0, kPose155, kNoArt, 36, 27, 0, 0, 5, 26},
     {4, 0, kPose156, kNoArt, 36, 27, 0, 0, 5, 26},
-    {4, 0, kPose157, kNoArt, 36, 27, 0, 0, 5, 26},
+    // USF2 counts the spins from frame index 4 of E44 and E45; the guest counts them on the end frame.
     {1, 0, kPose157, kNoArt, 36, 27, 0, 0, 5, 26},
 };
 
@@ -118,8 +119,9 @@ constexpr NewAction Action(uint8_t action, uint8_t sub, const NewFrame (&frames)
 
 constexpr NewAction kNewActions[] = {
     Action(kRagingDemonAction, 0, kDemonStartFrames), Action(kRagingDemonAction, 1, kDemonFinishFrames),
-    Action(kRagingDemonAction, 2, kDemonFinishFrames), Action(kShakunetsuAction, 0, kShakunetsuFrames),
-    Action(kShakunetsuAction, 1, kShakunetsuFrames),  Action(kShakunetsuAction, 2, kShakunetsuFrames),
+    Action(kRagingDemonAction, 2, kDemonFinishFrames), Action(kShakunetsuAction, kShakunetsuSub, kShakunetsuFrames),
+    Action(kShakunetsuAction, kShakunetsuSub + 1, kShakunetsuFrames),
+    Action(kShakunetsuAction, kShakunetsuSub + 2, kShakunetsuFrames),
     Action(kUniqueAction, kSenpuSub, kSenpuFrames),   Action(0x38, 0, kWinBackFrames),
     Action(0x52, 0, kWinBackFrames),                  Action(0x3A, 0, kWinStanceFrames),
     Action(0x52, 1, kWinStanceFrames),
@@ -212,7 +214,22 @@ constexpr uint8_t kSenpuTemplate = 16;
 constexpr uint8_t kTatsuTemplate = 37;
 constexpr uint8_t kSenpuStun = 7;
 constexpr uint8_t kSenpuEffect = 12;
-constexpr uint8_t kTatsuStun = 0;
+constexpr uint8_t kTatsuStun = 0x80;
+constexpr uint8_t kTatsuFlags = 0;
+constexpr uint32_t kAttackClassOffset = 11;
+constexpr uint8_t kTatsuClass = 0x3E;
+
+// USF2's byte is the guest's move class, a 2 based index into a 41 entry table; it is kept only while even and <= 0x50.
+struct AttackClass {
+  uint8_t first;
+  uint8_t last;
+  uint8_t expected;
+  uint8_t value;
+};
+
+constexpr AttackClass kAttackClasses[] = {
+    {31, 32, 0x1C, 0x4C}, {37, 40, 0x1C, 0x4E}, {41, 44, 0x1C, 0x4C}, {48, 53, 0x1C, 0x3E}, {54, 55, 0x4A, 0x50},
+};
 
 struct AttackPatch {
   uint8_t id;
@@ -382,6 +399,14 @@ int BuildEvilPack(uint8_t* base, uint32_t pack, uint32_t memory) {
     if (ReplaceBox(table + patch.id * kAttackRecordBytes, patch.before, patch.after)) ++applied;
   }
   if (ReplaceBox(copy + legs + kLegsBoxId * kBoxBytes, kLegsBoxBefore, kLegsBoxAfter)) ++applied;
+  for (const AttackClass& change : kAttackClasses) {
+    for (uint32_t id = change.first; id <= change.last; ++id) {
+      uint8_t& move_class = table[id * kAttackRecordBytes + kAttackClassOffset];
+      if (move_class != change.expected) continue;
+      move_class = change.value;
+      ++applied;
+    }
+  }
 
   uint8_t* senpu = table + kAttackSenpu * kAttackRecordBytes;
   std::memcpy(senpu, table + kSenpuTemplate * kAttackRecordBytes, kAttackRecordBytes);
@@ -392,7 +417,24 @@ int BuildEvilPack(uint8_t* base, uint32_t pack, uint32_t memory) {
   std::memcpy(tatsu, table + kTatsuTemplate * kAttackRecordBytes, kAttackRecordBytes);
   std::memcpy(tatsu, kTatsuStartBox, 4);
   tatsu[4] = kTatsuStun;
+  tatsu[kAttackClassOffset] = kTatsuClass;
+  tatsu[13] = kTatsuFlags;
   return applied;
+}
+
+bool BuildWalkRow(uint8_t* base, uint32_t row, uint32_t memory, int16_t forward, int16_t back) {
+  uint8_t* copy = Host(base, memory);
+  std::memcpy(copy, GuestHost(base, row), kEvilWalkBytes);
+  const int first = int16_t(LoadBE16(copy, 0));
+  const int second = int16_t(LoadBE16(copy, 4));
+  if (first == 0 || second == 0) return false;
+  // Which entry is forward lives in the loaded data; Ryu walks faster forwards than backwards.
+  const bool first_forward = std::abs(first) >= std::abs(second);
+  const int first_speed = first_forward ? forward : back;
+  const int second_speed = first_forward ? back : forward;
+  StoreBE16(copy, 0, uint16_t(first < 0 ? -first_speed : first_speed));
+  StoreBE16(copy, 4, uint16_t(second < 0 ? -second_speed : second_speed));
+  return true;
 }
 
 std::array<EvilActionTable, 2>& GlobalEvilActionTables() {

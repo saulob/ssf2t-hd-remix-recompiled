@@ -134,21 +134,30 @@ void TestActions() {
   Check(finish != 0 && table.Find(kRagingDemonAction, 2, 0) != 0, "both raging demon finishes exist");
   Check(table.PoseAt(finish) == EvilPose::kBackTurned, "the finish uses the back turned art");
 
-  const uint32_t shakunetsu = table.Find(kShakunetsuAction, 0, 0);
-  Check(shakunetsu != 0 && table.Find(kShakunetsuAction, 2, 0) != 0, "63214P is replaced for all strengths");
-  Check(table.Find(kShakunetsuAction, 3, 0) == 0, "236P stays Ryu's");
+  const uint32_t shakunetsu = table.Find(kShakunetsuAction, kShakunetsuSub, 0);
+  Check(shakunetsu != 0 && table.Find(kShakunetsuAction, kShakunetsuSub + 2, 0) != 0,
+        "the half circle fireball is replaced for all strengths");
+  Check(table.Find(kShakunetsuAction, 0, 0) == 0 && table.Find(kShakunetsuAction, 2, 0) == 0, "236P stays Ryu's");
   int windup = 0;
-  for (int frame = 0; frame < 3; ++frame) windup += Duration(fake, shakunetsu, frame);
-  Check(windup == 14, "the Shakunetsu wind-up is USF2's 14 ticks");
+  for (int frame = 0; frame < 4; ++frame) windup += Duration(fake, shakunetsu, frame);
+  Check(windup == 20, "the Shakunetsu fires after USF2's 20 ticks, on frame index 4");
+  Check((Flags(fake, shakunetsu, 3) & 0x8000) == 0 && (Flags(fake, shakunetsu, 4) & 0x8000) != 0,
+        "the guest fires on the end frame, so frame index 4 carries the end flag");
 
   Check(table.Find(kUniqueAction, 8, 0) != 0, "the unique becomes Senpu Kyaku");
-  Check(Byte(fake, table.Find(kUniqueAction, 8, 0), 4, 12) == kAttackSenpu, "Senpu Kyaku hits with its own box");
+  const uint32_t senpu = table.Find(kUniqueAction, 8, 0);
+  Check(Byte(fake, senpu, 4, 12) == kAttackSenpu, "Senpu Kyaku hits with its own box");
+  Check((Flags(fake, senpu, 1) & 0xFF) == 1, "frame 1 starts the hop");
+  Check((Flags(fake, senpu, 6) & 0xFF) == 1, "frame 6 waits for the landing");
+  Check(Duration(fake, senpu, 7) == 3 && (Flags(fake, senpu, 8) & 0x8000) != 0, "the landing plays frames 7 and 8");
   Check(table.Find(kUniqueAction, 7, 0) == 0, "the other unique stays Ryu's");
 
   Check(table.Find(kTatsuAction, 0, 0) == 0, "light Tatsu keeps Ryu's startup");
   const uint32_t tatsu = table.Find(kTatsuAction, 0, 2);
   Check(tatsu != 0 && tatsu == table.Find(kTatsuAction, 0, 4), "medium and heavy Tatsu use the USF2 startup");
   Check(Byte(fake, tatsu, 1, 12) == kAttackTatsuStart, "the Tatsu startup has its own hit");
+  Check((Flags(fake, tatsu, 4) & 0x8000) != 0 && Duration(fake, tatsu, 4) == 1,
+        "the spins are counted from E44 frame index 4, so that frame is the end frame");
 
   const uint32_t idle = table.Find(0x00, 2, 0);
   Check(idle != 0 && Duration(fake, idle, 0) == 3 && Duration(fake, idle, 1) == 4, "idle frames speed up like USF2");
@@ -198,12 +207,17 @@ void TestPack() {
   PutBox(pack + kAttackTable + 16 * 16, {-16, 83, 33, 14});
   PutBox(pack + kAttackTable + 26 * 16, {-30, 45, 42, 14});
   PutBox(pack + kAttackTable + 29 * 16, {-24, 61, 49, 12});
+  for (const int id : {31, 32, 37, 38, 39, 40, 41, 42, 43, 44, 48, 49, 50, 51, 52, 53}) pack[kAttackTable + id * 16 + 11] = 0x1C;
+  pack[kAttackTable + 54 * 16 + 11] = 0x4A;
+  pack[kAttackTable + 55 * 16 + 11] = 0x4A;
   pack[kAttackTable + 16 * 16 + 6] = 0x2C;
   pack[kAttackTable + 37 * 16 + 6] = 0x2D;
+  pack[kAttackTable + 37 * 16 + 4] = 0x87;
+  pack[kAttackTable + 37 * 16 + 13] = 1;
   const std::vector<uint8_t> original(pack, pack + 0x1200);
 
   constexpr uint32_t copy = kPack + 0x2000;
-  Check(BuildEvilPack(fake.base(), kPack, copy) == 5, "every box patch applies to matching data");
+  Check(BuildEvilPack(fake.base(), kPack, copy) == 23, "every box and move class patch applies to matching data");
   Check(std::memcmp(original.data(), pack, original.size()) == 0, "ordinary Ryu boxes are untouched");
 
   uint8_t* out = fake.base() + copy;
@@ -217,12 +231,46 @@ void TestPack() {
   Check(out[attacks + kAttackSenpu * 16 + 11] == 12, "the Senpu box uses USF2's effect");
   Check(int8_t(out[attacks + kAttackTatsuStart * 16]) == -18, "the Tatsu startup box exists");
   Check(out[attacks + kAttackTatsuStart * 16 + 6] == 0x2D, "the Tatsu startup box inherits its strength");
+  Check(out[attacks + kAttackTatsuStart * 16 + 4] == 0x80, "USF2 attack 61 is a special with no stun: flags 1 at record +5");
+  Check(out[attacks + kAttackTatsuStart * 16 + 13] == 0, "USF2 attack 61 has packed 0, its template has 1");
 
   PutBox(pack + kAttackTable + 16 * 16, {1, 2, 3, 4});
-  Check(BuildEvilPack(fake.base(), kPack, copy) == 4, "a renumbered record is skipped");
+  Check(out[attacks + 31 * 16 + 11] == 0x4C && out[attacks + 44 * 16 + 11] == 0x4C, "ids 31, 32, 41-44 take USF2's class 76");
+  Check(out[attacks + 37 * 16 + 11] == 0x4E && out[attacks + 40 * 16 + 11] == 0x4E, "ids 37-40 take USF2's class 78");
+  Check(out[attacks + 48 * 16 + 11] == 0x3E && out[attacks + 53 * 16 + 11] == 0x3E, "ids 48-53 take USF2's class 62");
+  Check(out[attacks + 54 * 16 + 11] == 0x50 && out[attacks + 55 * 16 + 11] == 0x50, "ids 54 and 55 take USF2's class 80");
+  Check(out[attacks + kAttackTatsuStart * 16 + 11] == 0x3E, "USF2 attack 61 is class 62");
+  Check(out[attacks + kAttackSenpu * 16 + 11] == 12, "USF2 attack 60 is class 12");
+  Check(pack[kAttackTable + 31 * 16 + 11] == 0x1C, "ordinary Ryu keeps his move classes");
+  Check(BuildEvilPack(fake.base(), kPack, copy) == 22, "a renumbered record is skipped");
   Check(out[attacks + 16 * 16] == 1, "a skipped record keeps the guest values");
   StoreBE16(pack, 6, 0);
   Check(BuildEvilPack(fake.base(), kPack, copy) == 0, "an unusable pack applies nothing");
+}
+
+void TestWalk() {
+  Fake fake;
+  constexpr uint32_t kRow = 0x70000;
+  constexpr uint32_t kCopy = 0x70100;
+  StoreBE16(fake.base(), kRow, uint16_t(int16_t(-0x300)));
+  StoreBE16(fake.base(), kRow + 2, 0x11);
+  StoreBE16(fake.base(), kRow + 4, 0x200);
+  StoreBE16(fake.base(), kRow + 6, 0x22);
+  StoreBE16(fake.base(), kRow + 12, 0x33);
+  Check(BuildEvilWalk(fake.base(), kRow, kCopy), "the walk row builds");
+  Check(int16_t(LoadBE16(fake.base(), kCopy)) == -0x398, "forward keeps the row's sign at USF2's 3.59375");
+  Check(int16_t(LoadBE16(fake.base(), kCopy + 4)) == 0x268, "back keeps the row's sign at USF2's 2.40625");
+  Check(LoadBE16(fake.base(), kCopy + 2) == 0x11 && LoadBE16(fake.base(), kCopy + 12) == 0x33, "the rest of the row is copied");
+  Check(int16_t(LoadBE16(fake.base(), kRow)) == -0x300, "the shared row is untouched");
+
+  StoreBE16(fake.base(), kRow, 0x200);
+  StoreBE16(fake.base(), kRow + 4, uint16_t(int16_t(-0x300)));
+  Check(BuildEvilWalk(fake.base(), kRow, kCopy), "the other order builds");
+  Check(LoadBE16(fake.base(), kCopy) == 0x268 && int16_t(LoadBE16(fake.base(), kCopy + 4)) == -0x398,
+        "the faster entry is forward in either order");
+
+  StoreBE16(fake.base(), kRow, 0);
+  Check(!BuildEvilWalk(fake.base(), kRow, kCopy), "a row without speeds is left alone");
 }
 
 void Append32(std::vector<uint8_t>& out, uint32_t value) {
@@ -236,6 +284,16 @@ void AppendRecord(std::vector<uint8_t>& out, uint32_t id, uint32_t width, uint32
   Append32(out, palette ? 1 : 0);
   if (palette) out.insert(out.end(), kEvilPaletteBytes, uint8_t(fill + 1));
   out.insert(out.end(), size_t(width) * height, fill);
+}
+
+bool FillsTextureEdgeToEdge(const EvilSpriteImage& image) {
+  const auto column_has_art = [&](int x) {
+    for (int y = 0; y < image.height; ++y) {
+      if (image.indices[size_t(y) * size_t(image.width) + size_t(x)] != 0) return true;
+    }
+    return false;
+  };
+  return column_has_art(0) && column_has_art(image.width - 1);
 }
 
 void TestSprites() {
@@ -541,6 +599,17 @@ void TestRealData() {
       Check(table.skipped() == 0, "every patch matches the real Ryu table");
       Check(std::memcmp(before.data(), real->memory.data() + kRealTable, before.size()) == 0,
             "the real Ryu table stays byte identical");
+      {
+        const std::vector<uint8_t> data = ReadFile(std::filesystem::path(folder) / "s_data00.bin");
+        Check(data.size() > kRealFileHeader, "the real Ryu box pack is readable");
+        if (data.size() > kRealFileHeader) {
+          auto fake = std::make_unique<Fake>();
+          uint8_t* pack = fake->base() + kPack;
+          std::memcpy(pack, data.data() + kRealFileHeader, data.size() - kRealFileHeader);
+          for (const uint32_t offset : {0u, 2u, 4u, 6u}) StoreBE16(pack, offset, Le16(data.data() + kRealFileHeader + offset));
+          Check(BuildEvilPack(fake->base(), kPack, kPack + 0x2000) == 23, "every patch matches the real Ryu box pack");
+        }
+      }
       Check(GuestHasAction(real->base(), kRealTable, 0x54), "the real table has action 0x54");
       Check(!GuestHasAction(real->base(), kRealTable, kRagingDemonAction), "the real table has no action 0x5E");
       CheckRecordChain(*real, table.Teleport(), "the real teleport record is valid");
@@ -550,7 +619,7 @@ void TestRealData() {
       for (const Key key : std::initializer_list<Key>{
                {0x00, 0, 0}, {0x00, 1, 0}, {0x00, 2, 0}, {0x00, 3, 0}, {0x02, 0, 0}, {0x08, 0, 0}, {0x08, 1, 0},
                {0x08, 2, 0}, {0x08, 3, 0}, {0x0A, 0, 0}, {0x38, 0, 0}, {0x3A, 0, 0}, {0x40, 8, 0}, {0x42, 4, 0},
-               {0x42, 5, 0}, {0x46, 0, 0}, {0x4A, 3, 0}, {0x4A, 5, 0}, {0x4C, 0, 0}, {0x4C, 1, 0}, {0x4C, 2, 0},
+               {0x42, 5, 0}, {0x46, 0, 0}, {0x4A, 3, 0}, {0x4A, 5, 0}, {0x4C, 3, 0}, {0x4C, 4, 0}, {0x4C, 5, 0},
                {0x50, 0, 1}, {0x52, 0, 0}, {0x52, 1, 0}, {0x5E, 0, 0}, {0x5E, 1, 0}, {0x5E, 2, 0}}) {
         const uint32_t record = table.Find(key.action, key.sub, key.strong);
         Check(record != 0, "every Evil Ryu action resolves on the real table");
@@ -573,6 +642,17 @@ void TestRealData() {
     const EvilSpriteImage& portrait = sprites->Get(EvilArt::kLargePortrait);
     const EvilSpriteImage& name = sprites->Get(EvilArt::kName);
     Check(portrait.width == 371 && portrait.height == 416 && portrait.has_palette, "the portrait matches ryu_large");
+    Check(FillsTextureEdgeToEdge(portrait), "the Evil Ryu portrait is full bleed like the carrier's, no blank strip");
+    const std::vector<uint8_t> violent_file = ReadFile(std::filesystem::path(folder) / "violent_ken_sprites.bin");
+    if (!violent_file.empty()) {
+      auto violent = std::make_unique<EvilSprites>();
+      Check(ParseEvilSprites(violent_file.data(), violent_file.size(), violent.get()), "the Violent Ken sprite file parses");
+      for (const EvilArt art : {EvilArt::kLargePortrait, EvilArt::kLosePortrait}) {
+        const EvilSpriteImage& image = violent->Get(art);
+        Check(image.width == portrait.width && image.height == portrait.height, "Violent Ken's portraits match Ken's texture");
+        Check(FillsTextureEdgeToEdge(image), "the Violent Ken portraits are full bleed like the carrier's");
+      }
+    }
     Check(name.width == 384 && name.height == 64 && name.has_palette, "the name is 4x its 96x16 quad");
     Check(sprites->Get(EvilArt::kHudName).width == 360, "the HUD name is 4x its 90 wide quad");
     constexpr uint32_t kGuestPitch = 512;
@@ -596,6 +676,7 @@ void TestRealData() {
 int main() {
   TestActions();
   TestPack();
+  TestWalk();
   TestSprites();
   TestPhysicalFighter();
   TestSetFighterAnimation();

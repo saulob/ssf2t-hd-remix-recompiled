@@ -24,15 +24,18 @@ void GateSuper(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (!UltraFightersEnabled()) return original(ctx, base);
   const uint32_t work = G::kFightWork;
   const uint32_t active = LoadBE32(GuestHost(base, work - kActiveFighterBelowWork), 0);
-  const int side = EvilRyuSide<G>(base, active);
-  if (side < 0 || CanStartShinkuHadoken(FighterIdentity::kEvilRyu)) return original(ctx, base);
+  const int evil_side = EvilRyuSide<G>(base, active);
+  const int violent_side = ViolentKenSide<G>(base, active);
+  const int side = evil_side >= 0 ? evil_side : violent_side;
+  const FighterIdentity identity = evil_side >= 0 ? FighterIdentity::kEvilRyu : FighterIdentity::kViolentKen;
+  if (side < 0 || CanStartShinkuHadoken(identity)) return original(ctx, base);
   StoreBE32(base, work - kGateAddressBelowWork, 0);
   StoreBE32(base, work - kGateStrengthBelowWork, 1);
   StoreBE32(base, work - kGateResultBelowWork, 1);
   static bool logged[2];
   if (!logged[side]) {
     logged[side] = true;
-    REXLOG_INFO("DEBUG_SAULO EVIL_RYU super-gate side={} refused", side + 1);
+    REXLOG_INFO("DEBUG_SAULO ULTRA super-gate side={} identity={} refused", side + 1, IdentityName(identity));
   }
 }
 
