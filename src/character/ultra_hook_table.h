@@ -17,6 +17,7 @@ struct Base013UltraHooks {
   static constexpr uint32_t kRequestSound1 = 0x82375C60;
   static constexpr uint32_t kRoundEndScream1 = 0x8223CDD0;
   static constexpr uint32_t kObserveLock1 = 0x82246D38;
+  static constexpr uint32_t kEnterSelect1 = 0x8223DF78;
   static constexpr uint32_t kPlaceCursor1 = 0x8232DF78;
   static constexpr uint32_t kPlayEnding1 = 0x823CBE80;
   static constexpr uint32_t kGateSuper1 = 0x8238D3A8;
@@ -61,6 +62,7 @@ struct TitleUpdate023UltraHooks {
   static constexpr uint32_t kRequestSound1 = 0x82375D30;
   static constexpr uint32_t kRoundEndScream1 = 0x8223CEF8;
   static constexpr uint32_t kObserveLock1 = 0x82246D80;
+  static constexpr uint32_t kEnterSelect1 = 0x8223E0A8;
   static constexpr uint32_t kPlaceCursor1 = 0x8232DE58;
   static constexpr uint32_t kPlayEnding1 = 0x823CC460;
   static constexpr uint32_t kGateSuper1 = 0x8238D398;

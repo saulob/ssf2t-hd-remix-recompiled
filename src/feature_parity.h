@@ -69,7 +69,8 @@ inline constexpr Feature kFeatures[] = {
      "Palette::kPaletteRamPointer,Quote::kTaunts,Results::kLocalRecords,Results::kMatchWinner,"
      "Roster::kLayout,Roster::kLive,Roster::kMode,Select::kMode,UltraHooks::kPlayerCharacterIndex1,"
      "UltraHooks::kAnnounceWinnerName1,UltraHooks::kLoadSounds1,UltraHooks::kRequestSound1,"
-     "UltraHooks::kRoundEndScream1,UltraHooks::kObserveLock1,UltraHooks::kPlaceCursor1,"
+     "UltraHooks::kRoundEndScream1,UltraHooks::kObserveLock1,UltraHooks::kEnterSelect1,"
+     "UltraHooks::kPlaceCursor1,"
      "UltraHooks::kPlayEnding1,UltraHooks::kGateSuper1,UltraHooks::kDrawPortraits1,"
      "UltraHooks::kDrawSprite1,UltraHooks::kUpdateHud1,UltraHooks::kEmitSprites1,"
      "UltraHooks::kEmitSprites2,UltraHooks::kEmitSprites3,UltraHooks::kEmitSprites4,"
@@ -82,7 +83,7 @@ inline constexpr Feature kFeatures[] = {
      "UltraHooks::kPlayerResultsCharacter1,UltraHooks::kRecordMatch1,UltraHooks::kResetPlayerResults1,"
      "UltraHooks::kShowQuote1,UltraHooks::kShowWinText1",
      "UltraHooks::kPlayerCharacterIndex1,UltraHooks::kAnnounceWinnerName1,UltraHooks::kLoadSounds1,"
-     "UltraHooks::kRequestSound1,UltraHooks::kRoundEndScream1,UltraHooks::kObserveLock1,"
+     "UltraHooks::kRequestSound1,UltraHooks::kRoundEndScream1,UltraHooks::kObserveLock1,UltraHooks::kEnterSelect1,"
      "UltraHooks::kPlaceCursor1,UltraHooks::kPlayEnding1,UltraHooks::kGateSuper1,"
      "UltraHooks::kDrawPortraits1,UltraHooks::kDrawSprite1,UltraHooks::kUpdateHud1,"
      "UltraHooks::kEmitSprites1,UltraHooks::kEmitSprites2,UltraHooks::kEmitSprites3,"
@@ -113,7 +114,8 @@ inline constexpr Feature kFeatures[] = {
      "src/character/violent_ken_audio.cpp,src/character/violent_ken_data.cpp,"
      "src/character/violent_ken_moves.cpp",
      "", "", "", "", "tests/violent_ken_tests.cpp,tests/violent_ken_audio_tests.cpp,tests/secret_select_tests.cpp,"
-     "tests/ultra_ending_tests.cpp,tests/evil_ryu_moves_tests.cpp,tests/debug_hotkeys_removed_tests.cpp",
+     "tests/ultra_ending_tests.cpp,tests/evil_ryu_moves_tests.cpp,tests/debug_hotkeys_removed_tests.cpp,"
+     "tests/local_join_select_tests.cpp",
      "kEnableUltraFightersLabel"},
     {"Game files and Title Update", "", "", "", "", "", "", "",
      "src/game_files.cpp,src/stfs.cpp,src/guest_image.cpp,src/title_update_image.h", "", "", "", "",

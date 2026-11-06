@@ -465,6 +465,12 @@ add_executable(ssf2t_ultra_navigation_tests EXCLUDE_FROM_ALL tests/ultra_navigat
 target_include_directories(ssf2t_ultra_navigation_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_ultra_navigation_tests)
 
+add_executable(ssf2t_local_join_select_tests EXCLUDE_FROM_ALL tests/local_join_select_tests.cpp
+    src/character/ultra_navigation.cpp src/character/fighter_identity.cpp)
+target_include_directories(ssf2t_local_join_select_tests PRIVATE src)
+target_compile_definitions(ssf2t_local_join_select_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_local_join_select_tests)
+
 add_executable(ssf2t_violent_ken_tests EXCLUDE_FROM_ALL tests/violent_ken_tests.cpp
     src/character/ultra_navigation.cpp src/character/fighter_identity.cpp src/character/evil_ryu_moves.cpp
     src/character/evil_ryu_actions.cpp src/character/evil_ryu_sprites.cpp src/character/evil_ryu_palette.cpp

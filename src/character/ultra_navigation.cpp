@@ -83,6 +83,20 @@ void UltraNavigation::Set(int side, FighterIdentity identity) {
   SetRequestedIdentity(side, identity);
 }
 
+uint8_t UltraMaskKeptByDefender(uint8_t mask, const SelectEntry& entry) {
+  if (!entry.arcade) return 0;
+  uint8_t kept = 0;
+  for (int side = 0; side < 2; ++side) {
+    const SelectEntrySide& self = entry.sides[size_t(side)];
+    if (!entry.sides[size_t(1 - side)].joined || self.joined || !self.played || self.hidden) continue;
+    const uint8_t evil = uint8_t(1u << side);
+    const uint8_t violent = uint8_t(1u << (side + kViolentKenMaskShift));
+    if (entry.evil_ryu_available && self.guest_character == kRyuGuestCharacter) kept |= mask & evil;
+    if (entry.violent_ken_available && self.guest_character == kKenGuestCharacter) kept |= mask & violent;
+  }
+  return kept;
+}
+
 bool SelectSession::Touch(int64_t now_ms) {
   const bool started = last_ms_ == 0 || now_ms - last_ms_ >= kSelectSessionGapMilliseconds;
   if (started) ++id_;

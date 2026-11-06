@@ -288,6 +288,7 @@ SUITES=(
   "online service (Find Match, Create Match, Invite, friends)|ssf2t_online_service_tests|$A_NET;$A_RELAY;$A_PM;$A_MULTI"
   "secret characters (negotiation rule, select gating, rollback host state, validation)|ssf2t_secret_select_tests|$A_NET;$A_RB;$A_B13;$A_TU;$A_MULTI"
   "violent ken (identity, navigation, negotiation, moves, gameplay package)|ssf2t_violent_ken_tests|$A_NET;$A_RB;$A_B13;$A_TU;$A_MULTI"
+  "local join select (defender keeps Ultra cell, guest join path on both images)|ssf2t_local_join_select_tests|$A_B13;$A_TU"
   "evil ryu moves (recognizers, ground, render state)|ssf2t_evil_ryu_moves_tests|$A_B13;$A_TU"
   "debug hotkeys removed (F1, F4-F8 dispatch gone, real inputs wired)|ssf2t_debug_hotkeys_removed_tests|$A_B13;$A_TU"
   "console removed (Backtick bind, key reservation, logging kept)|ssf2t_console_removed_tests|$A_KEYS"

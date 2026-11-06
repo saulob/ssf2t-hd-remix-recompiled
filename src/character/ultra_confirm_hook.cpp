@@ -7,9 +7,12 @@
 
 #include "character/evil_ryu_moves.h"
 #include "character/secret_select.h"
+#include "character/select_activity.h"
 #include "character/ultra_fighters.h"
 #include "character/ultra_navigation.h"
+#include "character/violent_ken_data.h"
 #include "guest_memory.h"
+#include "netplay/fight_snapshot.h"
 #include "netplay/guest_netplay.h"
 #include "title_update_image.h"
 
@@ -27,14 +30,47 @@ struct TitleUpdate023Confirm {
 constexpr uint32_t kWorkSideOffset = 897;
 constexpr uint32_t kWorkLockedOffset = 899;
 constexpr uint32_t kWorkClassicOffset = 950;
+constexpr uint32_t kFighterSelectingOffset = 898;
+constexpr uint32_t kFighterPlayedOffset = 942;
 
-void TouchInteractiveSelect() {
+template <typename G>
+SelectEntry ReadSelectEntry(const uint8_t* base) {
+  const uint8_t game_mode = *GuestHost(base, G::kGameMode);
+  const uint8_t joined = CharacterSelectJoinedSides();
+  const uint32_t block = LoadBE32(GuestHost(base, G::kFighterBlockPointer), 0);
+  SelectEntry entry;
+  if (block < 0x10000 || block >= 0xFFFF0000u) return entry;
+  entry.arcade = game_mode == kArcadeGameMode;
+  entry.evil_ryu_available = EvilRyuAvailable(game_mode);
+  entry.violent_ken_available = ViolentKenAvailable(game_mode) && ViolentKenGameplayReady();
+  for (int side = 0; side < 2; ++side) {
+    const uint32_t fighter = block + netplay::kFighterOffsets[side];
+    SelectEntrySide& out = entry.sides[size_t(side)];
+    out.joined = (joined & (1u << side)) != 0;
+    out.played = *GuestHost(base, fighter + kFighterSelectingOffset) != 0 ||
+                 *GuestHost(base, fighter + kFighterPlayedOffset) != 0;
+    out.guest_character = int(int8_t(*GuestHost(base, fighter + netplay::kCharacterOffset)));
+    out.hidden = *GuestHost(base, fighter + netplay::kHiddenCharacterOffset) != 0;
+  }
+  return entry;
+}
+
+template <typename G>
+void TouchInteractiveSelect(const uint8_t* base) {
   const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
                           std::chrono::steady_clock::now().time_since_epoch())
                           .count();
   if (!GlobalSelectSession().Touch(now)) return;
-  GlobalUltraNavigation().Reset();
+  const SelectEntry entry = ReadSelectEntry<G>(base);
+  const uint8_t kept = UltraMaskKeptByDefender(GlobalUltraNavigation().Mask(), entry);
+  GlobalUltraNavigation().Restore(kept);
   GlobalHostMoves().Reset();
+  if (kept == 0) return;
+  for (int side = 0; side < 2; ++side) {
+    if (!GlobalUltraNavigation().OnUltraCell(side)) continue;
+    REXLOG_INFO("DEBUG_SAULO ULTRA reenter-select side={} guest={} restored={} reason=local_join", side + 1,
+                entry.sides[size_t(side)].guest_character, IdentityName(RequestedIdentity(side)));
+  }
 }
 
 // Both guest routes to the classic flag run inside the hooked function, so this sees them on the frame they happen.
@@ -50,7 +86,7 @@ void GuardClassic(uint8_t* base, uint32_t work, int side, uint8_t hd_style) {
 template <typename G, typename S>
 void ObserveLock(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const bool online = OnlineSelectMode(*GuestHost(base, G::kGameMode));
-  if (UltraFightersEnabled() && !online) TouchInteractiveSelect();
+  if (UltraFightersEnabled() && !online) TouchInteractiveSelect<G>(base);
   original(ctx, base);
   if (!UltraFightersEnabled()) return;
   const uint32_t work = LoadBE32(GuestHost(base, G::kFightWork + 4), 0);

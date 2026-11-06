@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 
@@ -76,6 +77,24 @@ class UltraNavigation {
 
   std::atomic<uint8_t> mask_{0};
 };
+
+struct SelectEntrySide {
+  bool joined = false;
+  bool played = false;
+  int guest_character = -1;
+  bool hidden = false;
+};
+
+struct SelectEntry {
+  bool arcade = false;
+  bool evil_ryu_available = false;
+  bool violent_ken_available = false;
+  std::array<SelectEntrySide, 2> sides{};
+};
+
+// A challenger joining an Arcade fight restarts Character Select for that side alone: the guest keeps the defender's
+// carrier, and only the cell mask says whether that carrier is an Ultra fighter. Returns the bits the defender keeps.
+uint8_t UltraMaskKeptByDefender(uint8_t mask, const SelectEntry& entry);
 
 // The interactive player select only runs for human players, so a gap in it means a new Character Select; the shared
 // select states also run between Arcade matches and must not end the player's choice.

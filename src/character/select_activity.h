@@ -11,4 +11,7 @@ bool CharacterSelectActive();
 // Changes each time Character Select starts running after being idle.
 uint32_t CharacterSelectSession();
 
+// The sides, as bits, that the latest Character Select entry starts over because they just joined.
+uint8_t CharacterSelectJoinedSides();
+
 }  // namespace ssf2t::character

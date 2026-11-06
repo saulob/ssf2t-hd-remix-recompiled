@@ -216,6 +216,7 @@ $Suites = @(
     @('fight telemetry (reporter, guest reads on both images, queue, wire)', 'fight_telemetry', 'Fight telemetry', 'Base013', 'TU023', 'Online protocol', 'Direct / Relay', 'Multiple fights / matches', 'Hooks and patches', 'Online parity'),
     @('secret characters (negotiation rule, select gating, rollback host state, validation)', 'secret_select', 'Online protocol', 'Rollback', 'Base013', 'TU023', 'Multiple fights / matches'),
     @('violent ken (identity, navigation, negotiation, moves, gameplay package)', 'violent_ken', 'Online protocol', 'Rollback', 'Base013', 'TU023', 'Multiple fights / matches'),
+    @('local join select (defender keeps Ultra cell, guest join path on both images)', 'local_join_select', 'Local multiplayer', 'Base013', 'TU023'),
     @('evil ryu moves (recognizers, ground, render state)', 'evil_ryu_moves', 'Base013', 'TU023'),
     @('debug hotkeys removed (F1, F4-F8 dispatch gone, real inputs wired)', 'debug_hotkeys_removed', 'Base013', 'TU023'),
     @('console removed (Backtick bind, key reservation, logging kept)', 'console_removed', 'Overlays / hotkeys'),
