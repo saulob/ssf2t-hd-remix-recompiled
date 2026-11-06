@@ -1,6 +1,6 @@
 // Online Match menu tests: the UIScreenSet edits (Multiplayer with Local Match and Online Match only, Online Match
-// with Find Match and Create Match only, Create Player Match without private slots or the lobby size), the help-line
-// table, and the hook wiring for both images.
+// with Find Match and Create Match only, Create Player Match without private slots or the lobby size, Main Menu and
+// Pause Menus without Leaderboards), the help-line table, and the hook wiring for both images.
 // Pure logic and source reads, no window or game files.
 // Run: ssf2t_online_menu_tests
 
@@ -183,10 +183,128 @@ std::string LocalLobbyScreen() {
          Row("multiplayerItem2") + Tabs(2) + "</UIActivationGrid>\n" + Tabs(1) + "</UIScreen>\n";
 }
 
+struct MenuEntry {
+  const char* item;
+  const char* hilight;
+  const char* plain;
+  const char* hidden_twin;  // an invisible copy of the plain text the game's trade-show path switches to
+  const char* event;
+  const char* signal;
+  const char* text_id;
+};
+
+struct MenuLayout {
+  std::string anim_prefix;
+  bool controller_accept;
+  int x0, x_step, y0, y_step;
+};
+
+const MenuLayout kMainLayout{"Highlight_PositionAnim_R", true, 1350, -30, 323, 60};
+const MenuLayout kPauseLayout{"Highlight_PositionAnim_", false, 1300, 0, 276, 60};
+const MenuLayout kTrainingLayout{"highlight_pausetrain_", false, 1300, 0, 286, 55};
+
+const std::vector<MenuEntry> kMainEntries = {
+    {"mainmenuItem1", "singleplayergame_hilight", "singlePlayerGame", "singlePlayerGame_OpenBeta", "SinglePlayerGame",
+     "accept_SinglePlayerGame", "SINGLE_PLAYER_GAME_L"},
+    {"mainmenuItem2", "multiplayergame_hilight", "multiplayerGame", nullptr, "MultiplayerGame",
+     "accept_MultiplayerGame", "MULTIPLAYER_GAME_L"},
+    {"mainmenuItem3", "leaderboards_hilight", "leaderboards", "leaderboards_OpenBeta", "Leaderboards",
+     "accept_LeaderboardSelect", "LEADERBOARDS_L"},
+    {"mainmenuItem4", "achievements_hilight", "achievements", "achievements_OpenBeta", "Achievements",
+     "accept_Achievements", "ACHIEVEMENTS_L"},
+    {"mainmenuItem5", "helpandoptions_hilight", "helpAndOptions", nullptr, "HelpAndOptions", "accept_HelpAndOptions",
+     "HELPANDOPTIONS_L"},
+    {"mainmenuItem6", "returntoarcade_hilight", "returnToArcade", nullptr, "ReturnToArcade", "accept_ReturnToArcade",
+     "RETURN_TO_ARCADE_L"},
+};
+
+const std::vector<MenuEntry> kPauseEntries = {
+    {"pauseItem1", "resumegame_hilight", "resumegame", nullptr, "resumegame", "accept_ResumeGame", "RESUME_GAME_L"},
+    {"pauseItem2", "charactermoves_hilight", "charactermoves", nullptr, "charactermoves", "accept_charactermoves",
+     "CHARACTER_MOVE_LIST_L"},
+    {"pauseItem3", "helpoptions_hilight", "helpoptions", nullptr, "helpoptions", "accept_helpoptions",
+     "HELPANDOPTIONS_L"},
+    {"pauseItem4", "leaderboard_hilight", "leaderboard", "leaderboard_OpenBeta", "leaderboards", "accept_leaderboards",
+     "LEADERBOARDS_L"},
+    {"pauseItem5", "achievements__hilight", "achievements_", "achievements__OpenBeta", "achievements",
+     "accept_achievements", "ACHIEVEMENTS_L"},
+    {"pauseItem6", "exitgame_hilight", "exitgame", nullptr, "exitgame", "accept_ExitGame", "EXIT_GAME_L"},
+};
+
+const std::vector<MenuEntry> kTrainingEntries = {
+    {"pauseItem1", "resumegame_hilight", "resumegame", nullptr, "resumegame", "accept_ResumeGame", "RESUME_GAME_L"},
+    {"pauseItem2", "changecharacter_hilight", "changecharacter", nullptr, "changecharacter", "accept_changecharacter",
+     "CHANGE_CHARACTER_L"},
+    {"pauseItem3", "charactermoves_hilight", "charactermoves", nullptr, "charactermoves", "accept_charactermoves",
+     "CHARACTER_MOVE_LIST_L"},
+    {"pauseItem4", "trainingmode_hilight", "trainingmode", nullptr, "trainingmode", "accept_trainingmode",
+     "TRAINING_MODE_OPTIONS_L"},
+    {"pauseItem5", "helpoptions_hilight", "helpoptions", nullptr, "helpoptions", "accept_helpoptions",
+     "HELPANDOPTIONS_L"},
+    {"pauseItem6", "leaderboard_hilight", "leaderboards", nullptr, "leaderboards", "accept_leaderboards",
+     "LEADERBOARDS_L"},
+    {"pauseItem7", "achievements_hilight", "achievements", nullptr, "achievements", "accept_achievements",
+     "ACHIEVEMENTS_L"},
+    {"pauseItem8", "exitgame_hilight", "exitgame", nullptr, "exitgame", "accept_exitgame", "EXIT_GAME_L"},
+};
+
+std::string AcceptFor(const MenuLayout& layout, const std::string& signal) {
+  return layout.controller_accept ? "GetUIControllerUsed(); SetControllerMask(result); GameFlowSignal(" + signal + ");"
+                                  : "GameFlowSignal(" + signal + ");";
+}
+
+std::string PositionOf(const MenuLayout& layout, size_t row, int z) {
+  return std::to_string(layout.x0 + int(row) * layout.x_step) + " " + std::to_string(layout.y0 + int(row) * layout.y_step) +
+         " " + std::to_string(z);
+}
+
+// A menu screen laid out like the game's MainMenu and PauseMenu_* screens: one grid row, one visible text pair, one
+// highlight event and one activation item per entry.
+std::string MenuScreen(const std::string& screen, const std::vector<MenuEntry>& entries, const MenuLayout& layout) {
+  std::string s = Tabs(1) + "<UIScreen>\n" + Tabs(2) + "<name>" + screen + "</name>\n" + Tabs(2) + "<UIActivationGrid>\n";
+  for (const MenuEntry& entry : entries) s += Row(entry.item);
+  s += Tabs(2) + "</UIActivationGrid>\n" + Tabs(2) + "<uiElements>\n" + Tabs(4) + "<UIElementGroup>\n" + Tabs(5) +
+       "<name>activefonts</name>\n";
+  for (size_t i = 0; i < entries.size(); ++i) {
+    s += Text(entries[i].hilight, PositionOf(layout, i, 10), entries[i].event, entries[i].text_id);
+  }
+  s += Tabs(4) + "</UIElementGroup>\n" + Tabs(4) + "<UIElementGroup>\n" + Tabs(5) + "<name>highlight_move_group</name>\n";
+  for (size_t i = 0; i < entries.size(); ++i) {
+    s += Highlight(layout.anim_prefix + std::to_string(i + 1), entries[i].event);
+  }
+  s += Tabs(4) + "</UIElementGroup>\n" + Tabs(4) + "<UIElementGroup>\n" + Tabs(5) + "<name>inactivefonts</name>\n";
+  for (size_t i = 0; i < entries.size(); ++i) {
+    s += Text(entries[i].plain, PositionOf(layout, i, 16), entries[i].event, entries[i].text_id);
+    if (entries[i].hidden_twin) {
+      s += Text(entries[i].hidden_twin, PositionOf(layout, i, 16), entries[i].event, entries[i].text_id, true);
+    }
+  }
+  s += Tabs(4) + "</UIElementGroup>\n" + Tabs(3) + "<UIElementGroup>\n" + Tabs(4) + "<name>temp_activate_items</name>\n";
+  for (const MenuEntry& entry : entries) {
+    s += Item("UIGraphic", entry.item, entry.event, AcceptFor(layout, entry.signal));
+  }
+  s += Tabs(3) + "</UIElementGroup>\n" + Tabs(2) + "</uiElements>\n" + Tabs(1) + "</UIScreen>\n";
+  return s;
+}
+
+// The Leaderboards screens the menu rows used to open; they and the screens this port does not reach stay as shipped.
+std::string LeaderboardSelectScreen() {
+  return Tabs(1) + "<UIScreen>\n" + Tabs(2) + "<name>LeaderboardSelect</name>\n" + Tabs(2) + "<UIActivationGrid>\n" +
+         Row("leaderboardselectItem1") + Row("leaderboardselectItem2") + Tabs(2) + "</UIActivationGrid>\n" + Tabs(1) +
+         "</UIScreen>\n";
+}
+
 std::string ScreenSet() {
   return "<UIScreenSet>\n" + CreateMatchScreen() + LocalLobbyScreen() + MultiplayerScreen("MultiplayerGame") +
          MultiplayerScreen("MultiplayerGame_ps3") + PlayerMatchScreen("PlayerMatch") +
-         PlayerMatchScreen("PlayerMatch_ps3") + "</UIScreenSet>\n";
+         PlayerMatchScreen("PlayerMatch_ps3") + MenuScreen("MainMenu", kMainEntries, kMainLayout) +
+         MenuScreen("MainMenu_ps3", kMainEntries, kMainLayout) + MenuScreen("MainMenuTrial", kMainEntries, kMainLayout) +
+         MenuScreen("PauseMenu_Regular", kPauseEntries, kPauseLayout) +
+         MenuScreen("PauseMenu_Regular_ps3", kPauseEntries, kPauseLayout) +
+         MenuScreen("PauseMenu_Demo", kPauseEntries, kPauseLayout) +
+         MenuScreen("PauseMenu_Training", kTrainingEntries, kTrainingLayout) +
+         MenuScreen("PauseMenu_Training_ps3", kTrainingEntries, kTrainingLayout) + LeaderboardSelectScreen() +
+         "</UIScreenSet>\n";
 }
 
 // The screen itself, not an element of another screen with the same name (Multiplayer has a PlayerMatch text).
@@ -398,10 +516,187 @@ void TestPatchIsAllOrNothingPerScreen() {
   for (const char c : ScreenSet()) crlf += c == '\n' ? std::string("\r\n") : std::string(1, c);
   const auto windows = PatchScreenSet(crlf);
   CHECK(windows && windows->multiplayer && windows->player_match && windows->create_match);
+  CHECK(windows && windows->main_menu && windows->pause_menu && windows->pause_training);
   if (windows) {
     CHECK(!Has(std::regex_replace(windows->xml, std::regex("\r\n"), ""), "\n"));
     CHECK(Has(windows->xml, "</descName>\r\n\t\t\t\t\t\t<visible>false</visible>\r\n"));
   }
+}
+
+bool ContainsLeaderboard(const std::string& text) {
+  std::string lower = text;
+  for (char& c : lower) c = char(std::tolower(static_cast<unsigned char>(c)));
+  return lower.find("leaderboard") != std::string::npos;
+}
+
+std::vector<std::string> ItemNames(const std::string& screen) {
+  std::vector<std::string> names;
+  const std::string group = screen.substr(screen.find("<name>temp_activate_items</name>"));
+  const std::regex item(R"(<UIGraphic>\s*<name>(\w+)</name>)");
+  for (auto it = std::sregex_iterator(group.begin(), group.end(), item); it != std::sregex_iterator(); ++it) {
+    names.push_back((*it)[1]);
+  }
+  return names;
+}
+
+// The highlight events in the order the highlight group lists them, each with its animation's index.
+std::vector<std::pair<int, std::string>> HighlightEvents(const std::string& screen, const std::string& anim_prefix) {
+  std::vector<std::pair<int, std::string>> events;
+  const std::regex bind("<anim>" + anim_prefix + R"((\d+)</anim>\s*<event>activate(\w+)</event>)");
+  for (auto it = std::sregex_iterator(screen.begin(), screen.end(), bind); it != std::sregex_iterator(); ++it) {
+    events.emplace_back(std::stoi((*it)[1]), (*it)[2]);
+  }
+  return events;
+}
+
+std::pair<int, int> TextPosition(const std::string& screen, const std::string& name) {
+  const std::string text = ElementOf(screen, "UIText", name);
+  std::smatch m;
+  if (!std::regex_search(text, m, std::regex(R"(<pos>(-?\d+) (-?\d+) )"))) return {0, 0};
+  return {std::stoi(m[1]), std::stoi(m[2])};
+}
+
+// What Down does on a screen: the next grid row, wrapping to the first after the last.
+std::vector<std::string> DownWalk(const std::string& screen, size_t steps) {
+  const std::vector<std::string> rows = GridRows(screen);
+  std::vector<std::string> accepts;
+  for (size_t i = 0; i <= steps && !rows.empty(); ++i) accepts.push_back(AcceptScript(screen, rows[i % rows.size()]));
+  return accepts;
+}
+
+// One menu without Leaderboards: the entry at index `removed` is gone and the others keep their order.
+void CheckMenuWithoutLeaderboards(const std::string& original_set, const std::string& patched_set,
+                                  const std::string& name, const std::vector<MenuEntry>& entries,
+                                  const MenuLayout& layout, size_t removed) {
+  const std::string before = ScreenOf(original_set, name);
+  const std::string screen = ScreenOf(patched_set, name);
+  CHECK(!screen.empty() && screen != before);
+  CHECK(ContainsLeaderboard(before) && !ContainsLeaderboard(screen));
+
+  std::vector<MenuEntry> kept = entries;
+  kept.erase(kept.begin() + long(removed));
+  const std::vector<std::string> rows = GridRows(screen);
+  CHECK(GridRows(before).size() == entries.size());
+  CHECK(rows.size() == kept.size());
+  CHECK(ItemNames(screen) == rows);
+  CHECK(Count(screen, "GameFlowSignal(") == kept.size());
+
+  for (size_t i = 0; i < kept.size() && i < rows.size(); ++i) {
+    // Each row keeps its own item and signal, whatever its new position.
+    CHECK(rows[i] == kept[i].item);
+    CHECK(AcceptScript(screen, rows[i]) == AcceptFor(layout, kept[i].signal));
+    CHECK(ElementOf(screen, "UIGraphic", rows[i]) == ElementOf(before, "UIGraphic", rows[i]));
+    // No gap: the visible texts sit on consecutive slots.
+    const auto expected = std::make_pair(layout.x0 + int(i) * layout.x_step, layout.y0 + int(i) * layout.y_step);
+    CHECK(TextPosition(screen, kept[i].hilight) == expected);
+    CHECK(TextPosition(screen, kept[i].plain) == expected);
+    if (kept[i].hidden_twin) CHECK(TextPosition(screen, kept[i].hidden_twin) == expected);
+    CHECK(Has(ElementOf(screen, "UIText", kept[i].plain), std::string("<textID>") + kept[i].text_id + "</textID>"));
+  }
+
+  // The highlight has one animation per row, in order, each bound to its own row's event.
+  const auto highlights = HighlightEvents(screen, layout.anim_prefix);
+  CHECK(highlights.size() == kept.size());
+  for (size_t i = 0; i < kept.size() && i < highlights.size(); ++i) {
+    CHECK(highlights[i].first == int(i) + 1 && highlights[i].second == kept[i].event);
+  }
+
+  // Down visits every row once and wraps to the first; Up from the first lands on the last.
+  const std::vector<std::string> walk = DownWalk(screen, kept.size());
+  CHECK(walk.size() == kept.size() + 1 && walk.front() == walk.back());
+  for (size_t i = 0; i < kept.size() && i < walk.size(); ++i) CHECK(walk[i] == AcceptFor(layout, kept[i].signal));
+  CHECK(!rows.empty() && AcceptScript(screen, rows.back()) == AcceptFor(layout, kept.back().signal));
+}
+
+void TestMainMenuHasNoLeaderboards() {
+  const std::string original = ScreenSet();
+  const auto patch = PatchScreenSet(original);
+  CHECK(patch && patch->main_menu);
+  if (!patch) return;
+  CheckMenuWithoutLeaderboards(original, patch->xml, "MainMenu", kMainEntries, kMainLayout, 2);
+  const std::string screen = ScreenOf(patch->xml, "MainMenu");
+  // Single Player, Multiplayer, Achievements, Help & Options, Exit Game.
+  CHECK((GridRows(screen) ==
+         std::vector<std::string>{"mainmenuItem1", "mainmenuItem2", "mainmenuItem4", "mainmenuItem5", "mainmenuItem6"}));
+  const std::vector<std::string> signals = {"accept_SinglePlayerGame", "accept_MultiplayerGame", "accept_Achievements",
+                                            "accept_HelpAndOptions", "accept_ReturnToArcade"};
+  for (size_t i = 0; i < signals.size(); ++i) CHECK(AcceptScript(screen, GridRows(screen)[i]) == AcceptFor(kMainLayout, signals[i]));
+  CHECK(Count(screen, "<UIGraphic>") == 5);
+}
+
+void TestPauseMenuHasNoLeaderboards() {
+  const std::string original = ScreenSet();
+  const auto patch = PatchScreenSet(original);
+  CHECK(patch && patch->pause_menu);
+  if (!patch) return;
+  CheckMenuWithoutLeaderboards(original, patch->xml, "PauseMenu_Regular", kPauseEntries, kPauseLayout, 3);
+  const std::string screen = ScreenOf(patch->xml, "PauseMenu_Regular");
+  // Resume Game, Character Move List, Help & Options, Achievements, Exit Game.
+  CHECK((GridRows(screen) ==
+         std::vector<std::string>{"pauseItem1", "pauseItem2", "pauseItem3", "pauseItem5", "pauseItem6"}));
+  const std::vector<std::string> signals = {"accept_ResumeGame", "accept_charactermoves", "accept_helpoptions",
+                                            "accept_achievements", "accept_ExitGame"};
+  for (size_t i = 0; i < signals.size(); ++i) CHECK(AcceptScript(screen, GridRows(screen)[i]) == AcceptFor(kPauseLayout, signals[i]));
+  CHECK(Count(screen, "<UIGraphic>") == 5);
+}
+
+void TestTrainingPauseHasNoLeaderboards() {
+  const std::string original = ScreenSet();
+  const auto patch = PatchScreenSet(original);
+  CHECK(patch && patch->pause_training);
+  if (!patch) return;
+  CheckMenuWithoutLeaderboards(original, patch->xml, "PauseMenu_Training", kTrainingEntries, kTrainingLayout, 5);
+  CHECK(GridRows(ScreenOf(patch->xml, "PauseMenu_Training")).size() == 7);
+}
+
+void TestOtherMenusAndLeaderboardScreensStayAuthored() {
+  const std::string original = ScreenSet();
+  const auto patch = PatchScreenSet(original);
+  if (!patch) {
+    CHECK(false);
+    return;
+  }
+  for (const char* name : {"MainMenu_ps3", "MainMenuTrial", "PauseMenu_Regular_ps3", "PauseMenu_Demo",
+                           "PauseMenu_Training_ps3", "LeaderboardSelect"}) {
+    CHECK(!ScreenOf(original, name).empty() && ScreenOf(patch->xml, name) == ScreenOf(original, name));
+  }
+}
+
+// A menu laid out differently is left whole, and the others are still patched.
+void TestLeaderboardsPatchIsAllOrNothingPerScreen() {
+  std::string other = ScreenSet();
+  const size_t at = other.find("<name>achievements_OpenBeta</name>");
+  CHECK(at != std::string::npos);
+  other.replace(at, 34, "<name>achievements_Demo_____</name>");
+  const auto patch = PatchScreenSet(other);
+  CHECK(patch && !patch->main_menu && patch->pause_menu && patch->pause_training);
+  if (patch) CHECK(ScreenOf(patch->xml, "MainMenu") == ScreenOf(other, "MainMenu"));
+
+  std::string twice = ScreenSet();
+  const std::string row = Row("pauseItem4");
+  twice.insert(twice.find(row, twice.find("<name>PauseMenu_Regular</name>")), row);
+  const auto ambiguous = PatchScreenSet(twice);
+  CHECK(ambiguous && !ambiguous->pause_menu && ambiguous->main_menu);
+}
+
+// The strings, text IDs and screens behind Leaderboards stay for a future leaderboard; only the menu rows go.
+void TestLeaderboardInfrastructureIsKept() {
+  const std::string table = ReadSource("localization/pt_br_game_text.cpp");
+  for (const char* id : {"LEADERBOARDS_L", "LEADERBOARDS", "tid_mmLeaderboards", "tid_pLeaderboards",
+                         "tid_LeaderboardSelectHelp", "LEADERBOARD_SELECT"}) {
+    CHECK(Has(table, id));
+  }
+  // Every text the remaining rows show is still in the table.
+  for (const char* id : {"SINGLE_PLAYER_GAME_L", "MULTIPLAYER_GAME_L", "ACHIEVEMENTS_L", "HELPANDOPTIONS_L",
+                         "RETURN_TO_ARCADE_L", "RESUME_GAME_L", "CHARACTER_MOVE_LIST_L", "EXIT_GAME_L"}) {
+    CHECK(Has(table, id));
+  }
+  CHECK(Has(ReadSource("localization/game_text_hook.cpp"), "ShowLeaderboardError"));
+  const std::string menu = ReadSource("online_menu.cpp");
+  CHECK(Has(menu, "kMainMenuScreen") && !Has(menu, "tid_mmLeaderboards") && !Has(menu, "LEADERBOARDS_L"));
+  const std::string hook = ReadSource("online_menu_hook.cpp");
+  CHECK(Has(hook, "leaderboards menu entry removed main={} pause={} training_pause={}"));
+  CHECK(Has(hook, "leaderboards menu help rows main={} pause={} training_pause={}"));
 }
 
 std::vector<uint8_t> HelpTable() {
@@ -419,6 +714,12 @@ std::vector<uint8_t> HelpTable() {
   put(10, "multiplayerGame_ps3", {0xA0, 0xA1, 0xA2, 0xA3});
   put(12, "playerMatch", {0xC0, 0xC1, 0xC2});
   put(13, "playerMatch_ps3", {0xD0, 0xD1, 0xD2, 0xD3});
+  put(20, "MainMenu", {0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5});
+  put(21, "MainMenu_ps3", {0xB0, 0xB1, 0xB2, 0xB4});
+  put(22, "pauseMenu_Regular", {0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5});
+  put(23, "pauseMenu_Regular_ps3", {0xE0, 0xE1, 0xE2, 0xE3, 0xE5});
+  put(24, "pauseMenu_Training", {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7});
+  put(25, "pauseMenu_Demo", {0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6});
   return table;
 }
 
@@ -443,12 +744,23 @@ void TestHelpLinesFollowTheRows() {
   CHECK((HelpLines(table, 5) == std::vector<uint32_t>{0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x58}));
   CHECK((HelpLines(table, 10) == std::vector<uint32_t>{0xA0, 0xA1, 0xA2, 0xA3}));
   CHECK((HelpLines(table, 0) == std::vector<uint32_t>{0x11, 0x12}));
+  // Achievements, Help & Options and Exit Game keep their own help lines once Leaderboards' line is gone.
+  CHECK(patch.main_menu && patch.pause_menu && patch.pause_training);
+  CHECK((HelpLines(table, 20) == std::vector<uint32_t>{0xB0, 0xB1, 0xB3, 0xB4, 0xB5}));
+  CHECK((HelpLines(table, 22) == std::vector<uint32_t>{0xE0, 0xE1, 0xE2, 0xE4, 0xE5}));
+  CHECK((HelpLines(table, 24) == std::vector<uint32_t>{0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF6, 0xF7}));
+  CHECK(LoadBE32(table.data() + 20 * kHelpTextEntryBytes, 12 + 4 * 5) == 0);
+  CHECK(HelpTextScreenText(table.data(), kMainMenuScreen) == 0x8014);
+  CHECK((HelpLines(table, 21) == std::vector<uint32_t>{0xB0, 0xB1, 0xB2, 0xB4}));
+  CHECK((HelpLines(table, 23) == std::vector<uint32_t>{0xE0, 0xE1, 0xE2, 0xE3, 0xE5}));
+  CHECK((HelpLines(table, 25) == std::vector<uint32_t>{0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6}));
   CHECK(HelpTextScreenText(table.data(), kMultiplayerScreen) == 0x8009);
   CHECK(HelpTextScreenText(table.data(), "Unknown") == 0);
   // A table that is already patched (or laid out differently) is left alone.
   const std::vector<uint8_t> once = table;
   const HelpTextPatch again = PatchHelpText(table.data());
   CHECK(!again.multiplayer && !again.player_match && !again.create_match && table == once);
+  CHECK(!again.main_menu && !again.pause_menu && !again.pause_training);
 }
 
 void TestHooksCoverBothImages() {
@@ -608,6 +920,12 @@ int main() {
   TestOtherScreensStayAuthored();
   TestCreateMatchHasNoLobbySize();
   TestPatchIsAllOrNothingPerScreen();
+  TestMainMenuHasNoLeaderboards();
+  TestPauseMenuHasNoLeaderboards();
+  TestTrainingPauseHasNoLeaderboards();
+  TestOtherMenusAndLeaderboardScreensStayAuthored();
+  TestLeaderboardsPatchIsAllOrNothingPerScreen();
+  TestLeaderboardInfrastructureIsKept();
   TestHelpLinesFollowTheRows();
   TestHooksCoverBothImages();
   TestGateHookUsesTheProvenConvention();

@@ -89,6 +89,8 @@ struct OnlineMenuHooks {
                   patch->player_match ? 0 : 1, G::kName);
       REXLOG_INFO("create_player_match players control removed={} guest={}", patch->create_match,
                   G::kName);
+      REXLOG_INFO("leaderboards menu entry removed main={} pause={} training_pause={} guest={}", patch->main_menu,
+                  patch->pause_menu, patch->pause_training, G::kName);
       return;
     }
     if (guest_text && StartsLikeScripts(guest_text)) {
@@ -155,6 +157,8 @@ struct OnlineMenuHooks {
     const ssf2t::HelpTextPatch patch = ssf2t::PatchHelpText(base + G::kHelpTextTable);
     REXLOG_INFO("multiplayer menu help rows multiplayer={} player_match={} create_player_match={} guest={}",
                 patch.multiplayer, patch.player_match, patch.create_match, G::kName);
+    REXLOG_INFO("leaderboards menu help rows main={} pause={} training_pause={} guest={}", patch.main_menu,
+                patch.pause_menu, patch.pause_training, G::kName);
   }
 
   // Runs on each help-bar refresh; logs only when the Multiplayer or Game Lobby screen becomes the current one.
