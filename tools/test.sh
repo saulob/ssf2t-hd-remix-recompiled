@@ -290,6 +290,8 @@ SUITES=(
   "violent ken (identity, navigation, negotiation, moves, gameplay package)|ssf2t_violent_ken_tests|$A_NET;$A_RB;$A_B13;$A_TU;$A_MULTI"
   "evil ryu moves (recognizers, ground, render state)|ssf2t_evil_ryu_moves_tests|$A_B13;$A_TU"
   "debug hotkeys removed (F1, F4-F8 dispatch gone, real inputs wired)|ssf2t_debug_hotkeys_removed_tests|$A_B13;$A_TU"
+  "console removed (Backtick bind, key reservation, logging kept)|ssf2t_console_removed_tests|$A_KEYS"
+  "skip intro (setting, launcher row, gameflow patch, hooks of both builds)|ssf2t_skip_intro_tests|$A_B13;$A_TU;$A_HOOK;$A_SET"
   "character moves page, winner quotes and legacy text lines|ssf2t_character_moves_tests|$A_B13;$A_TU"
   "roster cells (Akuma and Ultra cells inside the native roster pass: lifetime, fade order, geometry, plan)|ssf2t_roster_cells_tests|$A_B13;$A_TU;$A_HOOK"
   "ultra endings (Evil Ryu and Violent Ken: package, text, routing, patches, guest switch)|ssf2t_ultra_ending_tests|$A_B13;$A_TU;$A_HOOK"

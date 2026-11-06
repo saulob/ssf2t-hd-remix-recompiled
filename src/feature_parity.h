@@ -168,6 +168,11 @@ inline constexpr Feature kFeatures[] = {
     {"Title bar and frame counter", "", "", "ssf2t_show_fps,ssf2t_show_render_resolution,ssf2t_show_frame_counter", "",
      "", "", "F2=src/frame_counter.cpp", "src/frame_counter.cpp,src/window_title.h", "", "", "", "",
      "tests/window_host_tests.cpp", "Frame rate in title,Render resolution in title,Frame counter"},
+    {"Skip intro",
+     "SkipIntro::kXmlDocumentParse,SkipIntro::kBootLogoStep,SkipIntro::kBootLogoState,SkipIntro::kBootLogoFinished,"
+     "SkipIntro::kCapcomLogo,SkipIntro::kBackboneLogo,SkipIntro::kTextureRefCount,SkipIntro::kTextureRelease",
+     "SkipIntro::kXmlDocumentParse,SkipIntro::kBootLogoStep", "ssf2t_skip_intro", "", "", "", "",
+     "src/skip_intro.h,src/skip_intro_hook.cpp", "", "", "", "", "tests/skip_intro_tests.cpp", "Skip intro"},
     {"Launcher", "", "", "",
      "ssf2t_launcher,ssf2t_skip_launcher,ssf2t_launcher_x,ssf2t_launcher_y,ssf2t_launcher_width,ssf2t_launcher_height,"
      "ssf2t_launcher_maximized,ssf2t_launcher_fullscreen",
@@ -177,7 +182,7 @@ inline constexpr Feature kFeatures[] = {
      "src/imgui_gamepad.cpp:ImGuiGamepad::Read", "src/imgui_gamepad.cpp:ImGuiGamepad::Read",
      "tests/launcher_gamepad_tests.cpp"},
     {"Keyboard controls", "", "", "mnk_mode", "", "", "", "", "src/keybinds.h,src/cursor_input.h,src/input_summary.cpp", "", "", "", "",
-     "tests/keyboard_tests.cpp", "Keyboard,Keyboard controls"},
+     "tests/keyboard_tests.cpp,tests/console_removed_tests.cpp", "Keyboard,Keyboard controls"},
     {"Local multiplayer", "", "", "ssf2t_player_1_name,ssf2t_player_2_name", "", "", "", "",
      "src/local_player_name.h,src/player_name_setting.h,src/match_input.h,src/input_owner.h,src/pad_slot_scan.h", "", "",
      "", "", "tests/player_name_tests.cpp,tests/keyboard_tests.cpp", "kPlayerNamesTitle"},

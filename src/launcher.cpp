@@ -904,6 +904,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
       languages.push_back({language.key, language.label});
     }
     ui.Combo(kLanguageLabel, kLanguageHelp, kLanguageSetting, kDefaultLanguage, languages);
+    ui.Toggle("Skip intro", "Start directly at the title screen", "ssf2t_skip_intro", false, "Off", "On");
     ui.Toggle("Frame rate in title", "Shows the game's frame rate in the window title: Super Street Fighter II Turbo HD Remix | FPS: 60.00",
               "ssf2t_show_fps", true, "Off", "On");
     ui.Toggle("Render resolution in title", "Shows the game's render resolution in the window title",

@@ -267,7 +267,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
     ReXApp::LaunchModule();
   }
 
-  // ReXGlue's debug (F3) and settings (F4) overlays are developer tools; F3 is the Ping display here.
+  // ReXGlue's debug (F3), console (Backtick) and settings (F4) overlays are developer tools; F3 is the Ping display here.
   void OnCreateDialogs(rex::ui::ImGuiDrawer*) override {
     for (const char* bind : kRemovedSdkBinds) rex::ui::UnregisterBind(bind);
   }

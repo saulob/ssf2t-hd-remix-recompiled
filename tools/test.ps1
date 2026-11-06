@@ -217,6 +217,8 @@ $Suites = @(
     @('violent ken (identity, navigation, negotiation, moves, gameplay package)', 'violent_ken', 'Online protocol', 'Rollback', 'Base013', 'TU023', 'Multiple fights / matches'),
     @('evil ryu moves (recognizers, ground, render state)', 'evil_ryu_moves', 'Base013', 'TU023'),
     @('debug hotkeys removed (F1, F4-F8 dispatch gone, real inputs wired)', 'debug_hotkeys_removed', 'Base013', 'TU023'),
+    @('console removed (Backtick bind, key reservation, logging kept)', 'console_removed', 'Overlays / hotkeys'),
+    @('skip intro (setting, launcher row, gameflow patch, hooks of both builds)', 'skip_intro', 'Base013', 'TU023', 'Hooks and patches', 'Settings'),
     @('character moves page, winner quotes and legacy text lines', 'character_moves', 'Base013', 'TU023'),
     @('ultra endings (Evil Ryu and Violent Ken: package, text, routing, patches, guest switch)', 'ultra_ending', 'Base013', 'TU023', 'Hooks and patches'),
     @('roster cells (Akuma and Ultra cells inside the native roster pass: lifetime, fade order, geometry, plan)', 'roster_cells', 'Base013', 'TU023', 'Hooks and patches'),

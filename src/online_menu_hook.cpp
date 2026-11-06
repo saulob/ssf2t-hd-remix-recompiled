@@ -14,6 +14,8 @@
 #include "guest_memory.h"
 #include "online_menu.h"
 #include "player_match_guest.h"
+#include "settings.h"
+#include "skip_intro.h"
 #include "title_update_image.h"
 
 namespace {
@@ -37,6 +39,12 @@ bool StartsLikeScripts(const char* text) {
   const void* end = std::memchr(text, '\0', kHead);
   const size_t size = end ? size_t(static_cast<const char*>(end) - text) : kHead;
   return std::string_view(text, size).find("<scripts>") != std::string_view::npos;
+}
+
+bool StartsLikeGameflowFsm(const char* text) {
+  const void* end = std::memchr(text, '\0', ssf2t::kGameflowHead);
+  const size_t size = end ? size_t(static_cast<const char*>(end) - text) : ssf2t::kGameflowHead;
+  return ssf2t::IsGameflowFsmHead(std::string_view(text, size));
 }
 
 bool StartsLikeDescriptors(const char* text) {
@@ -109,6 +117,12 @@ struct OnlineMenuHooks {
         return;
       }
     }
+    if (guest_text && REXCVAR_GET(ssf2t_skip_intro) && StartsLikeGameflowFsm(guest_text)) {
+      const auto patched = ssf2t::PatchGameflowIntro(guest_text);
+      if (patched && ParsePatched(ctx, base, original, *patched)) {
+        return;
+      }
+    }
     original(ctx, base);
   }
 
@@ -156,6 +170,9 @@ struct OnlineMenuHooks {
     g_in_game_lobby = in_lobby;
   }
 };
+
+static_assert(ssf2t::Base013SkipIntro::kXmlDocumentParse == ssf2t::Base013PlayerMatch::kXmlDocumentParse);
+static_assert(ssf2t::TitleUpdate023SkipIntro::kXmlDocumentParse == ssf2t::TitleUpdate023PlayerMatch::kXmlDocumentParse);
 
 using Base = OnlineMenuHooks<ssf2t::Base013PlayerMatch>;
 using Update = OnlineMenuHooks<ssf2t::TitleUpdate023PlayerMatch>;

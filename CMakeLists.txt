@@ -265,6 +265,7 @@ set(SSF2T_SOURCES
     src/port_folder.cpp
     src/session_log.cpp
     src/settings.cpp
+    src/skip_intro_hook.cpp
     src/stfs.cpp
     src/system_info.cpp
     src/update_config.cpp
@@ -508,6 +509,17 @@ add_executable(ssf2t_debug_hotkeys_removed_tests EXCLUDE_FROM_ALL tests/debug_ho
 target_include_directories(ssf2t_debug_hotkeys_removed_tests PRIVATE src)
 target_compile_definitions(ssf2t_debug_hotkeys_removed_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_dependencies(ssf2t_runtime_tests ssf2t_debug_hotkeys_removed_tests)
+
+add_executable(ssf2t_console_removed_tests EXCLUDE_FROM_ALL tests/console_removed_tests.cpp)
+target_include_directories(ssf2t_console_removed_tests PRIVATE src)
+target_compile_definitions(ssf2t_console_removed_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_console_removed_tests)
+
+add_executable(ssf2t_skip_intro_tests EXCLUDE_FROM_ALL tests/skip_intro_tests.cpp
+    src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_skip_intro_tests PRIVATE src)
+target_compile_definitions(ssf2t_skip_intro_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_skip_intro_tests)
 
 add_executable(ssf2t_character_moves_tests EXCLUDE_FROM_ALL tests/character_moves_tests.cpp
     src/character/character_moves.cpp src/character/ultra_ending.cpp src/updater/third_party/miniz/miniz.c)

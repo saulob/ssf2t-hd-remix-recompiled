@@ -99,6 +99,8 @@ French	Francês
 German	Alemão
 Italian	Italiano
 Spanish	Espanhol
+Skip intro	Pular introdução
+Start directly at the title screen	Inicia direto na tela de título
 Frame rate in title	FPS no título
 Shows the game's frame rate in the window title: Super Street Fighter II Turbo HD Remix | FPS: 60.00	Mostra a taxa de quadros do jogo no título da janela: Super Street Fighter II Turbo HD Remix | FPS: 60.00
 Render resolution in title	Resolução de render no título

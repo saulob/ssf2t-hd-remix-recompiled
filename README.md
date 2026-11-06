@@ -84,7 +84,7 @@ Your choices are saved to `settings.toml` in the `user_data` folder next to the 
 - **Online**: Online play, Online name, Friend code, friends, Connection test
 - **Display**: Display mode, Window size, Monitor, Aspect Ratio, VSync, Presentation (Letterbox or Stretch) and Fight Area (Original or Fill 16:9)
 - **Graphics**: Graphics card, Render resolution, Internal render resolution, Anti-aliasing, Multisampling, Texture filtering
-- **Gameplay**: Language, frame rate and render resolution in the title, frame counter
+- **Gameplay**: Language, Skip intro (starts directly at the title screen, Press Start), frame rate and render resolution in the title, frame counter
 - **Achievements**: unlocked achievements and gamerscore
 - **Controls**: keyboard on or off, every key remappable, and **Keyboard defaults** to restore the standard layout
 - **About**: GitHub Sponsors link, versions, folders (game, saves and settings, logs), **Show settings file**, **Detailed logging**, **Open logs folder** and **Reset all settings**

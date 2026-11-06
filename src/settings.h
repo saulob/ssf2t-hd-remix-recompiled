@@ -14,6 +14,7 @@
 
 REXCVAR_DECLARE(bool, ssf2t_launcher);
 REXCVAR_DECLARE(bool, ssf2t_skip_launcher);
+REXCVAR_DECLARE(bool, ssf2t_skip_intro);
 REXCVAR_DECLARE(bool, ssf2t_show_fps);
 REXCVAR_DECLARE(bool, ssf2t_show_render_resolution);
 REXCVAR_DECLARE(bool, ssf2t_show_frame_counter);

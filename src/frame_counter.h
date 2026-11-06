@@ -12,8 +12,8 @@ class ImGuiDrawer;
 namespace ssf2t {
 
 inline constexpr char kFrameCounterKey[] = "F2";
-// ReXGlue's own F3 debug and F4 settings overlay binds, removed in game.
-inline constexpr const char* kRemovedSdkBinds[] = {"bind_debug_overlay", "bind_settings"};
+// ReXGlue's own F3 debug, Backtick console and F4 settings overlay binds, removed in game.
+inline constexpr const char* kRemovedSdkBinds[] = {"bind_debug_overlay", "bind_console", "bind_settings"};
 
 // Adds the in-game counter and its F2 toggle.
 void CreateFrameCounter(rex::ui::ImGuiDrawer* drawer);
