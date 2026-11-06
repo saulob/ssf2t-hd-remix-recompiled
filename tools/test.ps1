@@ -250,6 +250,7 @@ $Suites = @(
     @('GPU draw state memo', 'gpu_draw_state_memo', 'Display / Graphics'),
     @('D3D12 async submission', 'd3d12_async_submission', 'Display / Graphics'),
     @('GPU register wake', 'gpu_register_wake', 'Display / Graphics'),
+    @('GPU fence wait', 'gpu_fence_wait', 'Display / Graphics'),
     # Achievements, saves, updates and the runtime
     @('achievements', 'achievement', 'Achievements'),
     @('achievement metadata (real game files)', 'achievement_metadata', 'Achievements'),

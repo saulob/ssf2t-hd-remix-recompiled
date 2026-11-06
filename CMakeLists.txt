@@ -224,6 +224,7 @@ set(SSF2T_SOURCES
     src/fight_area_hook.cpp
     src/frame_counter.cpp
     src/game_files.cpp
+    src/gpu_fence_wait.cpp
     src/graphics_adapters.cpp
     src/friend_code_field.cpp
     src/imgui_gamepad.cpp
@@ -764,7 +765,7 @@ add_dependencies(ssf2t_runtime_tests ssf2t_achievement_metadata_tests)
 # Runtime patch tests: the patched logic modeled in isolation, and the patch text checked for the changes it must make.
 find_package(Threads REQUIRED)
 foreach(_test guest_clock d3d12_transfer_short_circuit d3d12_sampler_memo shared_memory_fast_path
-        gpu_draw_state_memo d3d12_async_submission gpu_register_wake)
+        gpu_draw_state_memo d3d12_async_submission gpu_register_wake gpu_fence_wait)
     set(_name ssf2t_${_test}_tests)
     add_executable(${_name} EXCLUDE_FROM_ALL tests/${_test}_tests.cpp)
     target_include_directories(${_name} PRIVATE src)
@@ -773,6 +774,9 @@ foreach(_test guest_clock d3d12_transfer_short_circuit d3d12_sampler_memo shared
     ssf2t_enable_thinlto(${_name})
     add_dependencies(ssf2t_runtime_tests ${_name})
 endforeach()
+if(WIN32)
+    target_link_libraries(ssf2t_gpu_fence_wait_tests PRIVATE synchronization)
+endif()
 
 # Updater logic without the runtime: versions, release JSON, SHA-256, ZIP safety, staging, jobs and rollback.
 add_executable(ssf2t_update_tests EXCLUDE_FROM_ALL

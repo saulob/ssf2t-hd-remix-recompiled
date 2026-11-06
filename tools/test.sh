@@ -321,6 +321,7 @@ SUITES=(
   "GPU draw state memo|ssf2t_gpu_draw_state_memo_tests|$A_DISP"
   "D3D12 async submission|ssf2t_d3d12_async_submission_tests|$A_DISP"
   "GPU register wake|ssf2t_gpu_register_wake_tests|$A_DISP"
+  "GPU fence wait|ssf2t_gpu_fence_wait_tests|$A_DISP"
   "achievements|ssf2t_achievement_tests|$A_ACH"
   "achievement metadata (real game files)|ssf2t_achievement_metadata_tests|$A_ACH"
   "updater (release JSON, ZIP, staging, rollback, AppImage target)|ssf2t_update_tests|$A_UPD;$A_DATA"
