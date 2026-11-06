@@ -8,7 +8,9 @@
 #include <rex/system/kernel_state.h>
 
 #include "character/character_moves.h"
+#include "character/cpu_marker.h"
 #include "character/ultra_fighters.h"
+#include "character/versus_cpu.h"
 #include "guest_memory.h"
 #include "localization/baked_texture.h"
 #include "localization/active_language.h"
@@ -31,7 +33,7 @@ void ReadTextTable(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const bool moves_text = text_table && ssf2t::character::UltraFightersEnabled();
   original(ctx, base);
   const uint32_t buffer = ctx.r3.u32;
-  if ((!english_table && !moves_text) || buffer == 0) return;
+  if (!text_table || buffer == 0) return;
 
   const uint32_t size = ssf2t::LoadBE32(base, size_address);
   std::string text(reinterpret_cast<const char*>(ssf2t::GuestHost(base, buffer)), size);
@@ -43,7 +45,8 @@ void ReadTextTable(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   }
   // After the translation: its rows are pinned to the stock English lines, and the banners take its wording.
   const uint32_t moves = moves_text ? ssf2t::character::PatchMoveListText(table.text) : 0;
-  if (!english_table && moves == 0) return;
+  const uint32_t lobby_help = ssf2t::character::PatchLobbyHelpText(table.text);
+  if (!english_table && moves == 0 && lobby_help == 0) return;
   const uint32_t copy = REX_KERNEL_MEMORY()->SystemHeapAlloc(uint32_t(table.text.size() + 1));
   if (copy == 0) {
     REXLOG_WARN("Language: game text not applied, out of guest memory guest={}", G::kName);
@@ -65,6 +68,7 @@ void ReadTextTable(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
 
 template <typename G>
 void ParseTexture(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  if (ctx.r4.u32 != 0) ssf2t::character::CaptureCpuMarkerTexture(ssf2t::GuestHost(base, ctx.r4.u32), ctx.r5.u32);
   if (ssf2t::localization::PortugueseBrazilSelected() && ctx.r4.u32 != 0) {
     uint8_t* data = const_cast<uint8_t*>(ssf2t::GuestHost(base, ctx.r4.u32));
     if (const auto* texture = ssf2t::localization::LocalizeBakedTexture(data, ctx.r5.u32)) {

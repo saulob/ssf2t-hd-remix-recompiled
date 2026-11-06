@@ -200,6 +200,8 @@ set(SSF2T_SOURCES
     src/character/ultra_confirm_hook.cpp
     src/character/ultra_cursor_hook.cpp
     src/character/ultra_navigation.cpp
+    src/character/versus_cpu_hook.cpp
+    src/character/cpu_marker.cpp
     src/character/evil_ryu_actions.cpp
     src/character/evil_ryu_assets.cpp
     src/character/evil_ryu_moves.cpp
@@ -528,6 +530,12 @@ add_executable(ssf2t_skip_intro_tests EXCLUDE_FROM_ALL tests/skip_intro_tests.cp
 target_include_directories(ssf2t_skip_intro_tests PRIVATE src)
 target_compile_definitions(ssf2t_skip_intro_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_dependencies(ssf2t_runtime_tests ssf2t_skip_intro_tests)
+
+add_executable(ssf2t_versus_cpu_tests EXCLUDE_FROM_ALL tests/versus_cpu_tests.cpp
+    src/character/cpu_marker.cpp src/character/akuma_portrait.cpp src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_versus_cpu_tests PRIVATE src)
+target_compile_definitions(ssf2t_versus_cpu_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_versus_cpu_tests)
 
 add_executable(ssf2t_character_moves_tests EXCLUDE_FROM_ALL tests/character_moves_tests.cpp
     src/character/character_moves.cpp src/character/ultra_ending.cpp src/updater/third_party/miniz/miniz.c)

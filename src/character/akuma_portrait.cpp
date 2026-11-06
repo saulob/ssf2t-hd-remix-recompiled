@@ -90,6 +90,8 @@ bool ReadEntry(std::ifstream& in, uint32_t key, uint32_t& offset, uint32_t& pack
 
 }  // namespace
 
+void DecodeDxt5Block(const uint8_t* source, uint8_t* rgba, int stride) { DecodeBlock(source, rgba, stride); }
+
 PortraitImage DecodePortraitTexture(const uint8_t* file, size_t size) {
   PortraitImage image;
   if (size < kDataOffset + kDataSize || std::memcmp(file, kMagic, 8) != 0) {

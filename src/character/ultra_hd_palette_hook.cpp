@@ -6,6 +6,7 @@
 #include <rex/logging.h>
 #include <rex/system/kernel_state.h>
 
+#include "character/cpu_marker.h"
 #include "character/select_activity.h"
 #include "character/evil_ryu_actions.h"
 #include "character/evil_ryu_moves.h"
@@ -17,6 +18,7 @@
 #include "character/ultra_fighters.h"
 #include "character/ultra_navigation.h"
 #include "character/ultra_select_presentation.h"
+#include "character/versus_cpu.h"
 #include "character/violent_ken_actions.h"
 #include "character/violent_ken_data.h"
 #include "guest_memory.h"
@@ -380,6 +382,32 @@ bool DrawEvilName(uint32_t sprite, uint16_t code, PPCContext& ctx, uint8_t* base
   return true;
 }
 
+// The bracket of the CPU side, with the label in place of 1P or 2P, for as long as this sprite is drawn.
+template <typename H>
+bool DrawCpuMarker(uint32_t sprite, uint16_t code, PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  const uint16_t colour = LoadBE16(GuestHost(base, sprite + kSpriteAttrOffset), 0) & kTileColourMask;
+  const int index = CpuMarkerIndex(code, colour);
+  if (index < 0 || !CpuMarkerOnSide(index, GlobalVersusCpu().SideIn(*GuestHost(base, H::Netplay::kGameMode)))) {
+    return false;
+  }
+  static std::array<EvilTexture, kCpuMarkerArt.size()> textures;
+  EvilTexture& texture = textures[size_t(index)];
+  if (texture.failed) return false;
+  if (texture.object == 0) {
+    const EvilSpriteImage* image = LoadedCpuMarker(index);
+    if (!image || !UploadArt<H>(texture, *image, false, ctx, base)) {
+      texture.failed = true;
+      REXLOG_ERROR("DEBUG_SAULO VS_CPU cpu-marker art={} unavailable", index);
+      return false;
+    }
+    REXLOG_INFO("DEBUG_SAULO VS_CPU cpu-marker art={} side={} uploaded", index, kCpuMarkerArt[size_t(index)].side + 1);
+  }
+  const SpriteRestore restore = ReplaceSprite(sprite, texture, {}, base);
+  original(ctx, base);
+  RestoreSprite(sprite, restore, base);
+  return true;
+}
+
 void LogBodyDraw(int side, uint16_t code, EvilRenderState state, const uint8_t* base, uint32_t sprite) {
   static std::array<std::array<bool, 6>, 2> logged{};
   bool& seen = logged[size_t(side)][size_t(state)];
@@ -425,10 +453,11 @@ void DrawViolentSprite(uint32_t sprite, uint16_t code, int side, bool both, PPCC
 
 template <typename H>
 void DrawSprite(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
-  if (!UltraFightersEnabled()) return original(ctx, base);
   const uint32_t sprite = ctx.r3.u32;
   if (!PlausibleGuestPointer(sprite)) return original(ctx, base);
   const uint16_t code = LoadBE16(GuestHost(base, sprite + kSpriteCodeOffset), 0);
+  if (DrawCpuMarker<H>(sprite, code, ctx, base, original)) return;
+  if (!UltraFightersEnabled()) return original(ctx, base);
   if (DrawEvilName<H>(sprite, code, ctx, base, original)) return;
   if (CharacterSelectActive()) return original(ctx, base);
   const bool evil_p1 = EvilRyuOnSide<typename H::Netplay>(base, 0);

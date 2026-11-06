@@ -16,6 +16,7 @@ struct PortraitImage {
 
 inline constexpr int kPortraitSize = 128;
 
+void DecodeDxt5Block(const uint8_t* source, uint8_t* rgba, int stride);
 PortraitImage DecodePortraitTexture(const uint8_t* file, size_t size);
 PortraitImage LoadAkumaPortrait(const std::filesystem::path& archive);
 

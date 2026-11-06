@@ -178,6 +178,21 @@ inline constexpr Feature kFeatures[] = {
      "SkipIntro::kCapcomLogo,SkipIntro::kBackboneLogo,SkipIntro::kTextureRefCount,SkipIntro::kTextureRelease",
      "SkipIntro::kXmlDocumentParse,SkipIntro::kBootLogoStep", "ssf2t_skip_intro", "", "", "", "",
      "src/skip_intro.h,src/skip_intro_hook.cpp", "", "", "", "", "tests/skip_intro_tests.cpp", "Skip intro"},
+    {"CPU opponent in Local Match",
+     "VersusCpu::kUpdateLocalLobby,VersusCpu::kInitLocalLobby,VersusCpu::kIsSlotOccupied,"
+     "VersusCpu::kIsSlotOccupiedResults,VersusCpu::kGetPlayerName,VersusCpu::kTextPlayerName,"
+     "VersusCpu::kTextHudPlayerName,VersusCpu::kSetGameDifficulty,VersusCpu::kSelectInput,"
+     "VersusCpu::kEnterSelect,VersusCpu::kSelectMask,"
+     "VersusCpu::kLoadMatch,VersusCpu::kGameMode,VersusCpu::kLobbySlots,VersusCpu::kSelectDone,VersusCpu::kSideHuman,"
+     "VersusCpu::kSideState,VersusCpu::kActiveFighter,VersusCpu::kCursorInput,VersusCpu::kGameState,"
+     "VersusCpu::kFighterBlock,VersusCpu::kColourPrompt,Confirm::kGameMode",
+     "VersusCpu::kUpdateLocalLobby,VersusCpu::kInitLocalLobby,VersusCpu::kIsSlotOccupied,"
+     "VersusCpu::kIsSlotOccupiedResults,VersusCpu::kGetPlayerName,VersusCpu::kTextPlayerName,"
+     "VersusCpu::kTextHudPlayerName,VersusCpu::kSetGameDifficulty,VersusCpu::kSelectInput,"
+     "VersusCpu::kEnterSelect,VersusCpu::kCursorInput,VersusCpu::kLoadMatch",
+     "", "", "", "", "", "src/character/versus_cpu.h,src/character/versus_cpu_hook.cpp,src/character/cpu_marker.h,"
+     "src/character/cpu_marker.cpp",
+     "", "", "", "", "tests/versus_cpu_tests.cpp"},
     {"Launcher", "", "", "",
      "ssf2t_launcher,ssf2t_skip_launcher,ssf2t_launcher_x,ssf2t_launcher_y,ssf2t_launcher_width,ssf2t_launcher_height,"
      "ssf2t_launcher_maximized,ssf2t_launcher_fullscreen",

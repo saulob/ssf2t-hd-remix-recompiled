@@ -10,6 +10,7 @@
 #include "character/select_activity.h"
 #include "character/ultra_fighters.h"
 #include "character/ultra_navigation.h"
+#include "character/versus_cpu.h"
 #include "guest_memory.h"
 #include "netplay/fight_snapshot.h"
 #include "netplay/guest_netplay.h"
@@ -21,11 +22,13 @@ namespace {
 struct Base013Confirm {
   static constexpr uint32_t kHdStyle = 0x83A3876D;
   static constexpr uint32_t kOldVersionPrompt = 0x83CA6C76;
+  static constexpr uint32_t kGameMode = 0x83CA294F;
 };
 
 struct TitleUpdate023Confirm {
   static constexpr uint32_t kHdStyle = 0x83A387E5;
   static constexpr uint32_t kOldVersionPrompt = 0x83CA718E;
+  static constexpr uint32_t kGameMode = 0x83CA2E67;
 };
 
 constexpr uint32_t kWorkSideOffset = 897;
@@ -106,13 +109,15 @@ void ObserveLock(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
 }
 
 // Outside Arcade a locked side answers NORMAL / SUPER, and NORMAL is the old version. The option byte is 0 in Remix.
+// The guest's own CPU options refuse the old version, so a CPU side is not asked.
 template <typename S>
 void AskLockedSide(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
-  const bool ultra = GlobalUltraNavigation().OnUltraCell(int(ctx.r3.u32));
+  const int side = int(ctx.r3.u32);
+  const bool skip = GlobalUltraNavigation().OnUltraCell(side) || GlobalVersusCpu().SideIn(base[S::kGameMode]) == side;
   const uint8_t option = *GuestHost(base, S::kOldVersionPrompt);
-  if (ultra) *(base + S::kOldVersionPrompt) = 0;
+  if (skip) *(base + S::kOldVersionPrompt) = 0;
   original(ctx, base);
-  if (ultra) *(base + S::kOldVersionPrompt) = option;
+  if (skip) *(base + S::kOldVersionPrompt) = option;
 }
 
 }  // namespace

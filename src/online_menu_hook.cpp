@@ -11,6 +11,7 @@
 #include "character/evil_ryu_results.h"
 #include "character/ultra_ending.h"
 #include "character/ultra_fighters.h"
+#include "character/versus_cpu.h"
 #include "guest_memory.h"
 #include "online_menu.h"
 #include "player_match_guest.h"
@@ -96,7 +97,11 @@ struct OnlineMenuHooks {
       const bool ultra = ssf2t::character::UltraFightersEnabled();
       const bool moves = ultra && ssf2t::character::PatchCharacterMovesScripts(scripts);
       const bool results = ultra && ssf2t::character::PatchResultsScripts(scripts);
-      if ((patch || moves || results) && ParsePatched(ctx, base, original, scripts)) {
+      const bool lobby_input = ssf2t::character::PatchLobbyCpuScript(scripts);
+      const bool lobby_footer = ssf2t::character::PatchLobbyFooterScript(scripts);
+      const bool versus_cpu = lobby_input || lobby_footer;
+      if (versus_cpu) REXLOG_INFO("DEBUG_SAULO VS_CPU lobby-script patched guest={}", G::kName);
+      if ((patch || moves || results || versus_cpu) && ParsePatched(ctx, base, original, scripts)) {
         if (patch) {
           REXLOG_INFO("game_lobby actions removed gamer_card={} players_list={} slot_help={} guest={}",
                       patch->gamer_card, patch->players_list, patch->slot_help, G::kName);
