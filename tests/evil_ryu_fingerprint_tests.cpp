@@ -24,6 +24,8 @@ void Check(bool condition, const char* what) {
 
 enum Image { kBase013, kTitleUpdate023 };
 
+constexpr uint32_t kAkumaLive = 32;
+
 struct Fingerprint {
   const char* name;
   Image image;
@@ -270,6 +272,158 @@ void TestClassicRoutes(const std::vector<uint8_t>& image, const BuildData& build
   Check(Calls(image, build.continue_voice_call, build.continue_voice), "the round end scream state starts Continue");
 }
 
+struct ClassicAkumaBuild {
+  uint32_t commit;
+  uint32_t commit_end;
+  uint32_t tick;
+  uint32_t tick_end;
+  uint32_t prompt;
+  uint32_t prompt_end;
+  uint32_t confirm;
+  uint32_t unlock;
+  uint32_t asset_request;
+  uint32_t rule_flag;
+  uint32_t portrait_load;
+  uint32_t navigate;
+  uint32_t navigate_end;
+  uint32_t cursor;
+  uint32_t style;
+  uint32_t live;
+  uint32_t akuma_table;
+  uint32_t selected;
+  uint32_t confirm_result;
+  uint32_t online_gate;
+  uint32_t old_version_prompt;
+  uint32_t prompt_gate_frame;
+  uint32_t mode;
+  uint32_t mode_setter;
+  uint32_t mode_setter_name;
+  uint32_t old_version_setter;
+  uint32_t training_join;
+};
+
+constexpr ClassicAkumaBuild kClassicAkuma[] = {
+    {0x82240870, 0x82240E98, 0x82246D38, 0x82247620, 0x82246820, 0x82246CD0, 0x82240F78, 0x823C9668, 0x823B5EA0,
+     0x821C1BE0, 0x821837B0, 0x82245748, 0x82245988, 0x8232DF78, 0x83A3876D, 0x83CA6C9C, 0x83CA6C88, 0x83CD52CE,
+     0x83CD52A8, 0x83C24DB0, 0x83CA6C76, 0x82247E90, 0x83CA294F, 0x823C7298, 0x8200ADF4, 0x823A89D8, 0x822427E0},
+    {0x822409A0, 0x82240FC8, 0x82246D80, 0x82247668, 0x82246868, 0x82246D18, 0x822410A8, 0x823C9C60, 0x823B5ED0,
+     0x821C1D00, 0x821837D0, 0x822457B0, 0x822459F0, 0x8232DE58, 0x83A387E5, 0x83CA71B4, 0x83CA71A0, 0x83CD57E6,
+     0x83CD57C0, 0x83C25128, 0x83CA718E, 0x82247ED8, 0x83CA2E67, 0x823C7890, 0x8200ADFC, 0x823A89C8,
+     0x82242848},
+};
+
+int CallsIn(const std::vector<uint8_t>& image, uint32_t start, uint32_t end, uint32_t target) {
+  int calls = 0;
+  for (uint32_t at = start; at < end; at += 4) calls += Calls(image, at, target) ? 1 : 0;
+  return calls;
+}
+
+bool HasWord(const std::vector<uint8_t>& image, uint32_t start, uint32_t end, uint32_t word) {
+  for (uint32_t at = start; at < end; at += 4) {
+    if (Word(image, at) == word) return true;
+  }
+  return false;
+}
+
+// lis rX, then a load, store or addi of the low half on any register.
+bool LoadsAddress(const std::vector<uint8_t>& image, uint32_t start, uint32_t end, uint32_t address) {
+  const uint32_t high = uint16_t((address + 0x8000) >> 16);
+  const uint32_t low = uint16_t(address);
+  for (uint32_t at = start; at < end; at += 4) {
+    const uint32_t lis = Word(image, at);
+    if ((lis >> 26) != 15 || (lis & 0xFFFF) != high) continue;
+    if ((Word(image, at + 4) & 0xFFFF) == low || (Word(image, at + 8) & 0xFFFF) == low) return true;
+  }
+  return false;
+}
+
+bool StoresByteAt(const std::vector<uint8_t>& image, uint32_t start, uint32_t end, uint32_t offset) {
+  for (uint32_t at = start; at < end; at += 4) {
+    const uint32_t word = Word(image, at);
+    if ((word >> 26) == 38 && (word & 0xFFFF) == offset) return true;
+  }
+  return false;
+}
+
+void TestClassicAkuma(const std::vector<uint8_t>& image, const ClassicAkumaBuild& build) {
+  constexpr uint32_t kCmpwiThreePunches = 0x2F0B0070;
+  constexpr uint32_t kCmplwiCarrierKen = 0x2B0B0004;
+  constexpr uint32_t kCmplwiAkumaLive = 0x2B0B0020;
+  constexpr uint32_t kCmpwiHoverAkuma = 0x2F0B0010;
+  Check(CallsIn(image, build.tick, build.tick_end, build.commit) == 1, "the window call is the tick's one commit call");
+  Check(CallsIn(image, build.tick, build.tick_end, build.confirm) == 1, "the tick confirms through the hooked function");
+  Check(CallsIn(image, build.prompt, build.prompt_end, build.commit) == 1, "the guest's own prompt calls the commit");
+  Check(CallsIn(image, build.commit, build.commit_end, build.unlock) == 1, "the commit asks the unlock the port answers");
+  Check(CallsIn(image, build.commit, build.commit_end, build.asset_request) == 1, "the commit requests the fighter");
+  Check(CallsIn(image, build.commit, build.commit_end, build.rule_flag) == 1, "the commit reads the mirror rule");
+  Check(CallsIn(image, build.commit, build.commit_end, build.portrait_load) == 1, "the commit loads the portrait");
+  Check(HasWord(image, build.commit, build.commit_end, kCmpwiThreePunches), "the commit wants the three punches");
+  Check(HasWord(image, build.commit, build.commit_end, kCmplwiCarrierKen), "the commit wants a carrier slot");
+  for (const uint32_t offset : {945u, 961u, 925u, 950u, 162u}) {
+    Check(StoresByteAt(image, build.commit, build.commit_end, offset), "the commit writes its fighter fields");
+  }
+  Check(LoadsAddress(image, build.commit, build.commit_end, build.akuma_table), "the commit picks the Akuma table");
+  Check(LoadsAddress(image, build.commit, build.commit_end, build.style), "the commit reads the style");
+  Check(LoadsAddress(image, build.commit, build.commit_end, build.live), "the commit reads live");
+  Check(LoadsAddress(image, build.confirm, build.confirm + 0x900, build.confirm_result), "confirm answers in this word");
+
+  const auto table_word = [&](uint32_t table, uint32_t id) { return Word(image, table + id * 4); };
+  constexpr uint32_t kClassicMoves = 0x83A2D188;
+  constexpr uint32_t kRemixMoves = 0x83A2D320;
+  Check(table_word(kClassicMoves, 3) == 0x0707020D, "Classic Guile has no way up to Akuma");
+  Check(table_word(kRemixMoves, 3) == 0x2007020D, "Remix Guile goes up to Akuma");
+  Check(table_word(kClassicMoves, kAkumaLive) == 0, "every Classic move from id 32 lands on Ryu");
+  for (const uint32_t id : {0u, 1u, 2u, 4u, 8u, 9u, 10u, 11u, 12u, 13u, 14u, 15u}) {
+    Check(table_word(kClassicMoves, id) == table_word(kRemixMoves, id), "the two arcade grids are the same grid");
+  }
+  Check(HasWord(image, build.cursor, build.cursor + 0x100, kCmplwiAkumaLive) &&
+            HasWord(image, build.cursor, build.cursor + 0x100, kCmpwiHoverAkuma),
+        "the Classic cursor step keeps id 32 only while the hover says Akuma");
+  Check(LoadsAddress(image, build.navigate, build.navigate_end, build.selected - 2), "the move result reaches the slot");
+
+  constexpr uint32_t kClassicOtherMoves = 0x83A2D210;
+  constexpr uint32_t kRemixVersusMoves = 0x83A2D298;
+  Check(table_word(kClassicOtherMoves, kAkumaLive) == 0, "Classic outside Arcade also sends id 32 to Ryu");
+  Check(table_word(kRemixVersusMoves, kAkumaLive) == 0x20012020, "Remix Local Versus keeps id 32 by itself");
+  for (uint32_t id = 0; id < 18; ++id) {
+    if (id == 1) continue;
+    Check(table_word(kClassicOtherMoves, id) == table_word(kRemixVersusMoves, id), "the two 3x6 grids are the same grid");
+  }
+  Check(table_word(kClassicOtherMoves, 1) == 0x0E050002 && table_word(kRemixVersusMoves, 1) == 0x20050002,
+        "they differ only in Honda's way up to Akuma");
+  constexpr uint32_t kCmplwiOnlineMode = 0x2B0B0003;
+  constexpr uint32_t kLoadSessionWord = 0x816B0020;
+  Check(LoadsAddress(image, build.commit, build.commit + 0x40, build.online_gate - 32) &&
+            HasWord(image, build.commit, build.commit + 0x40, kLoadSessionWord) &&
+            HasWord(image, build.commit, build.commit + 0x40, kCmplwiOnlineMode),
+        "online Classic refuses the commit behind this session word");
+  Check(LoadsAddress(image, build.prompt, build.prompt_end, build.old_version_prompt - 2),
+        "the locked side's prompts read their options");
+  Check(CallsIn(image, build.prompt, build.prompt_end, build.old_version_setter) == 1,
+        "the old-version choice is the prompt's one call to the setter");
+  constexpr uint32_t kLiZero = 0x39400000;
+  constexpr uint32_t kStoreGoukiOption = 0x994B0001;
+  bool gouki_cleared = false;
+  for (uint32_t at = build.prompt_gate_frame; at < build.prompt_gate_frame + 0x300; at += 4) {
+    gouki_cleared = gouki_cleared || (Word(image, at) == kLiZero && Word(image, at + 4) == kStoreGoukiOption);
+  }
+  Check(gouki_cleared && LoadsAddress(image, build.prompt_gate_frame, build.prompt_gate_frame + 0x300,
+                                      build.old_version_prompt - 2),
+        "the frame step clears the GOUKI? option, so only NORMAL / SUPER can show");
+  constexpr uint32_t kCmplwiTrainingMode = 0x2B0B0002;
+  Check(HasWord(image, build.training_join, build.training_join + 0x600, kCmplwiTrainingMode) &&
+            LoadsAddress(image, build.training_join, build.training_join + 0x600, build.mode),
+        "the dummy's turn starts from Training's own branch");
+  Check(HasWord(image, build.confirm, build.confirm + 0x90, kCmplwiTrainingMode), "confirm takes Start its own way in Training");
+  constexpr uint32_t kCmpwiModeLimit = 0x2F0B0004;
+  Check(HasWord(image, build.mode_setter, build.mode_setter + 0x20, kCmpwiModeLimit) &&
+            LoadsAddress(image, build.mode_setter, build.mode_setter + 0x20, build.mode),
+        "SetGameMode refuses anything from 4 up");
+  const std::string name(image.begin() + (build.mode_setter_name - kImageBase),
+                         image.begin() + (build.mode_setter_name - kImageBase) + 12);
+  Check(name == std::string("SetGameMode\0", 12), "the setter's script name");
+}
+
 void TestImage(Image which) {
   std::ifstream in(kBuilds[which].file, std::ios::binary);
   if (!in) {
@@ -333,6 +487,7 @@ void TestImage(Image which) {
   Check(text(0x82009030, 8) == std::string("end_ken\0", 8), "the screen set literal");
   Check(text(0x82009038, 7) == std::string("EndKen\0", 7), "the screen literal");
   TestClassicRoutes(image, build);
+  TestClassicAkuma(image, kClassicAkuma[which]);
 }
 
 }  // namespace

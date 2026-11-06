@@ -1,7 +1,10 @@
 #include "character/ultra_fighters.h"
 
+#include "character/akuma.h"
 #include "character/character_packages.h"
 #include "character/secret_select.h"
+#include "character/violent_ken_data.h"
+#include "netplay_setting.h"
 #include "online_runtime.h"
 
 namespace ssf2t::character {
@@ -11,18 +14,17 @@ REXCVAR_DEFINE_BOOL(ssf2t_enable_ultra_fighters, false, "SSF2T",
 
 bool UltraFightersEnabled() { return REXCVAR_GET(ssf2t_enable_ultra_fighters); }
 
-bool EvilRyuAvailableFor(bool online_select) {
-  return SecretAvailable(online_select, UltraFightersEnabled() && EvilRyuPackagesReady(),
-                         online_select && ActiveOnlineSecrets().evil_ryu);
+SecretCells SecretCellsFor(uint8_t game_mode) {
+  SecretCellInputs in;
+  in.online_select = OnlineSelectMode(game_mode);
+  in.developer_netplay = rex::cvar::GetFlagByName(kNetplayRoleSetting) != kNetplayRoleOff;
+  in.akuma_option = AkumaEnabled();
+  in.ultra_option = UltraFightersEnabled();
+  in.evil_ryu_packages = EvilRyuPackagesReady();
+  in.violent_ken_packages = ViolentKenPackagesReady();
+  in.violent_ken_gameplay = ViolentKenGameplayReady();
+  if (in.online_select) in.negotiated = ActiveOnlineSecrets();
+  return ResolveSecretCells(in);
 }
-
-bool EvilRyuAvailable(uint8_t game_mode) { return EvilRyuAvailableFor(OnlineSelectMode(game_mode)); }
-
-bool ViolentKenAvailableFor(bool online_select) {
-  return SecretAvailable(online_select, UltraFightersEnabled() && ViolentKenPackagesReady(),
-                         online_select && ActiveOnlineSecrets().violent_ken);
-}
-
-bool ViolentKenAvailable(uint8_t game_mode) { return ViolentKenAvailableFor(OnlineSelectMode(game_mode)); }
 
 }  // namespace ssf2t::character

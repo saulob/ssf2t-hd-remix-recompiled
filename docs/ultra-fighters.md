@@ -24,7 +24,7 @@ Online negotiation is summarized here and specified in [online.md](online.md#sec
 | Online negotiation, per-character availability, rollback of host-side state | Implemented |
 | Teleport and rush "ghost" look | Approximated (alternate-frame body suppression) |
 | Extra poses | Approximated (two poses for Evil Ryu, one for Violent Ken, drawn over the carrier's frame) |
-| Classic style | Not supported: the cells are Remix-style only |
+| Classic style | Same cells as Remix in every Character Select (see below) |
 | Runtime packages in the build, the Windows ZIP and the Linux AppImage | Implemented, see [Package lifecycle](#package-lifecycle) |
 
 "Implemented" means present in source and covered by the tests listed in the [source map](#source-map); gameplay and presentation are verified by playing, not by the test suite.
@@ -101,7 +101,22 @@ Every hook starts with `if (!UltraFightersEnabled()) return original(...)`, so w
 
 A fighter whose required packages are not valid is never offered, locally or online. See [Runtime package requirements](#runtime-package-requirements).
 
-Classic style (the guest's HD style byte is 0) disables the cells: navigation does nothing in it, and if a classic flag appears while an Ultra cell is selected `GuardUltraClassic` clears it (Remix style) or sends the side back to its carrier (classic style). The developer Netplay Test also bypasses the cells.
+**One availability rule.** `SecretCellsFor(game_mode)` (`ResolveSecretCells` in `character/secret_select.h`) answers which secret cells exist, and the roster, navigation, confirm and the Akuma unlock all ask it, so a drawn cell is always a usable cell. The HD style is deliberately not an input: Classic (style byte 0) and Remix offer the same cells in every mode, and the style only decides how a pick is committed.
+
+| Game mode byte | Menu item | Grid | Availability |
+|---|---|---|---|
+| 0 | Arcade | 2x8 | Local options and packages |
+| 1 | Local Versus | 3x6 | Local options and packages |
+| 2 | Training | 3x6 | Local options and packages |
+| 3 | Ranked, Player and Tournament Match | 3x6 | The negotiated set, per fighter |
+
+In the developer Netplay Test the Ultra cells are not drawn: its two instances agree on a fight through frame zero guest state, which holds no Ultra identity. Akuma stays, because he is guest state.
+
+Classic uses the same grids as Remix and the same action hooks, but its own Ryu and Ken action data, so an Ultra fighter is the port overrides applied to that data. An Ultra fighter has no old version. Outside Arcade a locked side is asked NORMAL / SUPER, so `AskLockedSide` hides that prompt from a side on an Ultra cell; in Arcade a press in the post-confirm window sets the flag (`+0x3B6`) instead, and `UltraDropsOldVersion` clears it. Neither touches a side off the cells. The GOUKI? prompt beside them never shows: the guest clears its option every frame.
+
+Training selects both sides in turn from one controller, the guest copying the pad across. Player 1's cell stays through the dummy's turn because the select session has no gap, and a Training reset re-resolves the identity from the same request. A new Character Select clears it.
+
+**Akuma in Classic.** The guest has no cursor route to him in Classic: its move tables have no Akuma entry and its commit (`sub_82240870` / TU `sub_822409A0`) ignores the live cell. The cell therefore feeds the guest's own secret, the same way in every mode. While hovering, `live` is 32 and the special byte set, as in Remix, with the selected-cell word written too because the Classic cursor step drops id 32 unless the hover already says Akuma. On confirm, `ConfirmSelect` gives the guest the Ryu slot and opens the secret's window (`+162` = 2, `+161` = 0). On the next tick the guest's own window call commits; `CommitAkuma` only supplies, for that one call, the three punches and the online session word (`0x83C24DB0` / TU `0x83C25128`) that online Classic otherwise refuses without, since the negotiated set already decided. The commit picks Classic Akuma from the style. The Start and three punches secret is untouched.
 
 **Navigation** (`UltraNavigation::Resolve`, tried before the Akuma navigation):
 
@@ -167,7 +182,7 @@ All of it runs only on a side that is Evil Ryu. Classification: **Native** = the
 | Poses, win poses | Approximated | Two poses (back-turned, power stance) are drawn over the carrier's frame at port-defined placements; win-pose actions 0x38, 0x3A and 0x52 map onto them. |
 | Meter | Native | Only the full-meter test for the super; consumption is the guest handler's. |
 
-**Start gate.** A host move starts only when the fighter is not in states 12, 14 or 20, the HD ruleset byte is set, the classic flag is clear, the fighter is not busy or untargetable, the two fighter health fields `kHealth` and `kHealthMax` are equal and three game flags are clear. Supers need full meter. Teleports are additionally refused in guest state 10, and in state 4 at step 6, unless the fighter's hit-confirmed flag is set. Moves cannot start while airborne; ground height is learned from the last standing height.
+**Start gate.** A host move starts only when the fighter is not in states 12, 14 or 20, the side is human controlled (`+0x382`, named `kRuleset` in the code), the old-version flag is clear, the fighter is not busy or untargetable, the two fighter health fields `kHealth` and `kHealthMax` are equal and three game flags are clear. Supers need full meter. Teleports are additionally refused in guest state 10, and in state 4 at step 6, unless the fighter's hit-confirmed flag is set. Moves cannot start while airborne; ground height is learned from the last standing height.
 
 ## Violent Ken gameplay
 
@@ -300,7 +315,7 @@ The per-hook messages (select, palette, audio, ending, HUD, sprite) carry the te
 - Teleport and rush ghost, extra poses and quote selection are approximations (above).
 - Each fighter has only the art its package provides: Evil Ryu two poses, Violent Ken one stance.
 - Patches whose expected guest byte does not match are skipped silently and leave the guest's action as it is.
-- No classic-style variant; the cells do nothing in classic style.
+- No classic-style variant: in Classic the Ultra fighter plays the port overrides, not a classic rewrite.
 - The 236236+P super is refused for both fighters; Evil Ryu has no CPU handling for host moves.
 - Host moves cannot start in the air or in the guest states the start gate refuses.
 - Voices need the option on at boot and every target sound id free; any conflict drops that character's voices.

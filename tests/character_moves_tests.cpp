@@ -10,6 +10,7 @@
 
 #include "character/character_moves.h"
 #include "character/fighter_identity.h"
+#include "character/select_mode.h"
 #include "character/ultra_ending.h"
 #include "character/ultra_quote.h"
 #include "updater/third_party/miniz/miniz.h"
@@ -289,8 +290,8 @@ void TestDefinition() {
     Check(move.remixed_id.find("Ryu_R_Super") == std::string_view::npos &&
               move.classic_id.find("Ryu_C_Super") == std::string_view::npos,
           "Ryu's Shinku Hadoken is never listed");
-    Check(!move.host_move || move.classic_id == kNotAvailableId, "moves that need the Remixed rules are n/a in Classic");
-    Check(move.host_move || move.classic_id != kNotAvailableId, "guest moves are listed in both columns");
+    Check(!move.host_move || move.classic_id == move.remixed_id, "host moves work in Classic Arcade with the same command");
+    Check(move.classic_id != kNotAvailableId, "every move is listed in both columns");
   }
   std::string_view forward, back;
   for (const MoveListText& entry : kEvilRyuMoveListText) {
@@ -318,8 +319,8 @@ void TestDefinition() {
     const EvilRyuMove& move = kViolentKenMoves[row];
     Check(move.name_id == order[row], "the rows follow the USF2 order");
     Check(move.remixed_id.find("Ken_R_Super") == std::string_view::npos, "Ken's Shoryureppa is never listed");
-    Check(!move.host_move || move.classic_id == kNotAvailableId, "moves that need the Remixed rules are n/a in Classic");
-    Check(move.host_move || move.classic_id != kNotAvailableId, "guest moves are listed in both columns");
+    Check(!move.host_move || move.classic_id == move.remixed_id, "host moves work in Classic Arcade with the same command");
+    Check(move.classic_id != kNotAvailableId, "every move is listed in both columns");
     Check(move.name_id.find("Kamabarai") == std::string_view::npos, "the stale Ken kick list is never listed");
   }
   Check(ViolentKenWinsText("KEN WINS") == "VIOLENT KEN WINS", "the banner reads VIOLENT KEN WINS");
@@ -371,6 +372,38 @@ bool LoadArchive(Archive* out) {
     else if (text.rfind("1989\t1\n// Ryu's Moves\ntid_Ryu_", 0) == 0) out->tables.push_back(Lines(text));
   }
   return !out->screen.empty() && !out->scripts.empty() && !out->ids.empty() && out->tables.size() == 5;
+}
+
+// The menu scripts are the only place that says what the mode byte means.
+void TestMenuScriptsNameTheGameModes() {
+  std::ifstream in("game/extracted/flog_x360.fpg", std::ios::binary);
+  if (!in) return;
+  const auto entry = [&](uint32_t slot) {
+    uint32_t row[4];
+    in.seekg(0x800 + slot * 16);
+    in.read(reinterpret_cast<char*>(row), 16);
+    std::vector<unsigned char> stored(row[2]);
+    in.seekg(row[1]);
+    in.read(reinterpret_cast<char*>(stored.data()), row[2]);
+    std::vector<unsigned char> data(1 << 21);
+    mz_ulong size = mz_ulong(data.size());
+    const int status = mz_uncompress(data.data(), &size, stored.data(), mz_ulong(stored.size()));
+    return status == MZ_OK ? std::string(reinterpret_cast<const char*>(data.data()), size) : std::string();
+  };
+  const auto sets_mode = [](const std::string& script, const char* signal, uint8_t mode) {
+    const size_t at = script.find(signal);
+    const size_t end = script.find("</Transition>", at);
+    const std::string call = "SetGameMode(" + std::to_string(int(mode)) + ")";
+    return at != std::string::npos && script.substr(at, end - at).find(call) != std::string::npos;
+  };
+  const std::string single_player = entry(466);
+  const std::string multiplayer = entry(462);
+  Check(sets_mode(single_player, "accept_ArcadeModeSelect", kArcadeGameMode), "the Arcade menu item");
+  Check(sets_mode(single_player, "accept_TrainingModeSelect", kTrainingGameMode), "guest mode 2 is the Training menu item");
+  Check(sets_mode(multiplayer, "accept_VersusModeSelect", kLocalVersusGameMode), "the Local Versus menu item");
+  Check(sets_mode(multiplayer, "accept_RankedMatch", kOnlineSelectMode), "the Ranked Match menu item");
+  Check(sets_mode(multiplayer, "accept_PlayerMatch", kOnlineSelectMode), "the Player Match menu item");
+  Check(sets_mode(multiplayer, "accept_TournamentMatch", kOnlineSelectMode), "the Tournament menu item");
 }
 
 void TestRealEnding() {
@@ -563,6 +596,7 @@ int main() {
   TestSynthetic();
   TestRealData();
   TestRealEnding();
+  TestMenuScriptsNameTheGameModes();
   if (failures == 0) std::printf("character moves tests passed\n");
   return failures == 0 ? 0 : 1;
 }

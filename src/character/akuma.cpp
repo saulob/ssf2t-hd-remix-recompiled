@@ -8,7 +8,6 @@
 #include "character/secret_select.h"
 #include "guest_memory.h"
 #include "netplay/guest_netplay.h"
-#include "online_runtime.h"
 #include "title_update_image.h"
 
 namespace ssf2t::character {
@@ -18,19 +17,13 @@ REXCVAR_DEFINE_BOOL(ssf2t_enable_akuma, false, "SSF2T",
 
 bool AkumaEnabled() { return REXCVAR_GET(ssf2t_enable_akuma); }
 
-bool AkumaAvailableFor(bool online_select) {
-  return SecretAvailable(online_select, AkumaEnabled(), online_select && ActiveOnlineSecrets().akuma);
-}
-
-bool AkumaAvailable(uint8_t game_mode) { return AkumaAvailableFor(OnlineSelectMode(game_mode)); }
-
 namespace {
 
 template <typename G>
 void UnlockAkuma(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   original(ctx, base);
-  const bool online = OnlineSelectMode(*GuestHost(base, G::kGameMode));
-  ctx.r3.u64 = AkumaUnlockFor(online, AkumaAvailableFor(online), uint32_t(ctx.r3.u32));
+  const uint8_t game_mode = *GuestHost(base, G::kGameMode);
+  ctx.r3.u64 = AkumaUnlockFor(OnlineSelectMode(game_mode), SecretCellsFor(game_mode).akuma, uint32_t(ctx.r3.u32));
 }
 
 }  // namespace

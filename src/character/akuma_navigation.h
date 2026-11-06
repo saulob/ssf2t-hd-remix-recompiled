@@ -3,6 +3,8 @@
 #include <array>
 #include <cstdint>
 
+#include "character/select_mode.h"
+
 namespace ssf2t::character {
 
 inline constexpr uint8_t kAkumaSelect = 32;
@@ -10,14 +12,27 @@ inline constexpr int kRosterColumns = 8;
 inline constexpr int kVersusColumns = 6;
 inline constexpr int kNoColumn = -1;
 
-// Game mode 0 selects on the 2x8 HD grid; every other mode (Local Match, online) uses the 3x6 grid with the two
+// Arcade selects on the 2x8 HD grid; every other mode (Local Versus, Training, online) uses the 3x6 grid with the two
 // random cells on the top row.
 enum class SelectLayout : uint8_t { kArcade, kVersus };
 
-inline constexpr uint8_t kArcadeGameMode = 0;
-
 constexpr SelectLayout SelectLayoutForMode(uint8_t game_mode) {
   return game_mode == kArcadeGameMode ? SelectLayout::kArcade : SelectLayout::kVersus;
+}
+
+inline constexpr uint8_t kAkumaClassicCarrier = 0;
+inline constexpr uint8_t kAkumaWindowOpen = 2;
+inline constexpr uint16_t kAkumaCommitButtons = 0x70;
+
+// Classic has no cursor route to Akuma: confirming his cell opens the secret's own commit window on the Ryu slot, and
+// the guest's window call runs the commit. Only that call reads the buttons, and the secret itself never leaves live on
+// the Akuma cell with the window open, so the original Start and three punches path stays out of this.
+constexpr bool ClassicAkumaConfirmed(bool classic, bool available, uint8_t live, bool confirmed) {
+  return classic && available && confirmed && live == kAkumaSelect;
+}
+
+constexpr bool ClassicAkumaCommitDue(bool classic, uint8_t live, uint8_t window, uint8_t hidden) {
+  return classic && live == kAkumaSelect && window == kAkumaWindowOpen && hidden == 0;
 }
 
 // Roster rows by visual column, left to right.

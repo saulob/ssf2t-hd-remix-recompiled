@@ -110,7 +110,7 @@ inline constexpr std::string_view kRemixedSuperId = "tid_Akuma_R_Super";        
 inline constexpr std::string_view kRasetsuCommandId = "tid_Cammy_C_ThrustKick";  // 623 + any kick
 inline constexpr std::string_view kShinbuCommandId = "tid_Cammy_C_Super";        // 236 236 + any kick
 
-// Moves the host implements need the Remixed rules; the guest's own Ryu moves work in both.
+// The host implements host_move rows; the style does not gate them, so both columns list the same command.
 struct EvilRyuMove {
   std::string_view name_id;
   std::string_view classic_id;
@@ -123,9 +123,9 @@ inline constexpr std::array<EvilRyuMove, 7> kEvilRyuMoves = {{
     {kShakunetsuId, kShakunetsuCommandId, kShakunetsuCommandId, false},
     {"CMD_SHORYUKEN", "tid_Ryu_C_Shoryuken", "tid_Ryu_R_Shoryuken", false},
     {kTatsumakiId, "tid_Ryu_C_HurricaneKick", "tid_Ryu_R_HurricaneKick", false},
-    {kAshuraForwardId, kNotAvailableId, kAshuraForwardCommandId, true},
-    {kAshuraBackId, kNotAvailableId, kAshuraBackCommandId, true},
-    {kSuperNameId, kNotAvailableId, kRemixedSuperId, true},
+    {kAshuraForwardId, kAshuraForwardCommandId, kAshuraForwardCommandId, true},
+    {kAshuraBackId, kAshuraBackCommandId, kAshuraBackCommandId, true},
+    {kSuperNameId, kRemixedSuperId, kRemixedSuperId, true},
 }};
 
 inline constexpr std::array<EvilRyuMove, 7> kViolentKenMoves = {{
@@ -133,9 +133,9 @@ inline constexpr std::array<EvilRyuMove, 7> kViolentKenMoves = {{
     {"CMD_SHORYUKEN", "tid_Ken_C_Shoryuken", "tid_Ken_R_Shoryuken", false},
     {kTatsumakiId, "tid_Ken_C_HurricaneKick", "tid_Ken_R_HurricaneKick", false},
     {kAirTatsumakiId, kAirTatsumakiCommandId, kAirTatsumakiCommandId, false},
-    {kRasetsuId, kNotAvailableId, kRasetsuCommandId, true},
-    {kInazumaId, kNotAvailableId, kInazumaCommandId, true},
-    {kShinbuId, kNotAvailableId, kShinbuCommandId, true},
+    {kRasetsuId, kRasetsuCommandId, kRasetsuCommandId, true},
+    {kInazumaId, kInazumaCommandId, kInazumaCommandId, true},
+    {kShinbuId, kShinbuCommandId, kShinbuCommandId, true},
 }};
 
 // Edits the UIScreenSet document: adds the Ultra fighters' pages to the Character Moves screen. False and `xml`

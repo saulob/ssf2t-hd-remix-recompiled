@@ -5,16 +5,13 @@
 #include <rex/hook.h>
 #include <rex/logging.h>
 
-#include "character/akuma.h"
 #include "character/akuma_navigation.h"
 #include "character/evil_ryu_sprites.h"
 #include "character/guest_argb_texture.h"
 #include "character/roster_cells.h"
 #include "character/roster_cells_hook.h"
 #include "character/secret_select.h"
-#include "character/ultra_fighters.h"
 #include "character/ultra_navigation.h"
-#include "character/violent_ken_data.h"
 #include "guest_memory.h"
 #include "title_update_image.h"
 
@@ -140,11 +137,11 @@ void DrawNamePlate(int side, RosterArt art, PPCContext& ctx, uint8_t* base) {
 
 template <typename H>
 RosterCellInputs ReadInputs(const uint8_t* base) {
-  const bool online = OnlineSelectMode(*GuestHost(base, H::kMode));
+  const SecretCells cells = SecretCellsFor(*GuestHost(base, H::kMode));
   RosterCellInputs in;
-  in.akuma = AkumaAvailableFor(online);
-  in.evil_ryu = EvilRyuAvailableFor(online);
-  in.violent_ken = ViolentKenAvailableFor(online) && ViolentKenGameplayReady();
+  in.akuma = cells.akuma;
+  in.evil_ryu = cells.evil_ryu;
+  in.violent_ken = cells.violent_ken;
   in.live1 = *GuestHost(base, H::kLive);
   in.live2 = *GuestHost(base, H::kLive + 1);
   for (int side = 0; side < 2; ++side) {

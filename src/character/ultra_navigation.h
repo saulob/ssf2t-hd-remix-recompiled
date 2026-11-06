@@ -44,17 +44,10 @@ constexpr uint16_t EvilRyuCursorX(SelectLayout layout) {
   return layout == SelectLayout::kArcade ? kEvilRyuCursorX : kEvilRyuCursorXVersus;
 }
 
-enum class UltraClassicGuard {
-  kNone,
-  kClearClassic,  // Remix style: the fighter keeps the cell and loses the guest's classic flag.
-  kLeaveCell,     // Classic style: the side goes back to its plain carrier, which keeps any classic flag.
-};
-
-// USF2 has no classic Ultra fighter. Pure in guest state and the rollback-saved cell, so both peers agree on every frame.
-constexpr UltraClassicGuard GuardUltraClassic(uint8_t hd_style, bool on_ultra_cell, uint8_t classic_flag) {
-  if (!on_ultra_cell) return UltraClassicGuard::kNone;
-  if (hd_style == 0) return UltraClassicGuard::kLeaveCell;
-  return classic_flag != 0 ? UltraClassicGuard::kClearClassic : UltraClassicGuard::kNone;
+// USF2 has no old-version Ultra fighter. Pure in guest state and the rollback-saved cell, so both peers agree on every
+// frame.
+constexpr bool UltraDropsOldVersion(bool on_ultra_cell, uint8_t old_version_flag) {
+  return on_ultra_cell && old_version_flag != 0;
 }
 
 // Host-only Ultra cells. While one is selected the guest selection stays on its carrier, Ryu or Ken. Each cell has its

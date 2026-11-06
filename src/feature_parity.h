@@ -52,7 +52,8 @@ struct Feature {
 
 inline constexpr Feature kFeatures[] = {
     {"Akuma",
-     "Move::kHdStyle,Move::kLive,Move::kMode,Move::kPad,Move::kSpecial,UltraHooks::kUnlockAkuma1,"
+     "Move::kHdStyle,Move::kLive,Move::kMode,Move::kPad,Move::kSelected,Move::kSpecial,Select::kConfirmResult,"
+     "Select::kHdStyle,Select::kLive,Select::kOnlineAkumaGate,Select::kSpecial,UltraHooks::kUnlockAkuma1,"
      "UltraHooks::kDrawRoster1,"
      "UltraHooks::kNavigateSelect1",
      "UltraHooks::kUnlockAkuma1,UltraHooks::kNavigateSelect1,UltraHooks::kDrawRoster1",
@@ -62,15 +63,16 @@ inline constexpr Feature kFeatures[] = {
      "", "", "", "", "tests/secret_select_tests.cpp", "kEnableAkumaLabel"},
     {"Ultra fighters (Evil Ryu and Violent Ken)",
      "Audio::kSoundFlags,Audio::kSoundQueue,Audio::kSoundQueueHead,Audio::kSoundQueueTail,"
-     "Audio::kSoundSlots,Confirm::kHdStyle,Cursor::kHdPositions,Cursor::kLive,Cursor::kVersusPositions,"
+     "Audio::kSoundSlots,Confirm::kHdStyle,Confirm::kOldVersionPrompt,Cursor::kHdPositions,Cursor::kLive,"
+     "Cursor::kVersusPositions,"
      "Ending::kEndingCharacter,Hd::kBeatenSide,Hd::kColourP1,Hd::kColourP2,Hd::kContinuePortraits,"
      "Hd::kLoserPortraitSlot,Hd::kLosingPortraits,Hd::kMysteryLargePortrait,Hd::kPortraitPaletteRows,"
      "Hd::kRyuPaletteSlot10,Hud::kFightHudActive,Hud::kWidgets,Moves::kActionTables,"
      "Palette::kPaletteRamPointer,Quote::kTaunts,Results::kLocalRecords,Results::kMatchWinner,"
      "Roster::kLayout,Roster::kLive,Roster::kMode,Select::kMode,UltraHooks::kPlayerCharacterIndex1,"
      "UltraHooks::kAnnounceWinnerName1,UltraHooks::kLoadSounds1,UltraHooks::kRequestSound1,"
-     "UltraHooks::kRoundEndScream1,UltraHooks::kObserveLock1,UltraHooks::kEnterSelect1,"
-     "UltraHooks::kPlaceCursor1,"
+     "UltraHooks::kRoundEndScream1,UltraHooks::kObserveLock1,UltraHooks::kAskLockedSide1,"
+     "UltraHooks::kEnterSelect1,UltraHooks::kPlaceCursor1,"
      "UltraHooks::kPlayEnding1,UltraHooks::kGateSuper1,UltraHooks::kDrawPortraits1,"
      "UltraHooks::kDrawSprite1,UltraHooks::kUpdateHud1,UltraHooks::kEmitSprites1,"
      "UltraHooks::kEmitSprites2,UltraHooks::kEmitSprites3,UltraHooks::kEmitSprites4,"
@@ -83,8 +85,8 @@ inline constexpr Feature kFeatures[] = {
      "UltraHooks::kPlayerResultsCharacter1,UltraHooks::kRecordMatch1,UltraHooks::kResetPlayerResults1,"
      "UltraHooks::kShowQuote1,UltraHooks::kShowWinText1",
      "UltraHooks::kPlayerCharacterIndex1,UltraHooks::kAnnounceWinnerName1,UltraHooks::kLoadSounds1,"
-     "UltraHooks::kRequestSound1,UltraHooks::kRoundEndScream1,UltraHooks::kObserveLock1,UltraHooks::kEnterSelect1,"
-     "UltraHooks::kPlaceCursor1,UltraHooks::kPlayEnding1,UltraHooks::kGateSuper1,"
+     "UltraHooks::kRequestSound1,UltraHooks::kRoundEndScream1,UltraHooks::kObserveLock1,UltraHooks::kAskLockedSide1,"
+     "UltraHooks::kEnterSelect1,UltraHooks::kPlaceCursor1,UltraHooks::kPlayEnding1,UltraHooks::kGateSuper1,"
      "UltraHooks::kDrawPortraits1,UltraHooks::kDrawSprite1,UltraHooks::kUpdateHud1,"
      "UltraHooks::kEmitSprites1,UltraHooks::kEmitSprites2,UltraHooks::kEmitSprites3,"
      "UltraHooks::kEmitSprites4,UltraHooks::kEmitSprites5,UltraHooks::kHeavyPunch1,UltraHooks::kTrackHalfCircle1,"

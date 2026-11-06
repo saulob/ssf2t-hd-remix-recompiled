@@ -10,7 +10,6 @@
 #include "character/select_activity.h"
 #include "character/ultra_fighters.h"
 #include "character/ultra_navigation.h"
-#include "character/violent_ken_data.h"
 #include "guest_memory.h"
 #include "netplay/fight_snapshot.h"
 #include "netplay/guest_netplay.h"
@@ -21,10 +20,12 @@ namespace {
 
 struct Base013Confirm {
   static constexpr uint32_t kHdStyle = 0x83A3876D;
+  static constexpr uint32_t kOldVersionPrompt = 0x83CA6C76;
 };
 
 struct TitleUpdate023Confirm {
   static constexpr uint32_t kHdStyle = 0x83A387E5;
+  static constexpr uint32_t kOldVersionPrompt = 0x83CA718E;
 };
 
 constexpr uint32_t kWorkSideOffset = 897;
@@ -40,9 +41,10 @@ SelectEntry ReadSelectEntry(const uint8_t* base) {
   const uint32_t block = LoadBE32(GuestHost(base, G::kFighterBlockPointer), 0);
   SelectEntry entry;
   if (block < 0x10000 || block >= 0xFFFF0000u) return entry;
+  const SecretCells cells = SecretCellsFor(game_mode);
   entry.arcade = game_mode == kArcadeGameMode;
-  entry.evil_ryu_available = EvilRyuAvailable(game_mode);
-  entry.violent_ken_available = ViolentKenAvailable(game_mode) && ViolentKenGameplayReady();
+  entry.evil_ryu_available = cells.evil_ryu;
+  entry.violent_ken_available = cells.violent_ken;
   for (int side = 0; side < 2; ++side) {
     const uint32_t fighter = block + netplay::kFighterOffsets[side];
     SelectEntrySide& out = entry.sides[size_t(side)];
@@ -74,13 +76,13 @@ void TouchInteractiveSelect(const uint8_t* base) {
 }
 
 // Both guest routes to the classic flag run inside the hooked function, so this sees them on the frame they happen.
-void GuardClassic(uint8_t* base, uint32_t work, int side, uint8_t hd_style) {
-  const UltraClassicGuard guard =
-      GuardUltraClassic(hd_style, GlobalUltraNavigation().OnUltraCell(side), *GuestHost(base, work + kWorkClassicOffset));
-  if (guard == UltraClassicGuard::kNone) return;
-  REXLOG_INFO("DEBUG_SAULO ULTRA classic guard side={} action={}", side + 1, int(guard));
-  if (guard == UltraClassicGuard::kLeaveCell) GlobalUltraNavigation().Leave(side);
-  if (guard == UltraClassicGuard::kClearClassic) GuestStore8(base, work + kWorkClassicOffset, 0);
+void GuardClassic(uint8_t* base, uint32_t work, int side, uint8_t game_mode, uint8_t hd_style) {
+  if (!UltraDropsOldVersion(GlobalUltraNavigation().OnUltraCell(side), *GuestHost(base, work + kWorkClassicOffset))) {
+    return;
+  }
+  REXLOG_INFO("DEBUG_SAULO ULTRA classic guard side={} mode={} style={}", side + 1, GameModeName(game_mode),
+              HdStyleName(hd_style));
+  GuestStore8(base, work + kWorkClassicOffset, 0);
 }
 
 template <typename G, typename S>
@@ -93,7 +95,7 @@ void ObserveLock(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (work < 0x10000 || work >= 0xFFFF0000u) return;
   const int side = *GuestHost(base, work + kWorkSideOffset);
   if (side < 0 || side > 1) return;
-  GuardClassic(base, work, side, *GuestHost(base, S::kHdStyle));
+  GuardClassic(base, work, side, *GuestHost(base, G::kGameMode), *GuestHost(base, S::kHdStyle));
   static std::array<bool, 2> locked{};
   const bool now = *GuestHost(base, work + kWorkLockedOffset) != 0;
   if (now == locked[side]) return;
@@ -103,8 +105,23 @@ void ObserveLock(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
               IdentityName(RequestedIdentity(side)));
 }
 
+// Outside Arcade a locked side answers NORMAL / SUPER, and NORMAL is the old version. The option byte is 0 in Remix.
+template <typename S>
+void AskLockedSide(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  const bool ultra = GlobalUltraNavigation().OnUltraCell(int(ctx.r3.u32));
+  const uint8_t option = *GuestHost(base, S::kOldVersionPrompt);
+  if (ultra) *(base + S::kOldVersionPrompt) = 0;
+  original(ctx, base);
+  if (ultra) *(base + S::kOldVersionPrompt) = option;
+}
+
 }  // namespace
 }  // namespace ssf2t::character
+
+REX_EXTERN(__imp__base013_sub_82246820);
+REX_HOOK_RAW(base013_sub_82246820) {
+  ssf2t::character::AskLockedSide<ssf2t::character::Base013Confirm>(ctx, base, __imp__base013_sub_82246820);
+}
 
 REX_EXTERN(__imp__base013_sub_82246D38);
 REX_HOOK_RAW(base013_sub_82246D38) {
@@ -113,6 +130,11 @@ REX_HOOK_RAW(base013_sub_82246D38) {
 }
 
 #if SSF2T_TITLE_UPDATE_IMAGE
+REX_EXTERN(__imp__tu023_sub_82246868);
+REX_HOOK_RAW(tu023_sub_82246868) {
+  ssf2t::character::AskLockedSide<ssf2t::character::TitleUpdate023Confirm>(ctx, base, __imp__tu023_sub_82246868);
+}
+
 REX_EXTERN(__imp__tu023_sub_82246D80);
 REX_HOOK_RAW(tu023_sub_82246D80) {
   ssf2t::character::ObserveLock<ssf2t::netplay::TitleUpdate023Netplay, ssf2t::character::TitleUpdate023Confirm>(
