@@ -347,7 +347,7 @@ def main(name=None):
     args = parser.parse_args()
 
     character = CHARACTERS[name or args.character]
-    out = args.out or root / "game/extracted" / character.package
+    out = args.out or root / "assets/characters" / character.package
     analysis = args.analysis or root / character.analysis
     if args.snd_dir:
         build(character, root, args.snd_dir, out, analysis)

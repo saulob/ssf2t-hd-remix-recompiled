@@ -295,6 +295,7 @@ SUITES=(
   "character moves page, winner quotes and legacy text lines|ssf2t_character_moves_tests|$A_B13;$A_TU"
   "roster cells (Akuma and Ultra cells inside the native roster pass: lifetime, fade order, geometry, plan)|ssf2t_roster_cells_tests|$A_B13;$A_TU;$A_HOOK"
   "ultra endings (Evil Ryu and Violent Ken: package, text, routing, patches, guest switch)|ssf2t_ultra_ending_tests|$A_B13;$A_TU;$A_HOOK"
+  "character packages (table, consumers, required sets, fixture validation)|ssf2t_character_packages_tests|$A_PKG;$A_B13;$A_TU"
   "violent ken audio (package, Ken event map, side routing, announcer)|ssf2t_violent_ken_audio_tests|$A_B13;$A_TU"
   "online rendezvous (STUN, UDP punch, relay selection)|ssf2t_online_rendezvous_tests|$A_RELAY;$A_NET"
   "online connection test|ssf2t_online_connection_tests|$A_NET;$A_RELAY"
@@ -458,7 +459,7 @@ else record FAIL "unexpected dynamic dependencies or local paths in a Linux bina
 # ---- Packaging: a fixture AppDir staged and scanned by the release policy, then run as an AppImage ---------------------
 
 package_fixture() {
-  local fix="$TMP/package" bin="$TMP/package/bin" appdir="$TMP/package/AppDir" id
+  local fix="$TMP/package" bin="$TMP/package/bin" appdir="$TMP/package/AppDir" id package
   rm -rf "$fix"
   mkdir -p "$bin/assets/launcher"
   policy_init "$SRC"
@@ -498,6 +499,8 @@ STUB
   cp "$SRC/config/ssf2t_hd_remix.toml" "$bin/$BIN_NAME.toml"
   cp "$SRC/assets/launcher/header-art.png" "$bin/assets/launcher/header-art.png"
   cp "$SRC/assets/launcher/sponsor-heart.png" "$bin/assets/launcher/sponsor-heart.png"
+  mkdir -p "$bin/assets/characters"
+  for package in $CHARACTER_PACKAGES; do printf 'placeholder' >"$bin/assets/characters/$package"; done
   stage_appdir "$appdir" "$bin" "$fix/symbols" "$SRC"
 }
 
@@ -555,7 +558,10 @@ forbidden_policy() {
   forbidden_case "an Xbox 360 package" "Xbox 360 package or executable" "printf 'LIVE0000' > usr/bin/package.bin" || failed=1
   forbidden_case "an Xbox 360 executable" "Xbox 360 package or executable" "printf 'XEX20000' > usr/bin/image.bin" || failed=1
   forbidden_case "a Windows binary" "Windows binary" "printf 'MZ000000' > usr/bin/tool.bin" || failed=1
-  forbidden_case "DEBUG_SAULO diagnostics" "DEBUG_SAULO in file" "echo DEBUG_SAULO >> usr/share/doc/$BIN_NAME/LICENSE" || failed=1
+  forbidden_case "a missing character package" "unexpected AppDir contents" "rm usr/bin/assets/characters/ultra_portraits.bin" || failed=1
+forbidden_case "an unknown character package" "unexpected AppDir contents" "touch usr/bin/assets/characters/other.bin" || failed=1
+forbidden_case "a package outside its folder" "unexpected AppDir contents" "cp usr/bin/assets/characters/ultra_portraits.bin usr/bin/" || failed=1
+forbidden_case "DEBUG_SAULO diagnostics" "DEBUG_SAULO in file" "echo DEBUG_SAULO >> usr/share/doc/$BIN_NAME/LICENSE" || failed=1
   forbidden_case "a local path inside a file" "local path in file" "echo '$ROOT' >> usr/share/doc/$BIN_NAME/LICENSE" || failed=1
   forbidden_case "a symbolic link" "symbolic link" "ln -s usr/bin/$BIN_NAME link" || failed=1
   forbidden_case "an unlisted file" "unexpected AppDir contents" "touch usr/bin/extra.bin" || failed=1

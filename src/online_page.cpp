@@ -8,6 +8,7 @@
 #include <imgui.h>
 
 #include "character/akuma.h"
+#include "character/character_packages.h"
 #include "character/ultra_fighters.h"
 #include "friend_code_field.h"
 #include "infinite_time.h"
@@ -292,7 +293,8 @@ void OnlinePage::DrawSecretCharacters(trg::Ui& ui, const online::Snapshot& state
   const bool ultra =
       ui.settings().GetBool(character::kEnableUltraFightersSetting, character::kDefaultEnableUltraFighters);
   edited.supports = {true, true, true};
-  edited.enabled = {ui.settings().GetBool(character::kEnableAkumaSetting, character::kDefaultEnableAkuma), ultra, ultra};
+  edited.enabled = {ui.settings().GetBool(character::kEnableAkumaSetting, character::kDefaultEnableAkuma),
+                    ultra && character::EvilRyuPackagesReady(), ultra && character::ViolentKenPackagesReady()};
   ui.Heading("Secret characters");
   for (const online::SecretRowView& row : online::DescribeSecretCharacters(state, edited)) {
     ui.Row(row.label.c_str());

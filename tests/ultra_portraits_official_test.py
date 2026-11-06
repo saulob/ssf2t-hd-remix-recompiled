@@ -14,7 +14,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parent.parent
 GUI = ROOT / "out" / "ultra-portraits" / "gui"
-INSTALLED = ROOT / "game" / "extracted" / "ultra_portraits.bin"
+INSTALLED = ROOT / "assets" / "characters" / "ultra_portraits.bin"
 
 spec = importlib.util.spec_from_file_location("extract_ultra_portraits", ROOT / "tools" / "extract-ultra-portraits.py")
 tool = importlib.util.module_from_spec(spec)

@@ -189,9 +189,9 @@ void TestAnnouncerTiming() {
 }
 
 void TestRealPackage() {
-  std::ifstream in("game/extracted/evil_ryu_audio.bin", std::ios::binary);
+  std::ifstream in("assets/characters/evil_ryu_audio.bin", std::ios::binary);
   if (!in) {
-    std::printf("note: game/extracted/evil_ryu_audio.bin not found, real-data checks skipped\n");
+    std::printf("note: assets/characters/evil_ryu_audio.bin not found, real-data checks skipped\n");
     return;
   }
   const std::vector<uint8_t> file((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());

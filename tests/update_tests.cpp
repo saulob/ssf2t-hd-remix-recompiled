@@ -614,6 +614,7 @@ void TestPaths() {
   CHECK(!IsProtectedRelativePath("rexgpu-xenos.dll"));
   CHECK(!IsProtectedRelativePath("ssf2t_hd_remix.toml"));
   CHECK(!IsProtectedRelativePath("assets/launcher/header-art.png"));
+  CHECK(!IsProtectedRelativePath("assets/characters/ultra_portraits.bin"));
   CHECK(!IsProtectedRelativePath("licenses/THIRD-PARTY-LICENSES.txt"));
   CHECK(!IsProtectedRelativePath("README.txt"));
   CHECK(!IsProtectedRelativePath("LICENSE"));

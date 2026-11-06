@@ -210,11 +210,11 @@ code=...`, `player_match ...`, `XSession...`.
 
 ## Secret characters
 
-Akuma, Evil Ryu and Violent Ken each appear in an Online Match only when both players have them on and both builds
+How the two Ultra fighters work inside the game is described in [ultra-fighters.md](ultra-fighters.md). Akuma, Evil Ryu and Violent Ken each appear in an Online Match only when both players have them on and both builds
 understand them.
 
 - Each client sends `secret: {supports: {akuma, evil_ryu, violent_ken}, enabled: {akuma, evil_ryu, violent_ken}}` in its
-  hello (`supports` is what the build understands, `enabled` is Enable Akuma / Enable Evil Ryu and Violent Ken) and `secret.update` when an option
+  hello (`supports` is what the build understands, `enabled` is Enable Akuma / Enable Evil Ryu and Violent Ken, and for those two fighters their required packages being valid here) and `secret.update` when an option
   changes while signed in. Anything missing or not exactly `true` is false, so an older client supports nothing.
 - The Worker keeps both players' capabilities with the match and tells each seat `secret: {peer, effective}` (in the
   join answer, `match.created`, the resume answer and `match.secret` events). `effective.<character>` is supports and

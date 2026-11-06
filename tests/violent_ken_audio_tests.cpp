@@ -231,9 +231,9 @@ void TestTable() {
 }
 
 void TestRealPackage() {
-  std::ifstream in("game/extracted/violent_ken_audio.bin", std::ios::binary);
+  std::ifstream in("assets/characters/violent_ken_audio.bin", std::ios::binary);
   if (!in) {
-    std::printf("note: game/extracted/violent_ken_audio.bin not found, real-data checks skipped\n");
+    std::printf("note: assets/characters/violent_ken_audio.bin not found, real-data checks skipped\n");
     return;
   }
   const std::vector<uint8_t> file((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());

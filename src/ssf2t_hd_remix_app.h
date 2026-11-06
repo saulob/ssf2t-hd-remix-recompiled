@@ -26,6 +26,7 @@
 #include "achievements_overlay.h"
 #include "active_log.h"
 #include "aspect_ratio.h"
+#include "character/character_packages.h"
 #include "character/evil_ryu_audio.h"
 #include "character/evil_ryu_palette.h"
 #include "character/evil_ryu_sprites.h"
@@ -131,6 +132,7 @@ class SuperStreetFighterApp : public rex::ReXApp {
     REXLOG_INFO("{}", FormatApplicationVersion(identity));
     REXLOG_INFO("{}", FormatBuildIdentity(identity));
     REXLOG_INFO("{}", GameFilesLogText(CheckGameFiles(game_data_root())));
+    SetUpCharacterPackages();
     ApplyGraphicsAdapter();
   }
 
@@ -287,13 +289,6 @@ class SuperStreetFighterApp : public rex::ReXApp {
     if (window()) {
       CheckWindowDisplay(window()->GetNativeWindowHandle(), REXCVAR_GET(monitor));
     }
-    character::SetEvilRyuPaletteDirectory(game_data_root());
-    character::SetEvilSpriteDirectory(game_data_root());
-    character::SetEvilAudioDirectory(game_data_root());
-    character::SetViolentKenDirectory(game_data_root());
-    character::SetUltraEndingDirectory(game_data_root());
-    character::SetRosterCellDirectory(game_data_root());
-    character::SetViolentKenAudioDirectory(game_data_root());
     if (window() && imgui_drawer()) {
       CreateFrameCounter(imgui_drawer());
       CreatePingDisplay(imgui_drawer());
@@ -355,6 +350,26 @@ class SuperStreetFighterApp : public rex::ReXApp {
   }
 
  private:
+  // Before the launcher: its Online page and the online service ask which fighters this install can offer.
+  void SetUpCharacterPackages() {
+    const std::filesystem::path packages = character::CharacterPackageFolder(rex::filesystem::GetExecutableFolder());
+    character::SetEvilRyuPaletteDirectory(packages);
+    character::SetEvilSpriteDirectory(packages);
+    character::SetEvilAudioDirectory(packages);
+    character::SetViolentKenDirectory(packages);
+    character::SetUltraEndingDirectory(packages);
+    character::SetRosterCellDirectories(packages, game_data_root());
+    character::SetViolentKenAudioDirectory(packages);
+    const character::CharacterPackageReport report = character::ValidateCharacterPackages(packages);
+    for (size_t index = 0; index < report.statuses.size(); ++index) {
+      if (report.statuses[index] == character::PackageStatus::kValid) continue;
+      REXLOG_WARN("Character package {}: {}", character::kCharacterPackages[index].file,
+                  character::PackageStatusName(report.statuses[index]));
+    }
+    REXLOG_INFO("Character packages: {} of {} valid, Evil Ryu {}, Violent Ken {}", report.valid, report.statuses.size(),
+                report.evil_ryu ? "ready" : "disabled", report.violent_ken ? "ready" : "disabled");
+  }
+
   static std::filesystem::path DefaultGameDataRoot() {
     const std::string configured = REXCVAR_GET(game_data_root);
     return configured.empty() ? PortFolder() / "game" : std::filesystem::path(configured);

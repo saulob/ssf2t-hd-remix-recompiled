@@ -7,6 +7,13 @@ $ErrorActionPreference = 'Stop'
 $ReleaseCheck = Join-Path $PSScriptRoot 'check-release-folder.ps1'
 $Root = Split-Path $PSScriptRoot -Parent
 $StageRoot = Join-Path ([IO.Path]::GetTempPath()) 'ssf2t_release_check'
+. (Join-Path $PSScriptRoot 'character-packages.ps1')
+$Placeholder = [Text.Encoding]::ASCII.GetBytes('placeholder package')
+$PlaceholderHash = (Get-FileHash -InputStream ([IO.MemoryStream]::new($Placeholder)) -Algorithm SHA256).Hash.ToLowerInvariant()
+# The real list of names, with the size and hash of the placeholder every case stages.
+$FixtureTable = Join-Path $StageRoot 'character_packages.h'
+$Packages = Get-CharacterPackages (Join-Path $Root 'src\character\character_packages.h')
+$FirstPackage = "assets\characters\$($Packages[0].File)"
 
 # Each case adds one item to a clean extraction: a relative path, or path -> content.
 $Cases = [ordered]@{
@@ -50,9 +57,26 @@ $Cases = [ordered]@{
     'debug marker'       = @{ Path = 'ssf2t_hd_remix.toml'; Bytes = [Text.Encoding]::ASCII.GetBytes('DEBUG_SAULO: x') }
     'repository path'    = @{ Path = 'rexruntime.dll'; Bytes = [Text.Encoding]::ASCII.GetBytes("path $Root x") }
     'repository path 16' = @{ Path = 'rexgpu-xenos.dll'; Bytes = [Text.Encoding]::Unicode.GetBytes("path $Root x") }
+    'missing character package' = @{ Path = $FirstPackage; Delete = $true }
+    'stale character package'   = @{ Path = $FirstPackage; Bytes = [Text.Encoding]::ASCII.GetBytes('placeholder packagf') }
+    'unknown character package' = @{ Path = 'assets\characters\other.bin' }
+    'character notes'           = @{ Path = 'assets\characters\notes.txt' }
+    'nested character folder'   = @{ Path = 'assets\characters\extra\ultra_portraits.bin' }
+    'package outside its folder' = @{ Path = "assets\launcher\$($Packages[0].File)" }
+    'package at the top'        = @{ Path = $Packages[0].File }
+    'character game file'       = @{ Path = 'assets\characters\default.xex' }
+    'character archive'         = @{ Path = 'assets\characters\flog_x360.fpg' }
+    'character package magic'   = @{ Path = 'assets\characters\evil_ryu_audio.bin'; Bytes = [Text.Encoding]::ASCII.GetBytes('LIVE....') }
+    'character debug marker'    = @{ Path = 'assets\characters\evil_ryu_audio.bin'; Bytes = [Text.Encoding]::ASCII.GetBytes('DEBUG_SAULO') }
+    'analysis folder'           = @{ Path = 'analysis\default.image.bin' }
+    'build output'              = @{ Path = 'out\codegen\a.bin' }
 }
 $failures = 0
 try {
+    New-Item -ItemType Directory -Force $StageRoot | Out-Null
+    Set-Content -LiteralPath $FixtureTable -Value @($Packages | ForEach-Object {
+        "    {`"$($_.File)`", $($Placeholder.Length), `"$PlaceholderHash`", PackageOwner::$($_.Owner), PackageNeed::$($_.Need)},"
+    })
     foreach ($case in $Cases.Keys) {
         $stage = Join-Path $StageRoot ($case -replace '\W', '_')
         New-Item -ItemType Directory -Force $stage | Out-Null
@@ -66,6 +90,8 @@ try {
         foreach ($leaf in 'ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt') {
             Set-Content -LiteralPath (Join-Path $stage "licenses\$leaf") -Value 'placeholder'
         }
+        New-Item -ItemType Directory -Force (Join-Path $stage 'assets\characters') | Out-Null
+        foreach ($package in $Packages) { [IO.File]::WriteAllBytes((Join-Path $stage "assets\characters\$($package.File)"), $Placeholder) }
         $extra = $Cases[$case]
         if ($extra) {
             $target = Join-Path $stage $extra.Path
@@ -79,7 +105,7 @@ try {
             }
         }
         $global:LASTEXITCODE = 0
-        & $ReleaseCheck -Folder $stage *> $null
+        & $ReleaseCheck -Folder $stage -PackageTable $FixtureTable *> $null
         $accepted = $LASTEXITCODE -eq 0
         if ($accepted -ne ($null -eq $extra)) {
             Write-Host "  FAIL $case"

@@ -400,7 +400,7 @@ void TestRealEnding() {
   Check(Group(screen, "end_ken") == Group(screen_original, "end_ken"), "Ken's ending is byte for byte unchanged");
   Check(animations.compare(0, animations_original.size() - 25, animations_original, 0, animations_original.size() - 25) == 0,
         "the guest's animations are byte for byte unchanged");
-  std::ifstream package("game/extracted/violent_ken_ending.bin", std::ios::binary);
+  std::ifstream package("assets/characters/violent_ken_ending.bin", std::ios::binary);
   if (!package) return;
   const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(package)), std::istreambuf_iterator<char>());
   UltraEndingArt art;

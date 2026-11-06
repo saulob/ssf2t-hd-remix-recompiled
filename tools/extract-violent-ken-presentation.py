@@ -113,7 +113,7 @@ def main():
     parser.add_argument("--nstool", type=Path)
     parser.add_argument("--fpg", type=Path, default=root / "game/extracted/flog_x360.fpg")
     parser.add_argument("--arc-root", type=Path, help="folder already holding gui/, btl/, preview/, face/ and ending/")
-    parser.add_argument("--out-dir", type=Path, default=root / "game/extracted")
+    parser.add_argument("--out-dir", type=Path, default=root / "assets/characters")
     parser.add_argument("--preview-dir", type=Path, default=root / "out/violent-ken-analysis/presentation")
     args = parser.parse_args()
 

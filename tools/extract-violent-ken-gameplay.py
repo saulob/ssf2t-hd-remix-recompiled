@@ -344,7 +344,7 @@ def main():
     parser.add_argument("--fpg", type=Path, default=root / "game/extracted/flog_x360.fpg")
     parser.add_argument("--kit", type=Path, default=references / "usf2-backport-rc5-kit")
     parser.add_argument("--nstool", type=Path)
-    parser.add_argument("--out", type=Path, default=root / "game/extracted/violent_ken_gameplay.bin")
+    parser.add_argument("--out", type=Path, default=root / "assets/characters/violent_ken_gameplay.bin")
     parser.add_argument("--analysis", type=Path, default=root / "out/violent-ken-analysis")
     args = parser.parse_args()
 

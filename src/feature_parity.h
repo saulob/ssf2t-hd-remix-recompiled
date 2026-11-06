@@ -96,6 +96,7 @@ inline constexpr Feature kFeatures[] = {
      "UltraHooks::kShowQuote1,UltraHooks::kShowWinText1",
      "kEnableUltraFightersSetting", "", "", "", "",
      "src/character/character_moves.cpp,src/character/character_moves_hook.cpp,"
+     "src/character/character_packages.cpp,"
      "src/character/evil_ryu_actions.cpp,src/character/evil_ryu_assets.cpp,"
      "src/character/evil_ryu_audio.cpp,src/character/evil_ryu_moves.cpp,"
      "src/character/evil_ryu_palette.cpp,src/character/evil_ryu_results.cpp,"

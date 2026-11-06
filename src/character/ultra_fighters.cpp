@@ -1,5 +1,6 @@
 #include "character/ultra_fighters.h"
 
+#include "character/character_packages.h"
 #include "character/secret_select.h"
 #include "online_runtime.h"
 
@@ -11,13 +12,15 @@ REXCVAR_DEFINE_BOOL(ssf2t_enable_ultra_fighters, false, "SSF2T",
 bool UltraFightersEnabled() { return REXCVAR_GET(ssf2t_enable_ultra_fighters); }
 
 bool EvilRyuAvailableFor(bool online_select) {
-  return SecretAvailable(online_select, UltraFightersEnabled(), online_select && ActiveOnlineSecrets().evil_ryu);
+  return SecretAvailable(online_select, UltraFightersEnabled() && EvilRyuPackagesReady(),
+                         online_select && ActiveOnlineSecrets().evil_ryu);
 }
 
 bool EvilRyuAvailable(uint8_t game_mode) { return EvilRyuAvailableFor(OnlineSelectMode(game_mode)); }
 
 bool ViolentKenAvailableFor(bool online_select) {
-  return SecretAvailable(online_select, UltraFightersEnabled(), online_select && ActiveOnlineSecrets().violent_ken);
+  return SecretAvailable(online_select, UltraFightersEnabled() && ViolentKenPackagesReady(),
+                         online_select && ActiveOnlineSecrets().violent_ken);
 }
 
 bool ViolentKenAvailable(uint8_t game_mode) { return ViolentKenAvailableFor(OnlineSelectMode(game_mode)); }

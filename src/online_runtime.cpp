@@ -13,6 +13,7 @@
 #include <rex/logging.h>
 
 #include "character/akuma.h"
+#include "character/character_packages.h"
 #include "character/ultra_fighters.h"
 #include "character/violent_ken_data.h"
 #include "netplay/online_game_socket.h"
@@ -82,13 +83,14 @@ const char* PlatformName() {
 #endif
 }
 
-// This build understands all three; the player's options say which are on. Without the local Violent Ken gameplay
-// package he would play as Ken, so he is not offered.
+// This build understands all three; the player's options say which are on. A fighter whose required packages are not
+// valid here is not offered.
 online::SecretCapabilities LocalSecretCapabilities() {
   online::SecretCapabilities secret;
   secret.supports = {true, true, true};
-  secret.enabled = {character::AkumaEnabled(), character::UltraFightersEnabled(),
-                    character::UltraFightersEnabled() && character::ViolentKenGameplayReady()};
+  secret.enabled = {character::AkumaEnabled(), character::UltraFightersEnabled() && character::EvilRyuPackagesReady(),
+                    character::UltraFightersEnabled() && character::ViolentKenPackagesReady() &&
+                        character::ViolentKenGameplayReady()};
   return secret;
 }
 

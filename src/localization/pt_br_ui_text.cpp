@@ -100,6 +100,9 @@ German	Alemão
 Italian	Italiano
 Spanish	Espanhol
 Skip intro	Pular introdução
+Evil Ryu and Violent Ken are unavailable: required character files are missing or damaged. Reinstall this release.	Evil Ryu e Violent Ken estão indisponíveis: arquivos de personagem necessários estão ausentes ou danificados. Reinstale esta versão.
+Evil Ryu is unavailable: required character files are missing or damaged. Reinstall this release.	Evil Ryu está indisponível: arquivos de personagem necessários estão ausentes ou danificados. Reinstale esta versão.
+Violent Ken is unavailable: required character files are missing or damaged. Reinstall this release.	Violent Ken está indisponível: arquivos de personagem necessários estão ausentes ou danificados. Reinstale esta versão.
 Start directly at the title screen	Inicia direto na tela de título
 Frame rate in title	FPS no título
 Shows the game's frame rate in the window title: Super Street Fighter II Turbo HD Remix | FPS: 60.00	Mostra a taxa de quadros do jogo no título da janela: Super Street Fighter II Turbo HD Remix | FPS: 60.00

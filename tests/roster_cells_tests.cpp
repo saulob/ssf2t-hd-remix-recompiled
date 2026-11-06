@@ -304,7 +304,7 @@ constexpr int kArtRight = 120;
 bool ShowsArt(const uint8_t* pixel) { return pixel[0] != 0 || pixel[1] != 0 || pixel[2] != 0; }
 
 void TestInstalledUltraArt() {
-  const std::string path = std::string(SSF2T_SOURCE_DIR) + "/game/extracted/ultra_portraits.bin";
+  const std::string path = std::string(SSF2T_SOURCE_DIR) + "/assets/characters/ultra_portraits.bin";
   std::ifstream in(path, std::ios::binary);
   if (!in) {
     std::printf("installed Ultra art checks skipped: no %s\n", path.c_str());

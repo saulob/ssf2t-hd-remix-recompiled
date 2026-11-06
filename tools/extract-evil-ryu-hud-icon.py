@@ -80,7 +80,7 @@ def main():
     parser.add_argument("--gui", type=Path, default=root / "out/evil-ryu-analysis/usf2/gui",
                         help="folder holding the USF2 gui archives")
     parser.add_argument("--fpg", type=Path, default=root / "game/extracted/flog_x360.fpg")
-    parser.add_argument("--out", type=Path, default=root / "game/extracted/evil_ryu_hud_icon.bin")
+    parser.add_argument("--out", type=Path, default=root / "assets/characters/evil_ryu_hud_icon.bin")
     parser.add_argument("--preview", type=Path, help="optional PNG preview")
     args = parser.parse_args()
 

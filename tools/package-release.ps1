@@ -33,12 +33,15 @@ $UpdaterBuild = Join-Path $ReleaseBuild 'trg-updater-clang64'
 $Packaging = Join-Path $Root 'packaging'
 $SdkRoot = Join-Path $Root 'tools\rexglue\win-amd64'
 . (Join-Path $PSScriptRoot 'rexruntime-patch.ps1')
+. (Join-Path $PSScriptRoot 'character-packages.ps1')
 
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 $ProgramFiles = @('ssf2t_hd_remix.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'ssf2t_hd_remix.toml')
 $LicenseFiles = @('ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt')
 $AssetFiles = @('assets\launcher\header-art.png', 'assets\launcher\sponsor-heart.png')
 $CheckFolder = Join-Path $PSScriptRoot 'check-release-folder.ps1'
+$CharacterInputs = Join-Path $Root 'assets\characters'
+$CharacterPackages = Get-CharacterPackages (Join-Path $Root 'src\character\character_packages.h')
 
 function Write-Problems($problems) {
     Write-Host ''
@@ -101,6 +104,10 @@ $ShaFile = Join-Path $Dist "$Name.sha256"
 Write-Host ''
 Write-Host "Super Street Fighter II Turbo HD Remix PC port $Version - Windows release package (local only)"
 
+# Fails before the long build: a release holds every character package or none is made.
+$characterProblems = @(Test-CharacterPackages $CharacterInputs $CharacterPackages)
+if ($characterProblems.Count) { Write-Problems $characterProblems; throw 'assets\characters does not hold the packages src\character\character_packages.h names' }
+
 if (-not $SkipBuild) {
     $build = @{ Config = 'Release'; BuildDir = $ReleaseBuild; RequireTitleUpdate = $true }
     if ($Clean) { $build.Clean = $true }
@@ -138,6 +145,7 @@ New-Item -ItemType Directory -Force $AssetDir | Out-Null
 foreach ($asset in $AssetFiles) {
     Copy-Item -LiteralPath (Join-Path $Root $asset) $AssetDir
 }
+Copy-CharacterPackages (Join-Path $ReleaseBuild 'assets\characters') (Join-Path $Stage 'assets\characters') $CharacterPackages
 foreach ($leaf in @('rexruntime.dll', 'rexgpu-xenos.dll')) {
     $staged = Get-FileSha256 (Join-Path $Stage $leaf)
     if ($staged -ne (Get-FileSha256 (Join-Path $SdkRoot "bin\$leaf"))) { throw "$leaf is not the file installed in tools\rexglue" }

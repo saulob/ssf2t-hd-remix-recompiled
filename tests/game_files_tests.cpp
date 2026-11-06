@@ -11,6 +11,7 @@
 #include <fstream>
 #include <string>
 
+#include "character/character_packages.h"
 #include "game_files.h"
 
 using namespace ssf2t;
@@ -427,6 +428,28 @@ void TestTitleUpdateThenBaseAndReinstall(const fs::path& game_package, const fs:
   fs::remove_all(root);
 }
 
+// Reinstall Game replaces the game folder and everything in it, so the character packages live beside the program.
+void TestReinstallKeepsCharacterPackages(const fs::path& game_package) {
+  const fs::path root = MakeDir("reinstall_character_packages");
+  const fs::path game = root / "game";
+  const fs::path packages = character::CharacterPackageFolder(root);
+  CHECK(InstallFromPackage(game_package, game, InstallKind::kGame).ok());
+  fs::create_directories(packages);
+  for (const character::CharacterPackage& package : character::kCharacterPackages) {
+    std::ofstream(packages / package.file, std::ios::binary) << package.file;
+  }
+  std::ofstream(game / "leftover.bin", std::ios::binary) << "x";
+
+  CHECK(InstallFromPackage(game_package, game, InstallKind::kGame).ok());
+
+  CHECK(CheckGameFiles(game).state == GameFiles::kReady);
+  CHECK(!fs::exists(game / "leftover.bin"));
+  for (const character::CharacterPackage& package : character::kCharacterPackages) {
+    CHECK(fs::file_size(packages / package.file) == package.file.size());
+  }
+  fs::remove_all(root);
+}
+
 // Install Game must reject a Title Update package, and Install Title Update must reject the base game package,
 // without touching whatever was already installed.
 void TestWrongKindRejected(const fs::path& game_package, const fs::path& update_package) {
@@ -527,6 +550,7 @@ int main(int argc, char** argv) {
   if (!game_package.empty() && !update_package.empty()) {
     TestBaseThenTitleUpdate(game_package, update_package);
     TestTitleUpdateThenBaseAndReinstall(game_package, update_package);
+    TestReinstallKeepsCharacterPackages(game_package);
     TestWrongKindRejected(game_package, update_package);
     TestRemoveTitleUpdateFromReady(game_package, update_package);
   } else {

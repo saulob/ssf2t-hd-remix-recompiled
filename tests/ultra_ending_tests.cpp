@@ -278,9 +278,9 @@ void TestPatches() {
 }
 
 void TestPackage() {
-  std::ifstream package("game/extracted/evil_ryu_ending.bin", std::ios::binary);
+  std::ifstream package("assets/characters/evil_ryu_ending.bin", std::ios::binary);
   if (!package) {
-    std::printf("note: game/extracted/evil_ryu_ending.bin not found, package checks skipped\n");
+    std::printf("note: assets/characters/evil_ryu_ending.bin not found, package checks skipped\n");
     return;
   }
   const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(package)), std::istreambuf_iterator<char>());
@@ -296,7 +296,7 @@ void TestPackage() {
   three[8] = 3;
   Check(!ParseUltraEndingArt(three.data(), three.size(), &art), "a package with another cut count is refused");
 
-  std::ifstream violent("game/extracted/violent_ken_ending.bin", std::ios::binary);
+  std::ifstream violent("assets/characters/violent_ken_ending.bin", std::ios::binary);
   if (!violent) return;
   const std::vector<uint8_t> other((std::istreambuf_iterator<char>(violent)), std::istreambuf_iterator<char>());
   Check(other.size() == bytes.size() && !std::equal(bytes.begin() + 12, bytes.begin() + 12 + 4096, other.begin() + 12),

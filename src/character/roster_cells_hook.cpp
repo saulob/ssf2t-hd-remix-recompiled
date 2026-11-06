@@ -59,26 +59,27 @@ struct TitleUpdate023Roster {
 constexpr uint32_t kOpaqueWhite = 0xFFFFFFFFu;
 constexpr uint8_t kCellFileFlags = 0;
 
-std::filesystem::path g_directory;
+std::filesystem::path g_packages;
+std::filesystem::path g_game;
 
 PortraitImage LoadUltraCell(UltraPortrait which) {
-  PortraitImage image = LoadUltraPortrait(g_directory / kUltraPortraitFile, which);
-  if (!image.error) ApplyRosterFrame(image, LoadAkumaPortrait(g_directory / "flog_x360.fpg"));
+  PortraitImage image = LoadUltraPortrait(g_packages / kUltraPortraitFile, which);
+  if (!image.error) ApplyRosterFrame(image, LoadAkumaPortrait(g_game / "flog_x360.fpg"));
   return image;
 }
 
 PortraitImage LoadCellArt(RosterArt art) {
   switch (art) {
     case RosterArt::kAkuma:
-      return LoadAkumaPortrait(g_directory / "flog_x360.fpg");
+      return LoadAkumaPortrait(g_game / "flog_x360.fpg");
     case RosterArt::kEvilRyu:
       return LoadUltraCell(UltraPortrait::kEvilRyu);
     case RosterArt::kViolentKen:
       return LoadUltraCell(UltraPortrait::kViolentKen);
     case RosterArt::kEvilRyuName:
-      return LoadEvilRyuAsset(g_directory / kEvilRyuAssetFile, EvilRyuAsset::kNameGraphic);
+      return LoadEvilRyuAsset(g_packages / kEvilRyuAssetFile, EvilRyuAsset::kNameGraphic);
     case RosterArt::kViolentKenName:
-      return LoadEvilRyuAsset(g_directory / "violent_ken_assets.bin", EvilRyuAsset::kNameGraphic);
+      return LoadEvilRyuAsset(g_packages / kViolentKenAssetFile, EvilRyuAsset::kNameGraphic);
   }
   return {};
 }
@@ -180,7 +181,10 @@ void DrawRoster(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
 
 }  // namespace
 
-void SetRosterCellDirectory(const std::filesystem::path& directory) { g_directory = directory; }
+void SetRosterCellDirectories(const std::filesystem::path& packages, const std::filesystem::path& game) {
+  g_packages = packages;
+  g_game = game;
+}
 
 }  // namespace ssf2t::character
 

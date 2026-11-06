@@ -82,7 +82,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--xci", type=Path)
     parser.add_argument("--keys", type=Path)
-    parser.add_argument("--out", type=Path, default=root / "game/extracted/evil_ryu_palette.bin")
+    parser.add_argument("--out", type=Path, default=root / "assets/characters/evil_ryu_palette.bin")
     parser.add_argument("--kit", type=Path, default=root / "game/references/usf2-backport-rc5-kit")
     parser.add_argument("--nstool", type=Path)
     parser.add_argument("--arc-dir", type=Path, help="use already extracted preview archives instead of the XCI")

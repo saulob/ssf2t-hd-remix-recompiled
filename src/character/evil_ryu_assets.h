@@ -11,6 +11,7 @@ namespace ssf2t::character {
 enum class EvilRyuAsset : uint32_t { kLargePortrait = 1, kNameGraphic = 2 };
 
 inline constexpr char kEvilRyuAssetFile[] = "evil_ryu_assets.bin";
+inline constexpr char kViolentKenAssetFile[] = "violent_ken_assets.bin";
 
 PortraitImage ParseEvilRyuAsset(const uint8_t* file, size_t size, EvilRyuAsset which);
 PortraitImage LoadEvilRyuAsset(const std::filesystem::path& file, EvilRyuAsset which);

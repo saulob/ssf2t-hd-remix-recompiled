@@ -4,6 +4,6 @@
 
 namespace ssf2t::character {
 
-void SetRosterCellDirectory(const std::filesystem::path& directory);
+void SetRosterCellDirectories(const std::filesystem::path& packages, const std::filesystem::path& game);
 
 }  // namespace ssf2t::character

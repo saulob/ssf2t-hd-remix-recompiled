@@ -191,6 +191,7 @@ set(SSF2T_SOURCES
     src/character/character_moves_hook.cpp
     src/character/fighter_identity.cpp
     src/character/host_rollback.cpp
+    src/character/character_packages.cpp
     src/character/ultra_fighters.cpp
     src/character/ultra_gameplay_hook.cpp
     src/character/ultra_hd_palette_hook.cpp
@@ -526,6 +527,11 @@ add_executable(ssf2t_character_moves_tests EXCLUDE_FROM_ALL tests/character_move
 target_include_directories(ssf2t_character_moves_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_character_moves_tests)
 
+add_executable(ssf2t_character_packages_tests EXCLUDE_FROM_ALL tests/character_packages_tests.cpp
+    src/character/character_packages.cpp src/updater/sha256.cpp src/updater/update_paths.cpp)
+target_include_directories(ssf2t_character_packages_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_character_packages_tests)
+
 add_executable(ssf2t_ultra_ending_tests EXCLUDE_FROM_ALL tests/ultra_ending_tests.cpp
     src/character/character_moves.cpp src/character/ultra_ending.cpp src/updater/third_party/miniz/miniz.c)
 target_include_directories(ssf2t_ultra_ending_tests PRIVATE src)
@@ -820,6 +826,16 @@ add_custom_command(TARGET ssf2t_hd_remix POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/launcher/sponsor-heart.png"
         "$<TARGET_FILE_DIR:ssf2t_hd_remix>/assets/launcher/sponsor-heart.png"
+    VERBATIM
+)
+
+# Runs on every build, so the runtime folder always holds exactly the packages this source names.
+add_custom_target(ssf2t_character_packages ALL
+    COMMAND ${CMAKE_COMMAND}
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/assets/characters"
+        "-DDEST=$<TARGET_FILE_DIR:ssf2t_hd_remix>/assets/characters"
+        "-DTABLE=${CMAKE_CURRENT_SOURCE_DIR}/src/character/character_packages.h"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/stage_character_packages.cmake"
     VERBATIM
 )
 

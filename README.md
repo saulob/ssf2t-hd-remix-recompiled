@@ -33,6 +33,7 @@
 - **Xbox controller support** with no setup, and keyboard play as an Xbox 360 controller.
 - **In-game frame counter** (**F2**), online **Ping display** (**F3**), and optional frame rate or render resolution in
   the window title.
+- **Evil Ryu and Violent Ken** (optional, off by default): two extra fighters with their own Character Select cells, moves, palettes, presentation and online compatibility. Turn them on in the launcher's Gameplay page; see [docs/ultra-fighters.md](docs/ultra-fighters.md).
 - **Portable user data**: saves, settings and achievements are in a `user_data` folder beside the program.
 
 The game runs at its original speed of 60 updates per second.

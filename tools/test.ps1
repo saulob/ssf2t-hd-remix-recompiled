@@ -131,6 +131,7 @@ if ($python) {
 }
 Invoke-Check 'guest symbol prefix (base013_/tu023_)' @('Base013', 'TU023', 'Hooks and patches') { & (Join-Path $PSScriptRoot 'test-guest-code.ps1') }
 Invoke-Check 'release folder check cases' @('Packaging structure', 'Windows platform paths') { & (Join-Path $PSScriptRoot 'test-release-check.ps1') }
+Invoke-Check 'character packages (list, staging, consumers, release scripts, documents)' @('Packaging structure') { & (Join-Path $PSScriptRoot 'test-character-packages.ps1') }
 Invoke-Check 'online instance script' @('Online protocol') { & (Join-Path $PSScriptRoot 'test-online-instance.ps1') }
 
 $node = Get-Command node -ErrorAction SilentlyContinue
@@ -221,6 +222,7 @@ $Suites = @(
     @('skip intro (setting, launcher row, gameflow patch, hooks of both builds)', 'skip_intro', 'Base013', 'TU023', 'Hooks and patches', 'Settings'),
     @('character moves page, winner quotes and legacy text lines', 'character_moves', 'Base013', 'TU023'),
     @('ultra endings (Evil Ryu and Violent Ken: package, text, routing, patches, guest switch)', 'ultra_ending', 'Base013', 'TU023', 'Hooks and patches'),
+    @('character packages (table, consumers, required sets, fixture validation)', 'character_packages', 'Packaging structure', 'Base013', 'TU023'),
     @('roster cells (Akuma and Ultra cells inside the native roster pass: lifetime, fade order, geometry, plan)', 'roster_cells', 'Base013', 'TU023', 'Hooks and patches'),
     @('violent ken audio (package, Ken event map, side routing, announcer)', 'violent_ken_audio', 'Base013', 'TU023'),
     @('online rendezvous', 'online_rendezvous', 'Direct / Relay'),

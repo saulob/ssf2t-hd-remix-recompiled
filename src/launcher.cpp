@@ -33,6 +33,7 @@
 
 #include "aspect_ratio.h"
 #include "character/akuma.h"
+#include "character/character_packages.h"
 #include "character/ultra_fighters.h"
 #include "dpi.h"
 #include "fight_area.h"
@@ -915,6 +916,10 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
               character::kDefaultEnableAkuma, "Off", "On");
     ui.Toggle(character::kEnableUltraFightersLabel, character::kEnableUltraFightersHelp,
               character::kEnableUltraFightersSetting, character::kDefaultEnableUltraFighters, "Off", "On");
+    if (const char* notice = character::CharacterPackageNotice();
+        notice && ui.settings().GetBool(character::kEnableUltraFightersSetting, character::kDefaultEnableUltraFighters)) {
+      ui.Info(character::kEnableUltraFightersLabel, notice);
+    }
     if (ui.settings().GetBool(kOnlineEnabledSetting, kDefaultOnlineEnabled)) {
       ui.Info(kInfiniteTimeLabel, kInfiniteTimeOnlineNotice);
     } else {
