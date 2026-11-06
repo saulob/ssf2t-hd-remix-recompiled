@@ -21,6 +21,7 @@ struct Base013UltraHooks {
   static constexpr uint32_t kPlayEnding1 = 0x823CBE80;
   static constexpr uint32_t kGateSuper1 = 0x8238D3A8;
   static constexpr uint32_t kDrawPortraits1 = 0x82179ED8;
+  static constexpr uint32_t kDrawRoster1 = 0x82177728;
   static constexpr uint32_t kDrawSprite1 = 0x8217AC00;
   static constexpr uint32_t kUpdateHud1 = 0x823D01A0;
   static constexpr uint32_t kEmitSprites1 = 0x823A03A0;
@@ -76,6 +77,7 @@ struct TitleUpdate023UltraHooks {
   static constexpr uint32_t kPlayEnding1 = 0x823CC460;
   static constexpr uint32_t kGateSuper1 = 0x8238D398;
   static constexpr uint32_t kDrawPortraits1 = 0x82179EF8;
+  static constexpr uint32_t kDrawRoster1 = 0x82177748;
   static constexpr uint32_t kDrawSprite1 = 0x8217AC20;
   static constexpr uint32_t kUpdateHud1 = 0x823D0780;
   static constexpr uint32_t kEmitSprites1 = 0x823A0390;

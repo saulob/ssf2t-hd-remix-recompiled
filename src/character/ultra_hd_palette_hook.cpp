@@ -6,12 +6,13 @@
 #include <rex/logging.h>
 #include <rex/system/kernel_state.h>
 
-#include "character/akuma_overlay.h"
+#include "character/select_activity.h"
 #include "character/evil_ryu_actions.h"
 #include "character/evil_ryu_moves.h"
 #include "character/evil_ryu_palette.h"
 #include "character/evil_ryu_sprites.h"
 #include "character/fighter_identity.h"
+#include "character/portrait_loan.h"
 #include "character/ultra_fight.h"
 #include "character/ultra_fighters.h"
 #include "character/ultra_navigation.h"
@@ -472,12 +473,7 @@ void DrawSprite(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   RestoreSprite(sprite, restore, base);
 }
 
-constexpr std::array<uint32_t, 2> kHoverWords = {0x83A21374, 0x83A21378};
 constexpr uint32_t kPresentationMode = 0x83A2130C;
-constexpr uint32_t kNoPortrait = 0xFFFFFFFF;
-constexpr uint32_t kEvilPortraitId = kEvilPortraitSlot;
-constexpr uint32_t kPortraitPaletteColumns = 10;
-constexpr uint32_t kPortraitRowBytes = kPortraitPaletteColumns * 4;
 constexpr std::array<uint32_t, 4> kSharedPortraitModes = {2, 3, 5, 9};
 constexpr uint32_t kLosingMode = 6;
 constexpr uint32_t kContinueMode = 7;
@@ -504,48 +500,6 @@ void LogSelectPresentation(const SelectPresentation& presentation, const std::ar
                 hover[side]);
   }
 }
-
-// Lends one unused portrait id to an Ultra fighter's texture for the length of a draw.
-template <typename H>
-class PortraitLoan {
- public:
-  PortraitLoan(uint32_t id, const EvilTexture* texture, const EvilTexture* beaten, uint8_t* base)
-      : base_(base), id_(id), texture_(texture) {
-    if (!texture_) return;
-    const uint32_t offset = (id - kEvilPortraitId) * 4;
-    large_ = H::kMysteryLargePortrait + offset;
-    loser_ = H::kLoserPortraitSlot + offset;
-    row_ = H::kPortraitPaletteRows + id * kPortraitRowBytes;
-    saved_large_ = LoadBE32(GuestHost(base, large_), 0);
-    saved_loser_ = LoadBE32(GuestHost(base, loser_), 0);
-    std::memcpy(saved_row_.data(), GuestHost(base, row_), kPortraitRowBytes);
-    GuestStoreBE32(base, large_, texture_->wrapper);
-    GuestStoreBE32(base, loser_, (beaten ? beaten : texture_)->wrapper);
-    for (uint32_t column = 0; column < kPortraitPaletteColumns; ++column) {
-      GuestStoreBE32(base, row_ + column * 4, texture_->wrapper);
-    }
-  }
-
-  ~PortraitLoan() {
-    if (!texture_) return;
-    GuestStoreBE32(base_, large_, saved_large_);
-    GuestStoreBE32(base_, loser_, saved_loser_);
-    std::memcpy(base_ + row_, saved_row_.data(), kPortraitRowBytes);
-  }
-
-  uint32_t Replacement() const { return texture_ ? id_ : kNoPortrait; }
-
- private:
-  uint8_t* base_;
-  uint32_t id_;
-  const EvilTexture* texture_;
-  uint32_t large_ = 0;
-  uint32_t loser_ = 0;
-  uint32_t row_ = 0;
-  uint32_t saved_large_ = 0;
-  uint32_t saved_loser_ = 0;
-  std::array<uint8_t, kPortraitRowBytes> saved_row_{};
-};
 
 // The Losing and Continue tables stop at the last guest character, so unlike the shared tables they have no spare id: the
 // carrier's own entries are lent for the draw. All ten frames name the one image, which keeps the guest's frame counter
@@ -590,8 +544,8 @@ void DrawBeatenPortrait(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (side < 0 || side > 1) return original(ctx, base);
   std::array<FighterIdentity, 2> requested{RequestedIdentity(0), RequestedIdentity(1)};
   std::array<bool, 2> on_cell{GlobalUltraNavigation().OnUltraCell(0), GlobalUltraNavigation().OnUltraCell(1)};
-  std::array<uint32_t, 2> hover{LoadBE32(GuestHost(base, kHoverWords[0]), 0),
-                                LoadBE32(GuestHost(base, kHoverWords[1]), 0)};
+  std::array<uint32_t, 2> hover{LoadBE32(GuestHost(base, kSelectHoverWords[0]), 0),
+                                LoadBE32(GuestHost(base, kSelectHoverWords[1]), 0)};
   const SelectPresentation presentation = ResolveSelectPresentation(requested, on_cell, hover);
   const bool violent = presentation.violent[size_t(side)];
   if (!violent && !presentation.evil[size_t(side)]) return original(ctx, base);
@@ -601,10 +555,19 @@ void DrawBeatenPortrait(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   original(ctx, base);
 }
 
-// Both sides read the same per-character portrait tables, so an Evil Ryu player gets the unused id after Akuma: its
-// large portrait slot holds the Evil Ryu texture. Its palette row names that same texture, which keeps the texture's own
-// palette; the winner screen only draws the native portrait frame for a character whose row is filled. That screen
-// reads the loser from a second table, loaded for the guest's hover ids only, so its id 17 entry is lent as well.
+template <typename H>
+LoanArt LoanArtFor(bool violent, PPCContext& ctx, uint8_t* base) {
+  const EvilTexture* large = TextureFor<H>(EvilArt::kLargePortrait, ctx, base, violent);
+  if (!large) return {};
+  const EvilTexture* beaten = BeatenTexture<H>(violent, ctx, base);
+  return {large->wrapper, (beaten ? beaten : large)->wrapper};
+}
+
+// Both sides read the same per-character portrait tables, so an Evil Ryu player gets the unused id after Akuma and a
+// Violent Ken player an id no side is hovering: its large portrait slot holds the fighter's texture. Its palette row
+// names that same texture, which keeps the texture's own palette; the winner screen only draws the native portrait
+// frame for a character whose row is filled. That screen reads the loser from a second table, loaded for the guest's
+// hover ids only, so that entry is lent as well.
 template <typename H>
 void DrawPortraits(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (!UltraFightersEnabled()) return original(ctx, base);
@@ -613,29 +576,17 @@ void DrawPortraits(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (!UsesSharedPortraits(mode)) return original(ctx, base);
   std::array<FighterIdentity, 2> requested{RequestedIdentity(0), RequestedIdentity(1)};
   std::array<bool, 2> on_cell{GlobalUltraNavigation().OnUltraCell(0), GlobalUltraNavigation().OnUltraCell(1)};
-  std::array<uint32_t, 2> hover{LoadBE32(GuestHost(base, kHoverWords[0]), 0),
-                                LoadBE32(GuestHost(base, kHoverWords[1]), 0)};
+  std::array<uint32_t, 2> hover{LoadBE32(GuestHost(base, kSelectHoverWords[0]), 0),
+                                LoadBE32(GuestHost(base, kSelectHoverWords[1]), 0)};
   const SelectPresentation presentation = ResolveSelectPresentation(requested, on_cell, hover);
   LogSelectPresentation(presentation, requested, on_cell, hover);
   if (!presentation.any()) return original(ctx, base);
   const bool any_evil = presentation.evil[0] || presentation.evil[1];
   const bool any_violent = presentation.violent[0] || presentation.violent[1];
-  PortraitLoan<H> evil_loan(kEvilPortraitId, any_evil ? TextureFor<H>(EvilArt::kLargePortrait, ctx, base) : nullptr,
-                           any_evil ? BeatenTexture<H>(false, ctx, base) : nullptr, base);
-  PortraitLoan<H> violent_loan(kViolentPortraitSlot,
-                               any_violent ? TextureFor<H>(EvilArt::kLargePortrait, ctx, base, true) : nullptr,
-                               any_violent ? BeatenTexture<H>(true, ctx, base) : nullptr, base);
-  for (int side = 0; side < 2; ++side) {
-    if (presentation.evil[side]) GuestStoreBE32(base, kHoverWords[side], evil_loan.Replacement());
-    if (presentation.violent[side]) GuestStoreBE32(base, kHoverWords[side], violent_loan.Replacement());
-    if (presentation.hide[side]) GuestStoreBE32(base, kHoverWords[side], kNoPortrait);
-  }
-  original(ctx, base);
-  for (int side = 0; side < 2; ++side) {
-    if (presentation.evil[side] || presentation.violent[side] || presentation.hide[side]) {
-      GuestStoreBE32(base, kHoverWords[side], hover[side]);
-    }
-  }
+  const LoanArt evil = any_evil ? LoanArtFor<H>(false, ctx, base) : LoanArt{};
+  const LoanArt violent = any_violent ? LoanArtFor<H>(true, ctx, base) : LoanArt{};
+  const PortraitTables tables{H::kMysteryLargePortrait, H::kLoserPortraitSlot, H::kPortraitPaletteRows};
+  DrawWithPortraitLoans(tables, presentation, hover, evil, violent, base, [&] { original(ctx, base); });
 }
 
 }  // namespace

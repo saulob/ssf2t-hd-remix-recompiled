@@ -9,8 +9,11 @@ namespace ssf2t::character {
 
 // The guest slot that holds the Evil Ryu large portrait is the unused id after Akuma; any side hovering that id draws it.
 inline constexpr uint32_t kEvilPortraitSlot = 17;
-inline constexpr uint32_t kViolentPortraitSlot = 18;
 inline constexpr uint32_t kNoLargePortrait = 0xFFFFFFFF;
+// The large table ends at the Evil Ryu slot and the mini portraits follow it directly: id 18 would be Ryu's mini.
+inline constexpr uint32_t kLargePortraitIds = 18;
+// Only an id a side hovers reads its large entry, and neither this id nor Ken's carries a special case in the guest.
+inline constexpr uint32_t kViolentSpareLargeId = 1;
 
 // Both sides draw Ryu's name from the one tile string 0700 0701 0702 0703, so a tile says nothing about the side; the HD
 // art replaces whichever end of the string the object walk meets first. The object's place on screen names the side.
@@ -65,10 +68,16 @@ inline SelectPresentation ResolveSelectPresentation(const std::array<FighterIden
   }
   if (!result.any()) return result;
   for (int side = 0; side < 2; ++side) {
-    const bool ultra_slot = hover[side] == kEvilPortraitSlot || hover[side] == kViolentPortraitSlot;
-    result.hide[side] = !result.evil[side] && !result.violent[side] && ultra_slot;
+    result.hide[side] = !result.evil[side] && !result.violent[side] && hover[side] == kEvilPortraitSlot;
   }
   return result;
+}
+
+// Violent Ken has no large id of his own, so he borrows Ken's unless a side is really showing Ken.
+constexpr uint32_t ViolentPortraitId(const SelectPresentation& presentation, const std::array<uint32_t, 2>& hover) {
+  const uint32_t ken = uint32_t(kKenGuestCharacter);
+  const bool ken_shown = (!presentation.violent[0] && hover[0] == ken) || (!presentation.violent[1] && hover[1] == ken);
+  return ken_shown ? kViolentSpareLargeId : ken;
 }
 
 }  // namespace ssf2t::character

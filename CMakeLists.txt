@@ -185,7 +185,7 @@ set(SSF2T_SOURCES
     src/character/akuma.cpp
     src/character/akuma_select.cpp
     src/character/akuma_navigation.cpp
-    src/character/akuma_overlay.cpp
+    src/character/select_activity.cpp
     src/character/akuma_portrait.cpp
     src/character/character_moves.cpp
     src/character/character_moves_hook.cpp
@@ -221,7 +221,7 @@ set(SSF2T_SOURCES
     src/character/violent_ken_data.cpp
     src/character/violent_ken_moves.cpp
     src/character/ultra_palette_hook.cpp
-    src/character/ultra_portrait_overlay.cpp
+    src/character/roster_cells_hook.cpp
     src/character/ultra_portraits.cpp
     src/crash_report.cpp
     src/diagnostics.cpp
@@ -529,6 +529,11 @@ add_executable(ssf2t_ultra_ending_tests EXCLUDE_FROM_ALL tests/ultra_ending_test
     src/character/character_moves.cpp src/character/ultra_ending.cpp src/updater/third_party/miniz/miniz.c)
 target_include_directories(ssf2t_ultra_ending_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_ultra_ending_tests)
+
+add_executable(ssf2t_roster_cells_tests EXCLUDE_FROM_ALL tests/roster_cells_tests.cpp)
+target_include_directories(ssf2t_roster_cells_tests PRIVATE src)
+target_compile_definitions(ssf2t_roster_cells_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_roster_cells_tests)
 
 add_executable(ssf2t_ultra_select_presentation_tests EXCLUDE_FROM_ALL tests/ultra_select_presentation_tests.cpp
     src/character/ultra_navigation.cpp src/character/fighter_identity.cpp)

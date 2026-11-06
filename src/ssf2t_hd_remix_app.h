@@ -26,11 +26,10 @@
 #include "achievements_overlay.h"
 #include "active_log.h"
 #include "aspect_ratio.h"
-#include "character/akuma_overlay.h"
 #include "character/evil_ryu_audio.h"
 #include "character/evil_ryu_palette.h"
 #include "character/evil_ryu_sprites.h"
-#include "character/ultra_portrait_overlay.h"
+#include "character/roster_cells_hook.h"
 #include "character/violent_ken_audio.h"
 #include "character/ultra_ending.h"
 #include "character/violent_ken_data.h"
@@ -297,11 +296,10 @@ class SuperStreetFighterApp : public rex::ReXApp {
     character::SetEvilAudioDirectory(game_data_root());
     character::SetViolentKenDirectory(game_data_root());
     character::SetUltraEndingDirectory(game_data_root());
+    character::SetRosterCellDirectory(game_data_root());
     character::SetViolentKenAudioDirectory(game_data_root());
     if (window() && imgui_drawer()) {
       CreateFrameCounter(imgui_drawer());
-      character::CreateAkumaOverlay(imgui_drawer(), immediate_drawer(), game_data_root());
-      character::CreateUltraPortraitOverlay(imgui_drawer(), immediate_drawer(), game_data_root());
       CreatePingDisplay(imgui_drawer());
       CreateInviteUi(imgui_drawer(),
                      [this](std::function<void()> work) { app_context().CallInUIThreadDeferred(std::move(work)); });

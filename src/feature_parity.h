@@ -53,10 +53,11 @@ struct Feature {
 inline constexpr Feature kFeatures[] = {
     {"Akuma",
      "Move::kHdStyle,Move::kLive,Move::kMode,Move::kPad,Move::kSpecial,UltraHooks::kUnlockAkuma1,"
+     "UltraHooks::kDrawRoster1,"
      "UltraHooks::kNavigateSelect1",
-     "UltraHooks::kUnlockAkuma1,UltraHooks::kNavigateSelect1",
+     "UltraHooks::kUnlockAkuma1,UltraHooks::kNavigateSelect1,UltraHooks::kDrawRoster1",
      "kEnableAkumaSetting", "", "", "", "",
-     "src/character/akuma.cpp,src/character/akuma_navigation.cpp,src/character/akuma_overlay.cpp,"
+     "src/character/akuma.cpp,src/character/akuma_navigation.cpp,src/character/select_activity.cpp,"
      "src/character/akuma_portrait.cpp,src/character/akuma_select.cpp",
      "", "", "", "", "tests/secret_select_tests.cpp", "kEnableAkumaLabel"},
     {"Ultra fighters (Evil Ryu and Violent Ken)",
@@ -66,7 +67,7 @@ inline constexpr Feature kFeatures[] = {
      "Hd::kLoserPortraitSlot,Hd::kLosingPortraits,Hd::kMysteryLargePortrait,Hd::kPortraitPaletteRows,"
      "Hd::kRyuPaletteSlot10,Hud::kFightHudActive,Hud::kWidgets,Moves::kActionTables,"
      "Palette::kPaletteRamPointer,Quote::kTaunts,Results::kLocalRecords,Results::kMatchWinner,"
-     "Select::kLayout,Select::kLive,Select::kMode,UltraHooks::kPlayerCharacterIndex1,"
+     "Roster::kLayout,Roster::kLive,Roster::kMode,Select::kMode,UltraHooks::kPlayerCharacterIndex1,"
      "UltraHooks::kAnnounceWinnerName1,UltraHooks::kLoadSounds1,UltraHooks::kRequestSound1,"
      "UltraHooks::kRoundEndScream1,UltraHooks::kObserveLock1,UltraHooks::kPlaceCursor1,"
      "UltraHooks::kPlayEnding1,UltraHooks::kGateSuper1,UltraHooks::kDrawPortraits1,"
@@ -106,7 +107,7 @@ inline constexpr Feature kFeatures[] = {
      "src/character/ultra_fighters.cpp,src/character/ultra_gameplay_hook.cpp,"
      "src/character/ultra_hd_palette_hook.cpp,src/character/ultra_hud_hook.cpp,"
      "src/character/ultra_moves_hook.cpp,src/character/ultra_navigation.cpp,"
-     "src/character/ultra_palette_hook.cpp,src/character/ultra_portrait_overlay.cpp,"
+     "src/character/ultra_palette_hook.cpp,src/character/roster_cells_hook.cpp,"
      "src/character/ultra_portraits.cpp,src/character/ultra_results_hook.cpp,"
      "src/character/ultra_winner_hook.cpp,src/character/violent_ken_actions.cpp,"
      "src/character/violent_ken_audio.cpp,src/character/violent_ken_data.cpp,"

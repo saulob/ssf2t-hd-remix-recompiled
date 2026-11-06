@@ -7,7 +7,7 @@
 #include <rex/ui/window.h>
 #include <rex/ui/window_listener.h>
 
-#include "character/akuma_overlay.h"
+#include "character/select_activity.h"
 #include "character/evil_ryu_debug.h"
 #include "character/ultra_fighters.h"
 

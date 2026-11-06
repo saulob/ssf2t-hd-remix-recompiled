@@ -238,7 +238,7 @@ void TestPresentation() {
                                                            {uint32_t(kKenGuestCharacter), uint32_t(kKenGuestCharacter)});
   Check(!ken.violent[0] && ken.violent[1], "Ken beside Violent Ken stays Ken");
   const SelectPresentation slot = ResolveSelectPresentation({FighterIdentity::kGuest, FighterIdentity::kViolentKen},
-                                                            {false, true}, {kViolentPortraitSlot, uint32_t(kKenGuestCharacter)});
+                                                            {false, true}, {kEvilPortraitSlot, uint32_t(kKenGuestCharacter)});
   Check(slot.hide[0], "a side not on the cell never shares the slot");
   Check(KenNameSide(kKenNameFirstTile, kNameTileColour, 10) == 0, "name tile on the left is P1");
   Check(KenNameSide(kKenNameLastTile, kNameTileColour, 300) == 1, "name tile on the right is P2");

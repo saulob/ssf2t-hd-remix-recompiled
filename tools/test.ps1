@@ -219,6 +219,7 @@ $Suites = @(
     @('arcade final-boss shortcut (DEBUG_SAULO F1: gating, edge, identity, Bison, Akuma rules, ending route)', 'arcade_debug', 'Base013', 'TU023', 'Hooks and patches'),
     @('character moves page, winner quotes and legacy text lines', 'character_moves', 'Base013', 'TU023'),
     @('ultra endings (Evil Ryu and Violent Ken: package, text, routing, patches, guest switch)', 'ultra_ending', 'Base013', 'TU023', 'Hooks and patches'),
+    @('roster cells (Akuma and Ultra cells inside the native roster pass: lifetime, fade order, geometry, plan)', 'roster_cells', 'Base013', 'TU023', 'Hooks and patches'),
     @('violent ken audio (package, Ken event map, side routing, announcer)', 'violent_ken_audio', 'Base013', 'TU023'),
     @('online rendezvous', 'online_rendezvous', 'Direct / Relay'),
     @('online connection test', 'online_connection', 'Online protocol', 'Direct / Relay'),

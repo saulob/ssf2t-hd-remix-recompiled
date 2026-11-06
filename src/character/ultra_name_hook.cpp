@@ -6,7 +6,7 @@
 #include <rex/hook.h>
 #include <rex/logging.h>
 
-#include "character/akuma_overlay.h"
+#include "character/select_activity.h"
 #include "character/ultra_fighters.h"
 #include "character/ultra_navigation.h"
 #include "guest_memory.h"

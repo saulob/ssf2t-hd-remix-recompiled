@@ -291,6 +291,7 @@ SUITES=(
   "ultra debug keys (DEBUG_SAULO, per fighter routing, gating)|ssf2t_evil_ryu_debug_tests|$A_B13;$A_TU"
   "arcade final-boss shortcut (DEBUG_SAULO F1: gating, edge, identity, Bison, Akuma rules, ending route)|ssf2t_arcade_debug_tests|$A_B13;$A_TU;$A_HOOK"
   "character moves page, winner quotes and legacy text lines|ssf2t_character_moves_tests|$A_B13;$A_TU"
+  "roster cells (Akuma and Ultra cells inside the native roster pass: lifetime, fade order, geometry, plan)|ssf2t_roster_cells_tests|$A_B13;$A_TU;$A_HOOK"
   "ultra endings (Evil Ryu and Violent Ken: package, text, routing, patches, guest switch)|ssf2t_ultra_ending_tests|$A_B13;$A_TU;$A_HOOK"
   "violent ken audio (package, Ken event map, side routing, announcer)|ssf2t_violent_ken_audio_tests|$A_B13;$A_TU"
   "online rendezvous (STUN, UDP punch, relay selection)|ssf2t_online_rendezvous_tests|$A_RELAY;$A_NET"

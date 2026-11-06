@@ -1,9 +1,12 @@
 #include <array>
 #include <cstdio>
+#include <vector>
 
 #include "character/fighter_identity.h"
+#include "character/portrait_loan.h"
 #include "character/ultra_navigation.h"
 #include "character/ultra_select_presentation.h"
+#include "guest_memory.h"
 
 namespace {
 
@@ -152,6 +155,177 @@ void TestFightIdentity() {
         "P2's ordinary Ryu fights as Ryu");
 }
 
+// The guest's portrait tables at their real relative positions, each word filled with a value naming its address.
+struct GuestPortraits {
+  static constexpr uint32_t kOrigin = 0x83BE0000;
+  static constexpr uint32_t kRows = 0x83BE3608 - kOrigin;
+  static constexpr uint32_t kRowsNeighbour = kRows + kLargePortraitIds * kPortraitRowBytes;
+  static constexpr uint32_t kLarge = 0x83BE59A0 - kOrigin;
+  static constexpr uint32_t kMini = kLarge + kLargePortraitIds * 4;
+  static constexpr uint32_t kLoser = 0x83BE5A30 - kOrigin;
+  static constexpr uint32_t kHoverP1 = 0x7000;
+  static constexpr uint32_t kBytes = 0x8000;
+  static constexpr uint32_t kEvilArt = 0xE0000001;
+  static constexpr uint32_t kViolentArt = 0xE0000002;
+  static constexpr uint32_t kEvilBeaten = 0xE0000003;
+  static constexpr uint32_t kViolentBeaten = 0xE0000004;
+
+  std::vector<uint8_t> memory = std::vector<uint8_t>(kBytes);
+
+  GuestPortraits() {
+    for (uint32_t at = 0; at < kBytes; at += 4) ssf2t::StoreBE32(memory.data(), at, 0x10000000u | at);
+  }
+
+  uint8_t* base() { return memory.data(); }
+  uint32_t Word(uint32_t at) const { return ssf2t::LoadBE32(memory.data(), at); }
+  uint32_t Mini(uint32_t id) const { return Word(kMini + id * 4); }
+  uint32_t LargeOfHover(int side) const { return Word(kLarge + Word(kHoverP1 + uint32_t(side) * 4) * 4); }
+  void SetHover(std::array<uint32_t, 2> hover) {
+    ssf2t::StoreBE32(memory.data(), kHoverP1, hover[0]);
+    ssf2t::StoreBE32(memory.data(), kHoverP1 + 4, hover[1]);
+  }
+
+  static PortraitTables Tables() {
+    return {0x83BE59E4 - kOrigin, 0x83BE5A74 - kOrigin, kRows, {kHoverP1, kHoverP1 + 4}};
+  }
+};
+
+template <typename Pass>
+void RunPass(GuestPortraits& guest, std::array<FighterIdentity, 2> requested, std::array<bool, 2> on_cell,
+             std::array<uint32_t, 2> hover, Pass&& pass) {
+  guest.SetHover(hover);
+  const SelectPresentation presentation = ResolveSelectPresentation(requested, on_cell, hover);
+  const bool any_evil = presentation.evil[0] || presentation.evil[1];
+  const bool any_violent = presentation.violent[0] || presentation.violent[1];
+  const LoanArt evil = any_evil ? LoanArt{GuestPortraits::kEvilArt, GuestPortraits::kEvilBeaten} : LoanArt{};
+  const LoanArt violent = any_violent ? LoanArt{GuestPortraits::kViolentArt, GuestPortraits::kViolentBeaten} : LoanArt{};
+  if (!presentation.any()) return pass();
+  DrawWithPortraitLoans(GuestPortraits::Tables(), presentation, hover, evil, violent, guest.base(), pass);
+}
+
+void CheckRosterIntact(const GuestPortraits& guest, const GuestPortraits& untouched, const char* what) {
+  bool intact = true;
+  for (uint32_t id = 0; id <= 16; ++id) intact = intact && guest.Mini(id) == untouched.Mini(id);
+  Check(intact, what);
+}
+
+void TestRosterNeverChanges() {
+  using F = FighterIdentity;
+  constexpr uint32_t kKen = kKenGuestCharacter;
+  constexpr uint32_t kNobody = kNoLargePortrait;
+  const GuestPortraits clean;
+  GuestPortraits guest;
+  const auto during = [&](const char* what) {
+    return [&, what] {
+      CheckRosterIntact(guest, clean, what);
+      Check(guest.Mini(kRyu) == clean.Mini(kRyu) && guest.Mini(kKen) == clean.Mini(kKen), what);
+    };
+  };
+
+  RunPass(guest, {F::kGuest, F::kGuest}, {false, false}, {kRyu, kKen}, during("Ultra Off keeps the roster"));
+  RunPass(guest, {F::kGuest, F::kGuest}, {false, false}, {kNobody, kNobody}, during("Ultra On with no pick keeps the roster"));
+  RunPass(guest, {F::kEvilRyu, F::kGuest}, {true, false}, {kRyu, kHonda}, [&] {
+    during("Evil Ryu keeps the roster")();
+    Check(guest.LargeOfHover(0) == GuestPortraits::kEvilArt, "Evil Ryu shows his large portrait");
+  });
+
+  RunPass(guest, {F::kViolentKen, F::kGuest}, {true, false}, {kKen, kHonda}, [&] {
+    during("P1 Violent Ken keeps the roster")();
+    Check(guest.LargeOfHover(0) == GuestPortraits::kViolentArt, "P1 Violent Ken shows his large portrait");
+    Check(guest.LargeOfHover(1) == clean.Word(GuestPortraits::kLarge + kHonda * 4), "P2's Honda keeps his large portrait");
+  });
+  RunPass(guest, {F::kGuest, F::kViolentKen}, {false, true}, {kHonda, kKen}, [&] {
+    during("P2 Violent Ken keeps the roster")();
+    Check(guest.LargeOfHover(1) == GuestPortraits::kViolentArt, "P2 Violent Ken shows his large portrait");
+    Check(guest.LargeOfHover(0) == clean.Word(GuestPortraits::kLarge + kHonda * 4), "P1's Honda keeps his large portrait");
+  });
+  RunPass(guest, {F::kViolentKen, F::kGuest}, {true, false}, {kKen, kKen}, [&] {
+    during("Violent Ken beside Ken keeps the roster")();
+    Check(guest.LargeOfHover(0) == GuestPortraits::kViolentArt, "Violent Ken stays himself beside Ken");
+    Check(guest.LargeOfHover(1) == clean.Word(GuestPortraits::kLarge + kKen * 4), "Ken beside Violent Ken stays Ken");
+  });
+  RunPass(guest, {F::kEvilRyu, F::kViolentKen}, {true, true}, {kRyu, kKen}, [&] {
+    during("Evil Ryu against Violent Ken keeps the roster")();
+    Check(guest.LargeOfHover(0) == GuestPortraits::kEvilArt && guest.LargeOfHover(1) == GuestPortraits::kViolentArt,
+          "each side keeps its own large portrait");
+  });
+  RunPass(guest, {F::kViolentKen, F::kViolentKen}, {true, true}, {kKen, kKen}, [&] {
+    during("the Violent Ken mirror keeps the roster")();
+    Check(guest.LargeOfHover(0) == GuestPortraits::kViolentArt && guest.LargeOfHover(1) == GuestPortraits::kViolentArt,
+          "both sides of the mirror show Violent Ken");
+  });
+}
+
+void TestNeighbourTablesNeverChange() {
+  using F = FighterIdentity;
+  constexpr uint32_t kKen = kKenGuestCharacter;
+  const GuestPortraits clean;
+  GuestPortraits guest;
+  RunPass(guest, {F::kViolentKen, F::kGuest}, {true, false}, {kKen, kHonda}, [&] {
+    bool intact = true;
+    for (uint32_t word = 0; word < kPortraitPaletteColumns; ++word) {
+      const uint32_t at = GuestPortraits::kRowsNeighbour + word * 4;
+      intact = intact && guest.Word(at) == clean.Word(at);
+    }
+    Check(intact, "the table after the palette rows is not lent");
+    Check(guest.Word(GuestPortraits::kLoser + 18 * 4) == clean.Word(GuestPortraits::kLoser + 18 * 4),
+          "the word past the loser table is not lent");
+  });
+}
+
+void TestStateIsRestored() {
+  using F = FighterIdentity;
+  constexpr uint32_t kKen = kKenGuestCharacter;
+  GuestPortraits guest;
+  guest.SetHover({kKen, kRyu});
+  const std::vector<uint8_t> before = guest.memory;
+  const auto noop = [] {};
+  for (int visit = 0; visit < 8; ++visit) {
+    RunPass(guest, {F::kViolentKen, F::kGuest}, {true, false}, {kKen, kRyu}, noop);
+    Check(guest.memory == before, "leaving Violent Ken restores every guest word");
+    RunPass(guest, {F::kGuest, F::kGuest}, {false, false}, {kKen, kRyu}, noop);
+    RunPass(guest, {F::kViolentKen, F::kEvilRyu}, {true, true}, {kKen, kRyu}, noop);
+    Check(guest.memory == before, "re-entering Violent Ken accumulates nothing");
+  }
+  guest.SetHover({kRyu, kKen});
+  const std::vector<uint8_t> beside = guest.memory;
+  RunPass(guest, {F::kGuest, F::kViolentKen}, {false, true}, {kRyu, kKen}, noop);
+  Check(guest.memory == beside, "P2's Violent Ken restores every guest word");
+}
+
+void TestLoanRefusesForeignIds() {
+  GuestPortraits guest;
+  const std::vector<uint8_t> before = guest.memory;
+  {
+    PortraitLoan loan(GuestPortraits::Tables(), kLargePortraitIds, {GuestPortraits::kViolentArt, 0}, guest.base());
+    Check(guest.memory == before, "an id past the large table writes nothing");
+    Check(loan.Replacement() == kNoLargePortrait, "a refused id shows no portrait");
+  }
+  Check(guest.memory == before, "a refused loan restores nothing");
+}
+
+void TestViolentIdIsAlwaysSafe() {
+  using F = FighterIdentity;
+  constexpr uint32_t kKen = kKenGuestCharacter;
+  constexpr uint32_t kBison = 8;
+  constexpr uint32_t kAkuma = 16;
+  for (uint32_t other = 0; other <= kEvilPortraitSlot; ++other) {
+    for (const int side : {0, 1}) {
+      std::array<F, 2> requested{F::kGuest, F::kGuest};
+      std::array<bool, 2> on_cell{false, false};
+      std::array<uint32_t, 2> hover{other, other};
+      requested[size_t(side)] = F::kViolentKen;
+      on_cell[size_t(side)] = true;
+      hover[size_t(side)] = kKen;
+      const SelectPresentation presentation = ResolveSelectPresentation(requested, on_cell, hover);
+      const uint32_t id = ViolentPortraitId(presentation, hover);
+      Check(id < kLargePortraitIds, "Violent Ken's id stays inside the large table");
+      Check(id != kBison && id != kAkuma, "Violent Ken's id has no guest special case");
+      Check(id != hover[size_t(1 - side)], "Violent Ken never shares an id the other side really shows");
+    }
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -161,6 +335,11 @@ int main() {
   TestNameTiles();
   TestBeatenPortraitSide();
   TestFightIdentity();
+  TestRosterNeverChanges();
+  TestNeighbourTablesNeverChange();
+  TestStateIsRestored();
+  TestLoanRefusesForeignIds();
+  TestViolentIdIsAlwaysSafe();
   if (failures == 0) std::printf("ultra select presentation tests passed\n");
   return failures == 0 ? 0 : 1;
 }
