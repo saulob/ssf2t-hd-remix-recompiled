@@ -308,6 +308,50 @@ int main() {
     Check(RenderStateFor(sides.For(0), true, false) == EvilRenderState::kTeleportGhost &&
               RenderStateFor(sides.For(1), true, false) == EvilRenderState::kNormal,
           "render state is per player");
+
+    HostMove senpu;
+    senpu.kind = HostMoveKind::kSenpuKyaku;
+    Check(RenderStateFor(senpu, true, false) == EvilRenderState::kNormal, "Senpu Kyaku draws the ordinary body");
+    Check(never_hidden(RenderStateFor(senpu, true, false)), "Senpu Kyaku never hides the body");
+  }
+
+  {
+    Check(MirrorDirections(1) == 2 && MirrorDirections(2) == 1, "back and forward swap");
+    Check(MirrorDirections(5) == 6 && MirrorDirections(6) == 5, "the diagonals swap");
+    Check(MirrorDirections(4) == 4 && MirrorDirections(0) == 0, "down and neutral stay");
+    Check(MirrorDirections(0x72) == 0x71, "buttons are untouched");
+    constexpr uint16_t kUsf2HalfCircle[] = {2, 6, 4, 5, 1};
+    constexpr uint16_t kGuestChain[] = {1, 5, 4, 6, 2};
+    for (int step = 0; step < 5; ++step) {
+      Check(MirrorDirections(kUsf2HalfCircle[step]) == kGuestChain[step], "63214 reaches the guest chain as its own order");
+    }
+  }
+
+  {
+    constexpr int32_t kFloor = 0x120000;
+    const auto stand = [](GroundHeight& ground, int32_t y, int ticks) {
+      for (int i = 0; i < ticks; ++i) ObserveGround(ground, y, false);
+    };
+    GroundHeight ground;
+    stand(ground, kFloor, 20);
+    Check(ground.y == kFloor && !AboveGround(ground, kFloor), "a fighter standing still is on the ground");
+    Check(!AboveGround(ground, kFloor + kAirborneMargin), "the margin is still the ground");
+    Check(AboveGround(ground, kFloor + kAirborneMargin + 1), "above the margin is the air");
+    for (int y = kFloor; y < kFloor + (60 << 16); y += 3 << 16) ObserveGround(ground, y, false);
+    Check(ground.y == kFloor, "a jump never moves the floor");
+    ObserveGround(ground, kFloor - (12 << 16), false);
+    stand(ground, kFloor, 20);
+    Check(ground.y == kFloor && !AboveGround(ground, kFloor), "a landing that dips below the floor does not poison it");
+    GroundHeight later = ground;
+    stand(later, kFloor + (30 << 16), 20);
+    Check(!AboveGround(later, kFloor + (30 << 16)), "a higher floor in the next fight heals once the fighter stands");
+    GroundHeight frozen;
+    stand(frozen, kFloor, 20);
+    for (int i = 0; i < 40; ++i) ObserveGround(frozen, kFloor + (50 << 16), true);
+    Check(frozen.y == kFloor && AboveGround(frozen, kFloor + (50 << 16)), "a frozen frame in mid air is not a floor");
+    GroundHeight fresh;
+    ObserveGround(fresh, kFloor, false);
+    Check(fresh.known && fresh.y == kFloor, "the first height seeds the floor");
   }
 
   if (failures == 0) std::printf("evil ryu moves tests passed\n");

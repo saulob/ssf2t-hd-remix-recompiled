@@ -49,18 +49,6 @@ struct Base013UltraHooks {
   static constexpr uint32_t kResetPlayerResults1 = 0x823C8540;
   static constexpr uint32_t kShowQuote1 = 0x823CE430;
   static constexpr uint32_t kShowWinText1 = 0x823CDBF8;
-  // DEBUG_SAULO Arcade final-boss shortcut: the per-frame game state dispatch, the ending choice, the ladder build and the
-  // next-opponent choice, and the guest's "Bison only" and "Akuma only" start-code flags.
-  static constexpr uint32_t kArcadeFrame1 = 0x8223DD58;
-  static constexpr uint32_t kArcadeEnding1 = 0x8223A5A0;
-  static constexpr uint32_t kArcadeLadderInit1 = 0x82380C98;
-  static constexpr uint32_t kArcadeNextOpponent1 = 0x823804A0;
-  static constexpr uint32_t kArcadeBossOnlyFlag = 0x83CA2906;
-  static constexpr uint32_t kArcadeAkumaOnlyFlag = 0x83CA0BBF;
-  static constexpr uint32_t kArcadeFrame1Words[] = {0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x816B52DC, 0xA16B0000, 0x3D4083CD, 0x394A52CC};
-  static constexpr uint32_t kArcadeEnding1Words[] = {0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x38800000, 0x3D608200, 0x386B64C0, 0x48193641, 0x3D6083CD};
-  static constexpr uint32_t kArcadeLadderInit1Words[] = {0x7D8802A6, 0x9181FFF8, 0x9421FF90, 0x3D6083CD, 0x39400000, 0x914B52A0, 0x3D6083CD, 0x816B52DC};
-  static constexpr uint32_t kArcadeNextOpponent1Words[] = {0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x39400000, 0x914B52A0, 0x3D6083CD, 0x816B52DC};
 };
 
 struct TitleUpdate023UltraHooks {
@@ -105,16 +93,6 @@ struct TitleUpdate023UltraHooks {
   static constexpr uint32_t kResetPlayerResults1 = 0x823C8B38;
   static constexpr uint32_t kShowQuote1 = 0x823CEA10;
   static constexpr uint32_t kShowWinText1 = 0x823CE1D8;
-  static constexpr uint32_t kArcadeFrame1 = 0x8223DE80;
-  static constexpr uint32_t kArcadeEnding1 = 0x8223A6C8;
-  static constexpr uint32_t kArcadeLadderInit1 = 0x82380D68;
-  static constexpr uint32_t kArcadeNextOpponent1 = 0x82380570;
-  static constexpr uint32_t kArcadeBossOnlyFlag = 0x83CA2E1E;
-  static constexpr uint32_t kArcadeAkumaOnlyFlag = 0x83CA10D7;
-  static constexpr uint32_t kArcadeFrame1Words[] = {0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x816B57F4, 0xA16B0000, 0x3D4083CD, 0x394A57E4};
-  static constexpr uint32_t kArcadeEnding1Words[] = {0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x38800000, 0x3D608200, 0x386B64C0, 0x48193AF9, 0x3D6083CD};
-  static constexpr uint32_t kArcadeLadderInit1Words[] = {0x7D8802A6, 0x9181FFF8, 0x9421FF90, 0x3D6083CD, 0x39400000, 0x914B57B8, 0x3D6083CD, 0x816B57F4};
-  static constexpr uint32_t kArcadeNextOpponent1Words[] = {0x7D8802A6, 0x9181FFF8, 0x9421FFA0, 0x3D6083CD, 0x39400000, 0x914B57B8, 0x3D6083CD, 0x816B57F4};
 };
 
 }  // namespace ssf2t::character

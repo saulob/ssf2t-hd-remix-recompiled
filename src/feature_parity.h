@@ -97,8 +97,7 @@ inline constexpr Feature kFeatures[] = {
      "kEnableUltraFightersSetting", "", "", "", "",
      "src/character/character_moves.cpp,src/character/character_moves_hook.cpp,"
      "src/character/evil_ryu_actions.cpp,src/character/evil_ryu_assets.cpp,"
-     "src/character/evil_ryu_audio.cpp,src/character/evil_ryu_debug.cpp,"
-     "src/character/evil_ryu_debug_keys.cpp,src/character/evil_ryu_moves.cpp,"
+     "src/character/evil_ryu_audio.cpp,src/character/evil_ryu_moves.cpp,"
      "src/character/evil_ryu_palette.cpp,src/character/evil_ryu_results.cpp,"
      "src/character/evil_ryu_sprites.cpp,src/character/fighter_identity.cpp,"
      "src/character/host_rollback.cpp,src/character/ultra_audio_hook.cpp,"
@@ -113,17 +112,8 @@ inline constexpr Feature kFeatures[] = {
      "src/character/violent_ken_audio.cpp,src/character/violent_ken_data.cpp,"
      "src/character/violent_ken_moves.cpp",
      "", "", "", "", "tests/violent_ken_tests.cpp,tests/violent_ken_audio_tests.cpp,tests/secret_select_tests.cpp,"
-     "tests/ultra_ending_tests.cpp",
+     "tests/ultra_ending_tests.cpp,tests/evil_ryu_moves_tests.cpp,tests/debug_hotkeys_removed_tests.cpp",
      "kEnableUltraFightersLabel"},
-    {"Arcade final-boss shortcut (DEBUG_SAULO, F1)",
-     "UltraHooks::kArcadeFrame1,UltraHooks::kArcadeEnding1,UltraHooks::kArcadeLadderInit1,"
-     "UltraHooks::kArcadeNextOpponent1,UltraHooks::kArcadeBossOnlyFlag,UltraHooks::kArcadeAkumaOnlyFlag",
-     "UltraHooks::kArcadeFrame1,UltraHooks::kArcadeEnding1,UltraHooks::kArcadeLadderInit1,"
-     "UltraHooks::kArcadeNextOpponent1",
-     "", "", "", "", "",
-     "src/character/ultra_arcade_debug.cpp,src/character/ultra_arcade_debug_hook.cpp,"
-     "src/character/ultra_arcade_debug_keys.cpp",
-     "", "", "", "", "tests/arcade_debug_tests.cpp"},
     {"Game files and Title Update", "", "", "", "", "", "", "",
      "src/game_files.cpp,src/stfs.cpp,src/guest_image.cpp,src/title_update_image.h", "", "", "", "",
      "tests/game_files_tests.cpp,tests/game_files_base_only_tests.cpp,tests/guest_build_tests.cpp"},

@@ -438,8 +438,6 @@ void TestEveryPortHotkeyIsReserved() {
     for (size_t at = text.find(marker); at != std::string::npos; at = text.find(marker, at + 1)) {
       const int number = std::atoi(text.c_str() + at + marker.size());
       if (number < 1 || number > 24) continue;
-      // DEBUG_SAULO: temporary keys that exist for one debug module and are removed with it at final review.
-      if (entry.path().filename() == "evil_ryu_debug_keys.cpp" || entry.path().filename() == "ultra_arcade_debug_keys.cpp") continue;
       ++listeners;
       const ImGuiKey key = ImGuiKey(ImGuiKey_F1 + number - 1);
       if (!ssf2t::KeyboardBindingIsReserved(key)) {

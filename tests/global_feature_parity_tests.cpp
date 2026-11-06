@@ -705,8 +705,6 @@ void CheckHotkeys() {
     for (std::sregex_iterator it(text.begin(), text.end(), listener), end; it != end; ++it) {
       const std::string key = (*it)[1].matched ? (*it)[1].str() : (*it)[2].str();
       ++g_checks;
-      // DEBUG_SAULO: temporary keys that exist for one debug module and are removed with it at final review.
-      if (path.filename() == "evil_ryu_debug_keys.cpp" || path.filename() == "ultra_arcade_debug_keys.cpp") continue;
       if (!registered.contains(key)) FailGlobal("hotkey " + key + " has a listener in " + Relative(path) + " but belongs to no feature");
     }
   }

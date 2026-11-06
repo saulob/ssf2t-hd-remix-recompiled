@@ -195,11 +195,6 @@ set(SSF2T_SOURCES
     src/character/ultra_gameplay_hook.cpp
     src/character/ultra_hd_palette_hook.cpp
     src/character/ultra_hud_hook.cpp
-    src/character/evil_ryu_debug.cpp
-    src/character/evil_ryu_debug_keys.cpp
-    src/character/ultra_arcade_debug.cpp
-    src/character/ultra_arcade_debug_hook.cpp
-    src/character/ultra_arcade_debug_keys.cpp
     src/character/ultra_moves_hook.cpp
     src/character/ultra_confirm_hook.cpp
     src/character/ultra_cursor_hook.cpp
@@ -509,16 +504,10 @@ add_executable(ssf2t_evil_ryu_hud_tests EXCLUDE_FROM_ALL tests/evil_ryu_hud_test
 target_include_directories(ssf2t_evil_ryu_hud_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_hud_tests)
 
-add_executable(ssf2t_evil_ryu_debug_tests EXCLUDE_FROM_ALL tests/evil_ryu_debug_tests.cpp
-    src/character/evil_ryu_debug.cpp src/character/evil_ryu_moves.cpp)
-target_include_directories(ssf2t_evil_ryu_debug_tests PRIVATE src)
-add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_debug_tests)
-
-add_executable(ssf2t_arcade_debug_tests EXCLUDE_FROM_ALL tests/arcade_debug_tests.cpp
-    src/character/ultra_arcade_debug.cpp src/character/fighter_identity.cpp)
-target_include_directories(ssf2t_arcade_debug_tests PRIVATE src)
-target_compile_definitions(ssf2t_arcade_debug_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-add_dependencies(ssf2t_runtime_tests ssf2t_arcade_debug_tests)
+add_executable(ssf2t_debug_hotkeys_removed_tests EXCLUDE_FROM_ALL tests/debug_hotkeys_removed_tests.cpp)
+target_include_directories(ssf2t_debug_hotkeys_removed_tests PRIVATE src)
+target_compile_definitions(ssf2t_debug_hotkeys_removed_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_debug_hotkeys_removed_tests)
 
 add_executable(ssf2t_character_moves_tests EXCLUDE_FROM_ALL tests/character_moves_tests.cpp
     src/character/character_moves.cpp src/character/ultra_ending.cpp src/updater/third_party/miniz/miniz.c)

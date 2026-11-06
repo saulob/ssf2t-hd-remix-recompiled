@@ -1,14 +1,12 @@
 #include <array>
 #include <cstdint>
 
-#include <rex/cvar.h>
 #include <rex/hook.h>
 #include <rex/logging.h>
 #include <rex/system/kernel_state.h>
 
 #include "character/evil_ryu_actions.h"
 #include "character/evil_ryu_audio.h"
-#include "character/evil_ryu_debug.h"
 #include "character/evil_ryu_moves.h"
 #include "character/ultra_audio.h"
 #include "character/ultra_navigation.h"
@@ -17,8 +15,6 @@
 #include "guest_memory.h"
 #include "netplay/fight_snapshot.h"
 #include "netplay/guest_netplay.h"
-#include "netplay_setting.h"
-#include "player_match_guest.h"
 #include "title_update_image.h"
 
 REX_EXTERN(__imp__base013_sub_82265228);
@@ -45,9 +41,6 @@ REX_EXTERN(base013_sub_823782B0);
 REX_EXTERN(base013_sub_82383400);
 REX_EXTERN(base013_sub_82386E20);
 REX_EXTERN(__imp__base013_sub_82264F78);
-REX_EXTERN(base013_sub_8225DED8);
-REX_EXTERN(base013_sub_82282868);
-REX_EXTERN(base013_sub_822826A0);
 REX_EXTERN(base013_sub_82391B10);
 REX_EXTERN(base013_sub_82379AB0);
 #if SSF2T_TITLE_UPDATE_IMAGE
@@ -75,9 +68,6 @@ REX_EXTERN(tu023_sub_82378380);
 REX_EXTERN(tu023_sub_823834D0);
 REX_EXTERN(tu023_sub_82386EF0);
 REX_EXTERN(__imp__tu023_sub_822653E8);
-REX_EXTERN(tu023_sub_8225DF10);
-REX_EXTERN(tu023_sub_82282F60);
-REX_EXTERN(tu023_sub_82282D98);
 REX_EXTERN(tu023_sub_82391118);
 REX_EXTERN(tu023_sub_82379B80);
 #endif
@@ -93,9 +83,6 @@ struct Base013Moves {
   static void ClampToWalls(PPCContext& ctx, uint8_t* base) { base013_sub_82383400(ctx, base); }
   static void ReturnToIdle(PPCContext& ctx, uint8_t* base) { base013_sub_82386E20(ctx, base); }
   static void MoveStarted(PPCContext& ctx, uint8_t* base) { base013_sub_82391B10(ctx, base); }
-  static void StartShakunetsu(PPCContext& ctx, uint8_t* base) { base013_sub_8225DED8(ctx, base); }
-  static void StartKenShoryuken(PPCContext& ctx, uint8_t* base) { base013_sub_82282868(ctx, base); }
-  static void StartKenTatsumaki(PPCContext& ctx, uint8_t* base) { base013_sub_822826A0(ctx, base); }
   static void AdvanceAnimation(PPCContext& ctx, uint8_t* base) { base013_sub_82379AB0(ctx, base); }
   static void SuperFreeze(PPCContext& ctx, uint8_t* base) { base013_sub_82377AC0(ctx, base); }
 };
@@ -109,9 +96,6 @@ struct TitleUpdate023Moves {
   static void ClampToWalls(PPCContext& ctx, uint8_t* base) { tu023_sub_823834D0(ctx, base); }
   static void ReturnToIdle(PPCContext& ctx, uint8_t* base) { tu023_sub_82386EF0(ctx, base); }
   static void MoveStarted(PPCContext& ctx, uint8_t* base) { tu023_sub_82391118(ctx, base); }
-  static void StartShakunetsu(PPCContext& ctx, uint8_t* base) { tu023_sub_8225DF10(ctx, base); }
-  static void StartKenShoryuken(PPCContext& ctx, uint8_t* base) { tu023_sub_82282F60(ctx, base); }
-  static void StartKenTatsumaki(PPCContext& ctx, uint8_t* base) { tu023_sub_82282D98(ctx, base); }
   static void AdvanceAnimation(PPCContext& ctx, uint8_t* base) { tu023_sub_82379B80(ctx, base); }
   static void SuperFreeze(PPCContext& ctx, uint8_t* base) { tu023_sub_82377B90(ctx, base); }
 };
@@ -184,12 +168,6 @@ constexpr uint32_t kPadCurrent = 0x390;
 constexpr uint32_t kPadPrevious = 0x392;
 constexpr uint32_t kTatsuStrength = 0x93;
 constexpr uint32_t kShakunetsuStrength = 0xE3;
-constexpr uint32_t kFireballStrength = 0x97;
-constexpr uint32_t kShoryukenStrength = 0x9B;
-constexpr uint32_t kTatsumakiAirborne = 0x9C;
-constexpr uint8_t kShoryukenMoveId = 4;
-constexpr uint8_t kTatsumakiMoveId = 2;
-constexpr uint8_t kHeavyStrength = 4;
 constexpr uint32_t kWalkRow = 0x30;
 constexpr uint32_t kAttackSelection = 0x180;
 constexpr uint32_t kOpponentRange = 0x182;
@@ -599,150 +577,10 @@ void LogFightStart(int side) {
   REXLOG_INFO("DEBUG_SAULO EVIL_RYU fight-setup side={} identity=EvilRyu carrier=Ryu", side + 1);
 }
 
-// DEBUG_SAULO: hotkey entry into the move start functions above; the key handler only posts a request.
-template <typename H>
-bool DebugOnline(const uint8_t* base) {
-  return U8(base, H::Netplay::kGameMode) == kOnlineGameMode ||
-         rex::cvar::GetFlagByName(kNetplayRoleSetting) != kNetplayRoleOff;
-}
-
-template <typename H>
-void PublishDebugFight(const uint8_t* base) {
-  using G = typename H::Netplay;
-  const DebugFighter p1 = EvilRyuOnSide<G>(base, 0)      ? DebugFighter::kEvilRyu
-                          : ViolentKenOnSide<G>(base, 0) ? DebugFighter::kViolentKen
-                                                         : DebugFighter::kNone;
-  GlobalDebugBridge().PublishFight(DebugNowMs(), DebugOnline<H>(base), p1);
-}
-
-const char* DebugLogName(DebugMove move) { return IsViolentDebugMove(move) ? "VIOLENT_KEN" : "EVIL_RYU"; }
-
-void LogDebugRejected(DebugMove move, DebugReject reason) {
-  REXLOG_INFO("DEBUG_SAULO {} debug-hotkey key={} move={} side=1 accepted=0 reason={}", DebugLogName(move),
-              DebugKeyLabel(move), DebugMoveName(move), DebugRejectName(reason));
-}
-
-void LogDebugBlocked(DebugMove move, bool active, bool airborne, bool cannot_start) {
-  REXLOG_INFO("DEBUG_SAULO {} debug-hotkey key={} move={} side=1 accepted=0 reason=incompatible-state active={} airborne={} "
-              "start-blocked={}",
-              DebugLogName(move), DebugKeyLabel(move), DebugMoveName(move), active, airborne, cannot_start);
-}
-
-void LogDebugAccepted(DebugMove move) {
-  REXLOG_INFO("DEBUG_SAULO {} debug-hotkey key={} move={} side=1 accepted=1", DebugLogName(move), DebugKeyLabel(move),
-              DebugMoveName(move));
-}
-
-bool FighterAirborne(const uint8_t* base, uint32_t fighter, const HostMove& move) {
-  return AboveGround(move.ground, int32_t(LoadBE32(GuestHost(base, fighter + kPositionY), 0)));
-}
-
-// Enters the guest's own starter the way its command tracker does.
-template <typename H>
-void CallGuestStarter(PPCContext& ctx, uint8_t* base, PPCFunc* starter) {
-  const PPCContext saved = ctx;
-  starter(ctx, base);
-  ctx = saved;
-}
-
-bool DebugMoveReady(const EvilActionTable* table, DebugMove move) {
-  if (!table) return false;
-  if (IsTeleportMove(move)) return table->Teleport() != 0;
-  if (move == DebugMove::kSenpuKyaku) return table->Find(kUniqueAction, kSenpuSub, 0) != 0;
-  return true;
-}
-
-template <typename H>
-void RunDebugMove(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side, DebugMove move) {
-  const EvilActionTable* table = TableFor<H>(base, fighter);
-  if (!DebugMoveReady(table, move)) return LogDebugRejected(move, DebugReject::kFighterNotReady);
-  const bool teleport = IsTeleportMove(move);
-  const HostMove& host = GlobalHostMoves().For(side);
-  const bool active = GlobalHostMoves().Active(side);
-  const bool airborne = FighterAirborne(base, fighter, host);
-  const bool cannot_start = !CanStartMove<H>(base, fighter, false, teleport);
-  if (StartRejection(move, active, airborne, cannot_start) != DebugReject::kNone) {
-    return LogDebugBlocked(move, active, airborne, cannot_start);
-  }
-  if (move == DebugMove::kShakunetsu) {
-    LogDebugAccepted(move);
-    SetU8(base, fighter + kMoveId, kShakunetsuMoveId);
-    SetU8(base, fighter + kShakunetsuStrength, kHeavyStrength);
-    SetU8(base, fighter + kFireballStrength, kHeavyStrength);
-    return CallGuestStarter<H>(ctx, base, H::StartShakunetsu);
-  }
-  if (move == DebugMove::kRagingDemon) {
-    const uint8_t meter_before = U8(base, fighter + kMeter);
-    REXLOG_INFO("DEBUG_SAULO EVIL_RYU debug-hotkey key={} move={} side=1 accepted=1 meter_before={:02X}",
-                DebugKeyLabel(move), DebugMoveName(move), meter_before);
-    SetU8(base, fighter + kMeter, kFullMeter);
-    StartRagingDemon<H>(ctx, base, fighter, side);
-    return;
-  }
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU debug-hotkey key={} move={} side=1 accepted=1", DebugKeyLabel(move),
-              DebugMoveName(move));
-  if (teleport) {
-    StartTeleport<H>(ctx, base, fighter, side, TeleportVariantFor(move));
-  } else {
-    StartSenpuKyaku<H>(ctx, base, fighter, side);
-  }
-}
-
-template <typename H>
-void RunViolentDebugMove(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side, DebugMove move) {
-  if (!ViolentTableFor<H>(base, fighter)) return LogDebugRejected(move, DebugReject::kFighterNotReady);
-  const HostMove& host = GlobalHostMoves().For(side);
-  const bool airborne = FighterAirborne(base, fighter, host);
-  const bool active = GlobalHostMoves().Active(side);
-  const bool cannot_start = !CanStartMove<H>(base, fighter, false, false);
-  const DebugReject reject = StartRejection(move, active, airborne, cannot_start);
-  if (reject == DebugReject::kNotAirborne) return LogDebugRejected(move, reject);
-  if (reject != DebugReject::kNone) return LogDebugBlocked(move, active, airborne, cannot_start);
-  LogDebugAccepted(move);
-  switch (move) {
-    case DebugMove::kRasetsuLight:
-    case DebugMove::kRasetsuMedium:
-    case DebugMove::kRasetsuHeavy:
-      StartRasetsu<H>(ctx, base, fighter, side, RasetsuStrengthFor(move));
-      break;
-    case DebugMove::kInazuma:
-      StartViolentMove<H>(ctx, base, fighter, side, HostMoveKind::kInazuma, kInazumaAction, 0);
-      break;
-    case DebugMove::kShinbu:
-      SetU8(base, fighter + kMeter, kFullMeter);
-      StartShinbu<H>(ctx, base, fighter, side);
-      break;
-    case DebugMove::kShoryukenHeavy:
-      SetU8(base, fighter + kMoveId, kShoryukenMoveId);
-      SetU8(base, fighter + kShoryukenStrength, kHeavyStrength);
-      CallGuestStarter<H>(ctx, base, H::StartKenShoryuken);
-      break;
-    case DebugMove::kAirTatsumaki:
-      SetU8(base, fighter + kTatsumakiAirborne, 1);
-      SetU8(base, fighter + kMoveId, kTatsumakiMoveId);
-      SetU8(base, fighter + kTatsuStrength, kHeavyStrength);
-      CallGuestStarter<H>(ctx, base, H::StartKenTatsumaki);
-      break;
-    default:
-      break;
-  }
-}
-
-template <typename H>
-void RunDebugRequest(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side, bool violent) {
-  const DebugMove move = GlobalDebugBridge().Take(DebugNowMs());
-  if (move == DebugMove::kNone) return;
-  if (DebugOnline<H>(base)) return LogDebugRejected(move, DebugReject::kOnline);
-  if (IsViolentDebugMove(move) != violent) return LogDebugRejected(move, DebugReject::kWrongFighter);
-  if (violent) return RunViolentDebugMove<H>(ctx, base, fighter, side, move);
-  RunDebugMove<H>(ctx, base, fighter, side, move);
-}
-
 // Runs before the guest's own special trackers so the three-button teleports win over the single-button moves.
 template <typename H>
 void TrackSpecials(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (!UltraFightersEnabled()) return original(ctx, base);
-  PublishDebugFight<H>(base);
   const uint32_t fighter = ActiveFighter<H>(base);
   const int side = EvilSide<H>(base, fighter);
   if (side < 0) return original(ctx, base);
@@ -752,7 +590,6 @@ void TrackSpecials(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (GlobalHostMoves().Active(side) && U8(base, fighter + kState) != kClassSpecial) {
     EndHostMove(base, fighter, side);
   }
-  if (side == 0) RunDebugRequest<H>(ctx, base, fighter, side, false);
   if (!GlobalHostMoves().Active(side)) DetectMoves<H>(ctx, base, fighter, side);
   original(ctx, base);
 }
@@ -761,7 +598,6 @@ void TrackSpecials(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
 template <typename H>
 void TrackKenSpecials(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (!UltraFightersEnabled()) return original(ctx, base);
-  PublishDebugFight<H>(base);
   const uint32_t fighter = ActiveFighter<H>(base);
   const int violent = ViolentKenSide<typename H::Netplay>(base, fighter);
   if (violent < 0) return original(ctx, base);
@@ -771,7 +607,6 @@ void TrackKenSpecials(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (GlobalHostMoves().Active(violent) && U8(base, fighter + kState) != kClassSpecial) {
     EndHostMove(base, fighter, violent);
   }
-  if (violent == 0) RunDebugRequest<H>(ctx, base, fighter, violent, true);
   if (!GlobalHostMoves().Active(violent)) DetectViolentMoves<H>(ctx, base, fighter, violent);
   original(ctx, base);
 }
