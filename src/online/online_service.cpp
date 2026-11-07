@@ -20,6 +20,9 @@ constexpr double kNameSettleSeconds = 1.5;
 constexpr double kLeaveFlushSeconds = 2.0;
 constexpr double kNoticeSeconds = 12.0;
 constexpr double kSecretRetrySeconds = 5.0;
+constexpr double kLobbyRefreshSeconds = 30.0;
+constexpr double kLobbyRetrySeconds = 15.0;
+constexpr double kLobbyViewedSeconds = 2.0;
 constexpr double kHostRefreshSeconds = 60.0;
 constexpr double kSearchSeconds = 3.0;
 constexpr double kSearchFreshSeconds = 1.0;
@@ -134,6 +137,9 @@ void OnlineService::Disable() {
   rtt_ms_.reset();
   secret_in_flight_ = false;
   secret_retry_at_ = 0;
+  ResetLobbyConnection();
+  lobby_publish_retry_at_ = 0;
+  lobby_viewed_at_ = -1e9;
 }
 
 void OnlineService::Update(double now) {
@@ -161,12 +167,14 @@ void OnlineService::Update(double now) {
   if (now >= next_refresh_) Refresh();
   PumpPlayerMatch();
   PumpSecret();
+  PumpLobby();
   if (SessionName() != greeted_name_ && !match_ && now - name_since_ >= kNameSettleSeconds) {
     Log("online name changed, signing in again");
     if (channel_) channel_->Close();
     channel_.reset();
     step_ = Step::kIdle;
     pending_.clear();
+    ResetLobbyConnection();
     OpenChannel(now);
   }
 }
@@ -359,6 +367,34 @@ void OnlineService::OnResponse(const ServerMessage& message, double now) {
       announced_secret_ = secret_sent_;
       if (match_ && message.secret) SetMatchSecret(message.secret);
       break;
+    case Purpose::kLobbyPublish:
+      lobby_publish_in_flight_ = false;
+      if (!ok) {
+        lobby_publish_retry_at_ = now + kLobbyRetrySeconds;
+        lobby_refused_ = lobby_refused_ || message.code == "bad_request";
+        Log("online lobby publish refused code=" + message.code);
+        break;
+      }
+      lobby_published_ = lobby_publish_sent_;
+      Log(std::string("online lobby visible=") + Flag(lobby_published_));
+      break;
+    case Purpose::kLobbyList:
+      lobby_list_in_flight_ = false;
+      if (!ok || (!message.lobby_unchanged && !message.lobby_players)) {
+        lobby_failed_ = true;
+        lobby_refused_ = lobby_refused_ || (!ok && message.code == "bad_request");
+        Log("online lobby read failed code=" + (ok ? std::string("malformed") : message.code));
+        break;
+      }
+      lobby_failed_ = false;
+      if (message.lobby_unchanged) break;
+      if (!lobby_fetched_ || message.lobby_players->size() != lobby_players_.size()) {
+        Log("online lobby players=" + std::to_string(message.lobby_players->size()));
+      }
+      lobby_players_ = *message.lobby_players;
+      lobby_rev_ = message.lobby_rev;
+      lobby_fetched_ = true;
+      break;
     case Purpose::kInviteDecline:
     case Purpose::kPlayerMatchCancel:
     case Purpose::kEndpoint:
@@ -408,6 +444,8 @@ void OnlineService::OnGreeted(const ServerMessage& message, double now) {
   }
   Log(std::string("relay capability available=") + Flag(capabilities_.relay_supported));
   Log(std::string("online secret-cap service supported=") + Flag(capabilities_.secret_characters));
+  Log(std::string("online lobby service supported=") + Flag(capabilities_.public_lobby));
+  ResetLobbyConnection();
   PublishSecret();
   Refresh();
   if (match_) {
@@ -889,6 +927,7 @@ void OnlineService::OnLinkLost(const std::string& why, double now) {
   if (channel_) channel_->Close();
   channel_.reset();
   pending_.clear();
+  ResetLobbyConnection();
   // The relay lives on this connection: a match carried by it, or still choosing with it as the fallback, cannot go on.
   if (match_ && (transport_ == MatchTransport::kRelay || (Coordinated() && transport_ == MatchTransport::kDirectProbing))) {
     Log("relay closed reason=service_disconnected match=" + match_->match);
@@ -952,6 +991,12 @@ void OnlineService::DeclineFriend(const std::string& player) {
   drop(incoming_);
   drop(outgoing_);
   Send(Purpose::kDecline, [&player](int seq) { return EncodeFriendsDecline(seq, player); });
+}
+
+void OnlineService::NoteLobbyViewed() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (now_ - lobby_viewed_at_ > kLobbyViewedSeconds) next_lobby_list_ = std::min(next_lobby_list_, now_);
+  lobby_viewed_at_ = now_;
 }
 
 void OnlineService::RemoveFriend(const std::string& player) {
@@ -1593,6 +1638,38 @@ void OnlineService::PumpSecret() {
   Send(Purpose::kSecretUpdate, [&current](int seq) { return EncodeSecretUpdate(seq, current); });
 }
 
+// The list is read only while the Lobby page is shown. Visibility is sent only when it differs from what the service
+// confirmed, so a player who never turns it on sends no Lobby request but the reads.
+void OnlineService::PumpLobby() {
+  if (!capabilities_.public_lobby || lobby_refused_) return;
+  if (settings_.lobby_visible != lobby_published_ && !lobby_publish_in_flight_ && now_ >= lobby_publish_retry_at_) {
+    lobby_publish_in_flight_ = true;
+    lobby_publish_sent_ = settings_.lobby_visible;
+    const bool visible = lobby_publish_sent_;
+    Send(Purpose::kLobbyPublish, [visible](int seq) { return EncodeLobbyPublish(seq, visible); });
+  }
+  const bool viewed = now_ - lobby_viewed_at_ <= kLobbyViewedSeconds;
+  if (viewed && !lobby_list_in_flight_ && now_ >= next_lobby_list_) {
+    lobby_list_in_flight_ = true;
+    next_lobby_list_ = now_ + kLobbyRefreshSeconds;
+    const std::optional<int64_t> held = lobby_fetched_ ? std::optional<int64_t>(lobby_rev_) : std::nullopt;
+    Send(Purpose::kLobbyList, [held](int seq) { return EncodeLobbyList(seq, held); });
+  }
+}
+
+// A new connection starts unlisted and with nothing read; an old list would show players who may be gone.
+void OnlineService::ResetLobbyConnection() {
+  lobby_published_ = false;
+  lobby_publish_in_flight_ = false;
+  lobby_refused_ = false;
+  lobby_list_in_flight_ = false;
+  lobby_fetched_ = false;
+  lobby_failed_ = false;
+  lobby_rev_ = -1;
+  next_lobby_list_ = 0;
+  lobby_players_.clear();
+}
+
 void OnlineService::SetMatchSecret(const std::optional<MatchSecrets>& secret) {
   match_secret_ = secret;
   PublishSecret();
@@ -1658,6 +1735,11 @@ Snapshot OnlineService::snapshot() const {
   s.secret.in_match = match_.has_value();
   if (match_ && match_secret_) s.secret.peer = match_secret_->peer;
   s.secret.effective = SecretSet::FromBits(secret_effective_.load(std::memory_order_relaxed));
+  s.lobby.supported = capabilities_.public_lobby && !lobby_refused_;
+  s.lobby.visible = lobby_published_;
+  s.lobby.fetched = lobby_fetched_;
+  s.lobby.failed = lobby_failed_;
+  s.lobby.players = lobby_players_;
   if (match_) {
     MatchSnapshot m;
     m.peer_player = match_->peer_player;

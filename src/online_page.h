@@ -43,7 +43,8 @@ class OnlinePage {
                               bool focus_run_test);
   void DrawSecretCharacters(trg::Ui& ui, const online::Snapshot& state);
   void DrawFriends(trg::Ui& ui, const online::Snapshot& state);
-  void DrawLobby(trg::Ui& ui);
+  void DrawLobby(trg::Ui& ui, const online::Snapshot& state);
+  void DrawLobbyPlayer(trg::Ui& ui, const online::Snapshot& state, const online::LobbyPlayer& player);
   void NoteSendState(bool enabled);
 
   void* owner_window_ = nullptr;

@@ -3,6 +3,7 @@
 // Run: ssf2t_online_protocol_tests
 
 #include <cstdio>
+#include <optional>
 #include <string>
 
 #include "online/protocol.h"
@@ -330,8 +331,72 @@ void TestSecretCharactersOnTheWire() {
   CHECK(bare && !bare->secret);
 }
 
+void TestPublicLobbyOnTheWire() {
+  CHECK(EncodeLobbyPublish(3, true) == "{\"op\":\"lobby.publish\",\"seq\":3,\"visible\":true}");
+  CHECK(EncodeLobbyPublish(4, false) == "{\"op\":\"lobby.publish\",\"seq\":4,\"visible\":false}");
+  CHECK(EncodeLobbyList(5) == "{\"op\":\"lobby.list\",\"seq\":5}");
+  CHECK(EncodeLobbyList(5, std::nullopt) == "{\"op\":\"lobby.list\",\"seq\":5}");
+  CHECK(EncodeLobbyList(6, 1700000000123) == "{\"op\":\"lobby.list\",\"seq\":6,\"rev\":1700000000123}");
+  CHECK(EncodeLobbyList(7, -1) == "{\"op\":\"lobby.list\",\"seq\":7}");
+
+  const auto list = DecodeServerMessage(
+      "{\"re\":5,\"code\":\"ok\",\"players\":[{\"player\":\"ABCD-2345\",\"name\":\"Alice\",\"state\":\"player_match\","
+      "\"platform\":\"Linux\",\"version\":\"0.4.0\",\"guest\":\"tu023\",\"compatible\":false},"
+      "{\"player\":\"EFGH-6789\",\"name\":\"Bob\",\"state\":\"online\",\"platform\":\"Windows\",\"version\":\"0.4.0\","
+      "\"guest\":\"base013\",\"compatible\":true}],\"rev\":1700000000123,\"visible\":true}");
+  CHECK(list && list->lobby_players && list->lobby_players->size() == 2);
+  CHECK(list->lobby_rev == 1700000000123 && list->lobby_visible && *list->lobby_visible && !list->lobby_unchanged);
+  const LobbyPlayer& alice = (*list->lobby_players)[0];
+  CHECK(alice.player == "ABCD-2345" && alice.name == "Alice" && alice.state == FriendState::kPlayerMatch &&
+        alice.platform == "Linux" && alice.version == "0.4.0" && alice.guest == "tu023" && !alice.compatible);
+  CHECK((*list->lobby_players)[1].compatible && (*list->lobby_players)[1].state == FriendState::kOnline);
+
+  const auto unchanged = DecodeServerMessage("{\"re\":6,\"code\":\"ok\",\"unchanged\":true,\"rev\":1700000000123,\"visible\":false}");
+  CHECK(unchanged && unchanged->lobby_unchanged && !unchanged->lobby_players && unchanged->lobby_rev == 1700000000123);
+  CHECK(unchanged->lobby_visible && !*unchanged->lobby_visible);
+
+  const auto empty = DecodeServerMessage("{\"re\":7,\"code\":\"ok\",\"players\":[],\"rev\":5,\"visible\":false}");
+  CHECK(empty && empty->lobby_players && empty->lobby_players->empty());
+
+  const auto published = DecodeServerMessage("{\"re\":8,\"code\":\"ok\",\"visible\":true}");
+  CHECK(published && published->lobby_visible && *published->lobby_visible && !published->lobby_players);
+
+  // A row without a player or a name, or one that is not an object, makes the whole answer a failed read.
+  for (const char* bad : {"{\"name\":\"Alice\"}", "{\"player\":\"ABCD-2345\"}", "{\"player\":\"\",\"name\":\"A\"}", "7", "null",
+                          "\"text\""}) {
+    const auto message = DecodeServerMessage(std::string("{\"re\":9,\"code\":\"ok\",\"players\":[") + bad + "],\"rev\":1}");
+    CHECK(message && !message->lobby_players);
+  }
+  CHECK(!DecodeServerMessage("{\"re\":9,\"code\":\"ok\",\"players\":{\"player\":\"ABCD-2345\"}}")->lobby_players);
+  CHECK(!DecodeServerMessage("{\"re\":9,\"code\":\"ok\",\"players\":\"none\"}")->lobby_players);
+
+  // An offline state cannot be listed, and an answer that does not say it is compatible is not trusted to be.
+  const auto odd = DecodeServerMessage("{\"re\":9,\"code\":\"ok\",\"players\":[{\"player\":\"ABCD-2345\",\"name\":\"A\","
+                                       "\"state\":\"offline\"}],\"rev\":1}");
+  CHECK(odd && odd->lobby_players && (*odd->lobby_players)[0].state == FriendState::kOnline && !(*odd->lobby_players)[0].compatible);
+
+  // Extra fields from another service version are ignored, and no other answer reads as a Lobby answer.
+  const auto extra = DecodeServerMessage("{\"re\":9,\"code\":\"ok\",\"players\":[{\"player\":\"ABCD-2345\",\"name\":\"A\","
+                                         "\"compatible\":true,\"relation\":\"friend\",\"ip\":\"203.0.113.9\"}],\"rev\":1}");
+  CHECK(extra && extra->lobby_players && extra->lobby_players->size() == 1);
+  const auto friends = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"friends\":[]}");
+  CHECK(friends && !friends->lobby_players && !friends->lobby_unchanged && friends->lobby_rev == -1 && !friends->lobby_visible);
+  const auto refused = DecodeServerMessage("{\"re\":1,\"code\":\"limit\"}");
+  CHECK(refused && refused->code == "limit" && !refused->lobby_players);
+
+  const auto announced = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"capabilities\":{\"protocol_version\":3,\"public_lobby\":true}}");
+  CHECK(announced && announced->capabilities && announced->capabilities->public_lobby);
+  const auto older = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"capabilities\":{\"protocol_version\":3,\"secret_characters\":true}}");
+  CHECK(older && older->capabilities && !older->capabilities->public_lobby && older->capabilities->secret_characters);
+  const auto legacy = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"friend_code\":\"ABCD-2345\"}");
+  CHECK(legacy && !legacy->capabilities);
+  CHECK(kLobbyProtocol == 3);
+  CHECK(!ServiceCapabilities{}.public_lobby);
+}
+
 int main() {
   std::printf("online protocol tests\n");
+  TestPublicLobbyOnTheWire();
   TestSecretCharactersOnTheWire();
   TestRelaySignalling();
   TestRequestsAreWellFormed();

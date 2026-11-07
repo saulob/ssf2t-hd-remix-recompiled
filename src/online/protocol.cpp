@@ -100,6 +100,32 @@ std::optional<std::vector<Request>> ReadRequests(const json::Value* v) {
   return out;
 }
 
+std::optional<LobbyPlayer> ReadLobbyPlayer(const json::Value& row) {
+  if (!row.IsObject()) return std::nullopt;
+  LobbyPlayer p;
+  p.player = StringOf(row.Find("player"));
+  p.name = StringOf(row.Find("name"));
+  if (p.player.empty() || p.name.empty()) return std::nullopt;
+  p.state = StateOf(StringOf(row.Find("state")));
+  if (p.state == FriendState::kOffline) p.state = FriendState::kOnline;
+  p.platform = StringOf(row.Find("platform"));
+  p.version = StringOf(row.Find("version"));
+  p.guest = StringOf(row.Find("guest"));
+  p.compatible = BoolOf(row.Find("compatible"), false);
+  return p;
+}
+
+std::optional<std::vector<LobbyPlayer>> ReadLobbyPlayers(const json::Value* v) {
+  if (!v || !v->IsArray()) return std::nullopt;
+  std::vector<LobbyPlayer> out;
+  for (const json::Value& row : v->AsArray()) {
+    std::optional<LobbyPlayer> player = ReadLobbyPlayer(row);
+    if (!player) return std::nullopt;
+    out.push_back(std::move(*player));
+  }
+  return out;
+}
+
 std::optional<PlayerMatchAd> ReadPlayerMatch(const json::Value& row) {
   if (!row.IsObject()) return std::nullopt;
   PlayerMatchAd ad;
@@ -179,6 +205,7 @@ ServiceCapabilities ReadCapabilities(const json::Value& v) {
   caps.relay_max_payload = IntOf(v.Find("relay_max_payload"));
   caps.fight_telemetry = BoolOf(v.Find("fight_telemetry"), false);
   caps.secret_characters = BoolOf(v.Find("secret_characters"), false);
+  caps.public_lobby = BoolOf(v.Find("public_lobby"), false);
   return caps;
 }
 
@@ -218,6 +245,14 @@ std::optional<ServerMessage> DecodeServerMessage(std::string_view text) {
     message.friends = ReadFriends(root->Find("friends"));
     message.incoming = ReadRequests(root->Find("incoming"));
     message.outgoing = ReadRequests(root->Find("outgoing"));
+    message.lobby_players = ReadLobbyPlayers(root->Find("players"));
+    message.lobby_unchanged = BoolOf(root->Find("unchanged"), false);
+    if (const json::Value* rev = root->Find("rev"); rev && rev->IsNumber()) {
+      if (const auto n = rev->AsInt64()) message.lobby_rev = *n;
+    }
+    if (const json::Value* visible = root->Find("visible"); visible && visible->IsBool()) {
+      message.lobby_visible = visible->AsBool();
+    }
     if (const json::Value* caps = root->Find("capabilities"); caps && caps->IsObject()) {
       message.capabilities = ReadCapabilities(*caps);
     }
@@ -344,6 +379,14 @@ std::string EncodeSecretUpdate(int seq, const SecretCapabilities& secret) {
 }
 
 std::string EncodePing(int seq) { return Envelope("ping", seq); }
+std::string EncodeLobbyPublish(int seq, bool visible) {
+  return Envelope("lobby.publish", seq, std::string(",\"visible\":") + (visible ? "true" : "false"));
+}
+
+std::string EncodeLobbyList(int seq, std::optional<int64_t> held_rev) {
+  return Envelope("lobby.list", seq, held_rev && *held_rev >= 0 ? ",\"rev\":" + std::to_string(*held_rev) : std::string());
+}
+
 std::string EncodeFriendsList(int seq) { return Envelope("friends.list", seq); }
 std::string EncodeFriendsRequests(int seq) { return Envelope("friends.requests", seq); }
 std::string EncodeFriendsAdd(int seq, const std::string& code) { return Envelope("friends.add", seq, ",\"code\":" + Quote(code)); }

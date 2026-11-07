@@ -227,7 +227,7 @@ inline constexpr Feature kFeatures[] = {
      "src/updater/third_party/miniz/miniz.c",
      "src/updater/helper_main.cpp,src/updater/install_transaction.cpp", "", "src/updater/update_platform.cpp:LaunchUpdateHelper",
      "src/updater/update_platform.cpp:ApplyAppImageUpdate", "tests/update_tests.cpp,tests/linux_appimage_tests.cpp"},
-    {"Online service, identity and friends", "", "", "kOnlineEnabledSetting,kOnlineNameSetting", "", "", "", "",
+    {"Online service, identity and friends", "", "", "kOnlineEnabledSetting,kOnlineNameSetting,kOnlineLobbySetting", "", "", "", "",
      "src/online/online_service.cpp,src/online/identity.cpp,src/online/lobby_link.cpp,src/online/friend_view.cpp,"
      "src/online/instance.cpp,src/online/protocol.cpp,src/online_page.cpp,src/online_runtime.cpp,"
      "src/friend_code_field.cpp,src/online/websocket.cpp,src/online/websocket_frame.cpp,"
@@ -241,7 +241,7 @@ inline constexpr Feature kFeatures[] = {
      "src/clipboard_sdl.cpp:ReadClipboardText,src/clipboard_sdl.cpp:WriteClipboardText",
      "tests/online_service_tests.cpp,tests/online_protocol_tests.cpp,tests/online_identity_tests.cpp,"
      "tests/online_setting_tests.cpp,tests/friend_field_tests.cpp,tests/wire_parity_tests.cpp,"
-     "tests/online_websocket_tls_tests.cpp,tests/clipboard_sdl_tests.cpp", "kOnlineNameLabel,kOnlineEnabledLabel,Your friend code,Add a friend"},
+     "tests/online_websocket_tls_tests.cpp,tests/clipboard_sdl_tests.cpp", "kOnlineNameLabel,kOnlineEnabledLabel,kOnlineLobbyLabel,Your friend code,Add a friend"},
     {"Ping display", "", "", "kOnlinePingSetting", "", "", "", "F3=src/ping_display.cpp", "src/ping_display.cpp", "", "",
      "", "", "tests/online_setting_tests.cpp", "kOnlinePingLabel"},
     {"Connection Test", "", "", "", "kConnectionTestSetting", "", "", "",

@@ -63,6 +63,7 @@ struct ServiceConfig {
 struct UserSettings {
   bool enabled = false;
   std::string name = kDefaultOnlineName;
+  bool lobby_visible = false;  // list this player in the public Lobby
 };
 
 // How the existing fight session should connect, once the peer's endpoint is known (with a gameplay socket: proven).
@@ -127,6 +128,15 @@ struct SecretSnapshot {
   SecretSet effective;                     // what both players can pick right now
 };
 
+// The public Lobby as the Online page shows it. Its failures stay here: they never change Snapshot::connection.
+struct LobbySnapshot {
+  bool supported = false;  // the service has the public Lobby
+  bool visible = false;    // the service confirmed this player is listed
+  bool fetched = false;
+  bool failed = false;     // the last read failed
+  std::vector<LobbyPlayer> players;
+};
+
 struct Snapshot {
   Connection connection = Connection::kOff;
   std::string connection_text;
@@ -139,6 +149,7 @@ struct Snapshot {
   PlayerMatchSnapshot player_match;
   std::optional<MatchSnapshot> match;
   SecretSnapshot secret;
+  LobbySnapshot lobby;
   std::string notice;  // the last thing worth telling the player; stays until replaced
   bool testing = false;
   std::optional<ConnectionReport> test;
@@ -181,6 +192,8 @@ class OnlineService {
   void AcceptFriend(const std::string& player);
   void DeclineFriend(const std::string& player);  // also withdraws an outgoing request
   void RemoveFriend(const std::string& player);
+  // Called on every frame the Lobby page is shown: the list is read while that goes on, and not otherwise.
+  void NoteLobbyViewed();
   // Advertises this player's Player Match to compatible online friends until cancelled or joined.
   void HostPlayerMatch(const PlayerMatchRules& rules);
   void CancelPlayerMatch();
@@ -243,7 +256,7 @@ class OnlineService {
   enum class Purpose {
     kHello, kFriends, kRequests, kAdd, kAccept, kDecline, kRemove, kPlayerMatchHost, kPlayerMatchCancel,
     kPlayerMatchSearch, kPlayerMatchJoin, kEndpoint, kReady, kLeave, kResume, kInviteSend, kInviteDecline,
-    kTransportDirect, kTransportRelay, kFightReport, kSecretUpdate
+    kTransportDirect, kTransportRelay, kFightReport, kSecretUpdate, kLobbyPublish, kLobbyList
   };
   struct Pending {
     Purpose purpose = Purpose::kHello;
@@ -280,6 +293,8 @@ class OnlineService {
   void SendFightReport(const FightReport& report);
   SecretCapabilities CurrentSecret() const;
   void PumpSecret();
+  void PumpLobby();
+  void ResetLobbyConnection();
   void SetMatchSecret(const std::optional<MatchSecrets>& secret);
   void PublishSecret();
   bool Connected() const { return step_ == Step::kOnline; }
@@ -367,6 +382,18 @@ class OnlineService {
   SecretCapabilities secret_sent_;       // the update awaiting its answer
   bool secret_in_flight_ = false;
   double secret_retry_at_ = 0;
+  bool lobby_published_ = false;  // what the service confirmed on this connection
+  bool lobby_publish_sent_ = false;
+  bool lobby_publish_in_flight_ = false;
+  double lobby_publish_retry_at_ = 0;
+  bool lobby_refused_ = false;  // the service answered a Lobby request as an operation it does not know
+  bool lobby_list_in_flight_ = false;
+  bool lobby_fetched_ = false;
+  bool lobby_failed_ = false;
+  int64_t lobby_rev_ = -1;
+  double lobby_viewed_at_ = -1e9;
+  double next_lobby_list_ = 0;
+  std::vector<LobbyPlayer> lobby_players_;
   std::optional<MatchSecrets> match_secret_;
   std::atomic<uint8_t> secret_effective_{0};
   bool secret_logged_ = false;

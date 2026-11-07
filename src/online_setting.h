@@ -16,6 +16,15 @@ inline constexpr char kDefaultOnlineNameValue[] = "Player";
 inline constexpr char kOnlineNameLabel[] = "Online name";
 inline constexpr char kOnlineNameHelp[] = "What other players see: up to 16 letters, digits, - or _.";
 
+inline constexpr char kOnlineLobbySetting[] = "ssf2t_online_lobby_visible";
+inline constexpr bool kDefaultOnlineLobby = false;
+inline constexpr char kOnlineLobbyLabel[] = "Show me in Lobby";
+inline constexpr char kOnlineLobbyOffHelp[] =
+    "Turn on to let other players of this game see your Online name in the Lobby and send you a friend request.";
+inline constexpr char kOnlineLobbyOnHelp[] =
+    "Other players of this game can see your Online name in the Lobby and send you a friend request. Nothing else "
+    "about you is shown.";
+
 inline constexpr char kOnlinePingSetting[] = "ssf2t_online_ping_display";
 inline constexpr bool kDefaultOnlinePing = false;
 inline constexpr char kOnlinePingLabel[] = "Ping display";

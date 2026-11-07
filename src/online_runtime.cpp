@@ -28,6 +28,8 @@ REXCVAR_DEFINE_BOOL(ssf2t_online_enabled, ssf2t::kDefaultOnlineEnabled, "SSF2T",
                     "Online play: friends, and Online Match fights against them over the internet");
 REXCVAR_DEFINE_STRING(ssf2t_online_name, ssf2t::kDefaultOnlineNameValue, "SSF2T",
                       "Name other players see during online play");
+REXCVAR_DEFINE_BOOL(ssf2t_online_lobby_visible, ssf2t::kDefaultOnlineLobby, "SSF2T",
+                    "Lists this player in the public Lobby so other players can send a friend request");
 REXCVAR_DEFINE_BOOL(ssf2t_online_ping_display, ssf2t::kDefaultOnlinePing, "SSF2T",
                     "Shows the round trip to the other player during an online fight");
 REXCVAR_DEFINE_STRING(ssf2t_online_connection_test, "", "SSF2T",
@@ -117,6 +119,7 @@ online::UserSettings SavedSettings() {
   online::UserSettings settings;
   settings.enabled = REXCVAR_GET(ssf2t_online_enabled);
   settings.name = REXCVAR_GET(ssf2t_online_name);
+  settings.lobby_visible = REXCVAR_GET(ssf2t_online_lobby_visible);
   return settings;
 }
 

@@ -12,6 +12,7 @@ export const PROTECTION = {
   resumeAccount: { burst: 12, perSecond: 1 / 10 },
   inviteAccount: { burst: 20, perSecond: 1 / 3 },
   inviteAddress: { burst: 60, perSecond: 1 / 2 },
+  lobbyList: { burst: 6, perSecond: 1 / 5 },
   trackedKeys: 4096,
 };
 

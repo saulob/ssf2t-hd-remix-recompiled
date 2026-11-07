@@ -24,6 +24,7 @@ export const LIMITS = {
   inviteMs: 60000,
   ruleFields: 8,
   searchResults: 20,
+  lobbyPlayers: 50,
   matchMaxMs: 4 * 3600 * 1000,
   fightsPerMatch: 200,
 };
@@ -33,7 +34,7 @@ export const BUCKETS = {
   social: { burst: 10, perSecond: 1 },
 };
 
-export const WORKER_BUILD = '2026-11-04-secret2';
+export const WORKER_BUILD = '2026-11-06-lobby';
 
 // Binary relay frames: magic "SR", version, type, token (u32), sequence (u32), payload length (u16), payload.
 export const RELAY = {
@@ -57,6 +58,7 @@ export const CAPABILITIES = {
   relay_max_payload: RELAY.maxPayload,
   fight_telemetry: true,
   secret_characters: true,
+  public_lobby: true,
 };
 
 export { SECRET_KEYS };
@@ -222,6 +224,18 @@ export function parseHello(message) {
     telemetry: message.telemetry === true,
     secret: normalizeSecret(message.secret),
   };
+}
+
+export function parseLobbyPublish(message) {
+  if (typeof message.visible !== 'boolean') fail('bad_request', 'visible expected');
+  return message.visible;
+}
+
+// The revision the client already holds, if it sent one.
+export function parseLobbyRevision(message) {
+  if (message.rev === undefined) return null;
+  if (!Number.isSafeInteger(message.rev) || message.rev < 0) fail('bad_request', 'rev expected');
+  return message.rev;
 }
 
 export function ipv4Kind(ip) {

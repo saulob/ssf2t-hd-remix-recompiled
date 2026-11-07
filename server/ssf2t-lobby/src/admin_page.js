@@ -422,7 +422,8 @@ export const ADMIN_JS = String.raw`(function () {
     invite_limited: 'Invites refused',
     match_resume_limited: 'Match resumes refused',
     relay_abuse_closed: 'Relay connections or relays closed for abuse',
-    fight_secret_rejected: 'Fights refused: secret character not available'
+    fight_secret_rejected: 'Fights refused: secret character not available',
+    lobby_list_limited: 'Lobby reads refused'
   };
   var STATES = { in_game: 'In game', connecting: 'Connecting' };
   var BUILDS = { base013: 'Original · 0.0.1.3', tu023: 'Title Update #1 · 0.0.2.3' };

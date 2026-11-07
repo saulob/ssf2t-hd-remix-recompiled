@@ -24,7 +24,7 @@ automatically; it has not been tried between real players over the internet.
    in the **Friends** tab; the field shows it as `XXXX-XXXX` whatever case, spacing or hyphen it came with. **Send
    request** is enabled once it is a valid code (letters except I and O, digits 2 to 9). They **Accept** or **Decline**
    the card in their **Friends** tab, which shows the number of waiting requests; the sidebar's dot marks them too.
-   **Lobby** only holds a placeholder for now: the public Lobby has no service support yet.
+   The **Lobby** tab lists players who chose to be seen; see [Public Lobby](#public-lobby).
 3. A friend row shows `Online · Windows · v0.3.0`, `Online Match · ...` while they host one, or `In game · ...`.
    There are no match buttons in the launcher.
 4. Both press **Play**. The game signs in to the online service again by itself; nothing has to stay open.
@@ -211,6 +211,29 @@ Manual two-instance check: Online play On in both, **Copy** the friend code in `
 (Ctrl+V; lower case, a missing hyphen, spaces and a trailing newline are all fine), **Send request**, **Accept** in `a`,
 then Play in both and Multiplayer > Online Match in the game. Log lines: `online friend request sent
 code=...`, `player_match ...`, `XSession...`.
+
+## Public Lobby
+
+The **Lobby** tab is for finding people to add as friends. It does not create matches and does not change how Online
+Match finds opponents: matches still start from Multiplayer > Online Match between friends.
+
+- **Show me in Lobby** is Off by default. While it is Off you are not listed, but you can still read the Lobby, and
+  friends, presence and Online play work as usual. Turning it On lists your **Online name** to other players of this game;
+  they can send you a friend request. Nothing else about you is listed: no address, connection details or Player
+  Match. Your friend code travels with the listing only so that Add friend can send the request; no screen shows it. The
+  setting is `ssf2t_online_lobby_visible`, and the game keeps you listed while it runs.
+- Each row shows the name, what the player is doing (`Online`, `Online Match`, `Connecting`, `In game`), the platform,
+  the port version and the game image (`Base013` or `TU023`). A player who cannot play with you (another game image or
+  netplay build) stays in the list marked **Game versions do not match**.
+- **Add friend** sends the same friend request as the Friends tab, so the other player answers it there. It is offered
+  only to players who are not friends and have no request pending either way; a request they already sent you shows
+  **Accept** and **Decline**. You never see anyone's friend code in the Lobby.
+- The list refreshes by itself every 30 seconds while the Lobby tab is open, and is read again when you open it. Nothing
+  is read while another tab is shown. There is no Refresh button.
+- A player disappears from the Lobby when they turn the setting Off, turn Online play Off or close the game; the service
+  keeps no record of who was listed. The list shows the first 50 players, compatible ones first.
+- An older service without the Lobby makes the tab say so; the other tabs and Online play are not affected. If the Lobby
+  cannot be read for a moment, the tab says so and keeps the last list; the rest of the page stays online.
 
 ## Secret characters
 

@@ -34,7 +34,8 @@ constexpr char kInfiniteTimeOff[] = "Infinite Time was turned off because Online
 constexpr char kSecretHelp[] =
     "Akuma, Evil Ryu and Violent Ken are in an Online Match only when both players have them on. Turn them on in "
     "Gameplay.";
-constexpr char kLobbyPending[] = "Public Lobby will be available in this version.";
+constexpr char kLobbyHeading[] = "Players in the Lobby";
+constexpr char kLobbyRefreshFailed[] = "Could not refresh the Lobby.";
 
 int OnlineNameFilter(ImGuiInputTextCallbackData* data) {
   return data->EventChar < 0x80 && online::OnlineNameChar(char(data->EventChar)) ? 0 : 1;
@@ -55,6 +56,17 @@ void OnlineNameRow(trg::Ui& ui) {
   ImGui::PopID();
   const std::string shown = online::CleanOnlineName(saved);
   if (!saved.empty() && shown != saved) ui.Help((Tr("Other players see ") + shown + ".").c_str());
+}
+
+// Why the service itself cannot be used right now; empty once it is online.
+std::string ServiceNotice(const online::Snapshot& state) {
+  if (state.connection == online::Connection::kOffline || state.connection == online::Connection::kError) {
+    return state.connection_text.empty() ? Tr(kUnreachable) : state.connection_text;
+  }
+  if (state.connection == online::Connection::kChecking) {
+    return state.connection_text.empty() ? Tr("Connecting...") : state.connection_text;
+  }
+  return {};
 }
 
 bool AcceptButton(trg::Ui& ui, const char* id) {
@@ -107,6 +119,7 @@ std::vector<std::string> OnlinePage::Tick(trg::SettingsStore& settings) {
   online::UserSettings edited;
   edited.enabled = settings.GetBool(kOnlineEnabledSetting, kDefaultOnlineEnabled);
   edited.name = settings.Get(kOnlineNameSetting, kDefaultOnlineNameValue);
+  edited.lobby_visible = settings.GetBool(kOnlineLobbySetting, kDefaultOnlineLobby);
   tabs_.TrackOnlinePlay(edited.enabled);
   std::vector<std::string> notices;
   if (edited.enabled && settings.GetBool(kInfiniteTimeSetting, kDefaultInfiniteTime)) {
@@ -153,7 +166,7 @@ void OnlinePage::Draw(trg::Ui& ui) {
         break;
       case OnlineSection::kSecretCharacters: DrawSecretCharacters(ui, state); break;
       case OnlineSection::kFriends: DrawFriends(ui, state); break;
-      case OnlineSection::kLobby: DrawLobby(ui); break;
+      case OnlineSection::kLobby: DrawLobby(ui, state); break;
     }
   }
   ui.EndRows();
@@ -394,6 +407,42 @@ void OnlinePage::DrawFriends(trg::Ui& ui, const online::Snapshot& state) {
   ui.EndRows();
 }
 
-void OnlinePage::DrawLobby(trg::Ui& ui) { ui.Paragraph(kLobbyPending); }
+void OnlinePage::DrawLobby(trg::Ui& ui, const online::Snapshot& state) {
+  Online().NoteLobbyViewed();
+  const bool visible = ui.settings().GetBool(kOnlineLobbySetting, kDefaultOnlineLobby);
+  ui.Toggle(kOnlineLobbyLabel, visible ? kOnlineLobbyOnHelp : kOnlineLobbyOffHelp, kOnlineLobbySetting,
+            kDefaultOnlineLobby, "Off", "On");
+  ui.Heading(kLobbyHeading);
+  std::string notice = ServiceNotice(state);
+  if (notice.empty()) notice = online::LobbyMessage(state.lobby);
+  if (!notice.empty()) {
+    ui.Help(notice.c_str());
+    return;
+  }
+  if (state.lobby.failed) ui.Help(kLobbyRefreshFailed);
+  for (const online::LobbyPlayer& player : state.lobby.players) DrawLobbyPlayer(ui, state, player);
+  ui.EndRows();
+}
+
+void OnlinePage::DrawLobbyPlayer(trg::Ui& ui, const online::Snapshot& state, const online::LobbyPlayer& player) {
+  const online::LobbyRowView view = online::DescribeLobbyPlayer(state, player);
+  FriendHeading(ui, player.name, online::FriendRowView{view.status, view.incompatible});
+  ImGui::PushID(("lobby" + player.player).c_str());
+  switch (view.relation) {
+    case online::LobbyRelation::kFriend: ImGui::TextDisabled("%s", Tr("Friend")); break;
+    case online::LobbyRelation::kOutgoing: ImGui::TextDisabled("%s", Tr("Request sent")); break;
+    case online::LobbyRelation::kIncoming:
+      if (AcceptButton(ui, Tr("     Accept"))) Online().AcceptFriend(player.player);
+      ImGui::SameLine();
+      if (ImGui::Button(Tr("Decline"))) Online().DeclineFriend(player.player);
+      break;
+    case online::LobbyRelation::kNone:
+      ImGui::BeginDisabled(!view.can_add);
+      if (ImGui::Button(Tr("Add friend"))) Online().AddFriend(player.player);
+      ImGui::EndDisabled();
+      break;
+  }
+  ImGui::PopID();
+}
 
 }  // namespace ssf2t

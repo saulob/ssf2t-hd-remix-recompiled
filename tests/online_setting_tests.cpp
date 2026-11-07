@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -275,19 +276,131 @@ void TestFriendRequestsKeepTheSidebarAttention() {
   CHECK(Has(ReadSource("launcher.cpp"), "[this] { return online_page_.NeedsAttention(); }"));
 }
 
-void TestLobbyTabAddsNoNetworkOperation() {
+// The text of one function: from its signature to the first closing brace at the start of a line.
+std::string FunctionBody(const std::string& source, const char* signature) {
+  const size_t at = source.find(signature);
+  if (at == std::string::npos) return {};
+  return source.substr(at, source.find("\n}\n", at) - at);
+}
+
+void TestLobbyVisibilitySettingDefaultsToOffAndReachesTheRuntime() {
+  CHECK(!kDefaultOnlineLobby);
+  CHECK(std::string_view(kOnlineLobbySetting) == "ssf2t_online_lobby_visible");
+  CHECK(std::string_view(kOnlineLobbyLabel) == "Show me in Lobby");
+  const std::string runtime = ReadSource("online_runtime.cpp");
+  CHECK(Has(runtime, "REXCVAR_DEFINE_BOOL(ssf2t_online_lobby_visible, ssf2t::kDefaultOnlineLobby, \"SSF2T\""));
+  CHECK(Has(runtime, "settings.lobby_visible = REXCVAR_GET(ssf2t_online_lobby_visible);"));
+  CHECK(Has(ReadSource("settings.cpp"), "      kOnlineLobbySetting,\n"));
+  CHECK(Has(ReadSource("online_page.cpp"), "edited.lobby_visible = settings.GetBool(kOnlineLobbySetting, kDefaultOnlineLobby);"));
+  CHECK(!online::UserSettings{}.lobby_visible);
+}
+
+void TestLobbyVisibilityHelpSaysWhatOthersSee() {
+  const std::string off = kOnlineLobbyOffHelp;
+  const std::string on = kOnlineLobbyOnHelp;
+  CHECK(Has(off, "Online name") && Has(off, "friend request"));
+  CHECK(Has(on, "Online name") && Has(on, "friend request") && Has(on, "Nothing else about you is shown"));
+  for (const std::string* text : {&off, &on}) {
+    CHECK(!Has(*text, "code") && !Has(*text, "address") && !Has(*text, "token"));
+  }
+}
+
+void TestLobbyTabHoldsTheRealLobby() {
   CHECK((OnlinePageSections(true, OnlineTab::kLobby, 2) ==
          std::vector<OnlineSection>{OnlineSection::kOnlinePlay, OnlineSection::kTabs, OnlineSection::kLobby}));
   const std::string page = ReadSource("online_page.cpp");
-  CHECK(Has(page, "\"Public Lobby will be available in this version.\""));
-  const size_t lobby = page.find("void OnlinePage::DrawLobby(trg::Ui& ui) {");
-  CHECK(lobby != std::string::npos);
-  CHECK(!Has(page.substr(lobby, page.find('\n', lobby) - lobby), "Online()"));
-  for (const char* source : {"online_page.cpp", "online_page.h", "online_tabs.h", "online/online_service.cpp",
-                             "online/online_service.h", "online/protocol.cpp", "online/protocol.h"}) {
+  CHECK(!Has(page, "Public Lobby will be available") && !Has(page, "kLobbyPending"));
+  CHECK(Has(page, "case OnlineSection::kLobby: DrawLobby(ui, state); break;"));
+  const std::string lobby = FunctionBody(page, "void OnlinePage::DrawLobby(trg::Ui& ui, const online::Snapshot& state) {");
+  CHECK(!lobby.empty());
+  CHECK(Has(lobby, "Online().NoteLobbyViewed();"));
+  CHECK(Has(lobby, "ui.Toggle(kOnlineLobbyLabel, visible ? kOnlineLobbyOnHelp : kOnlineLobbyOffHelp, kOnlineLobbySetting,"));
+  CHECK(Has(lobby, "ServiceNotice(state)") && Has(lobby, "online::LobbyMessage(state.lobby)"));
+  CHECK(Has(lobby, "for (const online::LobbyPlayer& player : state.lobby.players) DrawLobbyPlayer(ui, state, player);"));
+  CHECK(Has(lobby, "if (state.lobby.failed) ui.Help(kLobbyRefreshFailed);"));
+  CHECK(!Has(page, "Tr(\"Refresh\")") && !Has(page, "\"Refresh\""));  // the page refreshes itself
+  CHECK(Has(ReadSource("online_page.h"), "void DrawLobbyPlayer(trg::Ui& ui, const online::Snapshot& state, const online::LobbyPlayer& player);"));
+}
+
+void TestLobbyAddFriendUsesTheExistingFriendRequests() {
+  const std::string page = ReadSource("online_page.cpp");
+  const std::string row = FunctionBody(page, "void OnlinePage::DrawLobbyPlayer(");
+  CHECK(!row.empty());
+  CHECK(Has(row, "online::DescribeLobbyPlayer(state, player)"));
+  CHECK(Has(row, "ImGui::BeginDisabled(!view.can_add);"));
+  CHECK(Has(row, "if (ImGui::Button(Tr(\"Add friend\"))) Online().AddFriend(player.player);"));
+  CHECK(Has(row, "case online::LobbyRelation::kFriend:") && Has(row, "case online::LobbyRelation::kOutgoing:") &&
+        Has(row, "case online::LobbyRelation::kIncoming:"));
+  CHECK(Has(row, "Online().AcceptFriend(player.player)") && Has(row, "Online().DeclineFriend(player.player)"));
+  CHECK(Has(row, "FriendHeading(ui, player.name, online::FriendRowView{view.status, view.incompatible});"));
+  const std::string view = ReadSource("online/friend_view.cpp");
+  CHECK(Has(view, "view.can_add = view.relation == LobbyRelation::kNone && player.player != state.friend_code &&"));
+  CHECK(Has(view, "state.connection == Connection::kOnline;"));
+  for (const char* source : {"online/online_service.cpp", "online/protocol.cpp"}) {
     const std::string text = ReadSource(source);
-    CHECK(!Has(text, "lobby.publish") && !Has(text, "lobby.list") && !Has(text, "LobbyPlayer"));
+    CHECK(!Has(text, "lobby.add") && !Has(text, "lobby.request") && !Has(text, "lobby.friend"));
   }
+}
+
+void TestLobbyRowsNeverShowTheFriendCodeOrConnectionDetails() {
+  const std::string row = FunctionBody(ReadSource("online_page.cpp"), "void OnlinePage::DrawLobbyPlayer(");
+  std::string rest = row;
+  for (const char* allowed : {"(\"lobby\" + player.player)", "Online().AddFriend(player.player)", "Online().AcceptFriend(player.player)",
+                              "Online().DeclineFriend(player.player)"}) {
+    for (size_t at = rest.find(allowed); at != std::string::npos; at = rest.find(allowed)) rest.erase(at, std::strlen(allowed));
+  }
+  CHECK(!rest.empty() && !Has(rest, "player.player"));
+  const std::string lobby = FunctionBody(ReadSource("online_page.cpp"), "void OnlinePage::DrawLobby(trg::Ui& ui, const online::Snapshot& state) {");
+  CHECK(!Has(lobby, "friend_code") && !Has(lobby, "player.player"));
+  const std::string protocol = ReadSource("online/protocol.h");
+  const size_t at = protocol.find("struct LobbyPlayer {");
+  const std::string fields = protocol.substr(at, protocol.find("};", at) - at);
+  for (const char* private_field : {"token", "ip", "address", "endpoint", "relay", "lan", "match", "session", "country"}) {
+    CHECK(!Has(fields, (std::string("std::string ") + private_field).c_str()));
+  }
+}
+
+void TestUnsupportedLobbyIsHandledWithoutRequests() {
+  const std::string service = ReadSource("online/online_service.cpp");
+  CHECK(Has(service, "if (!capabilities_.public_lobby || lobby_refused_) return;"));
+  CHECK(Has(service, "lobby_refused_ = lobby_refused_ || message.code == \"bad_request\";"));
+  CHECK(Has(service, "s.lobby.supported = capabilities_.public_lobby && !lobby_refused_;"));
+  CHECK(Has(ReadSource("online/protocol.cpp"), "caps.public_lobby = BoolOf(v.Find(\"public_lobby\"), false);"));
+  CHECK(Has(ReadSource("online/friend_view.cpp"), "if (!lobby.supported) return Tr(\"The online service does not have the public Lobby yet.\");"));
+  const std::string page = FunctionBody(ReadSource("online_page.cpp"), "void OnlinePage::DrawLobby(trg::Ui& ui, const online::Snapshot& state) {");
+  CHECK(!Has(page, "connection = ") && !Has(page, "Connection::kOffline"));
+}
+
+void TestLobbyKeepsProtocolThreeAndCannotTakeTheServiceOffline() {
+  CHECK(online::kLobbyProtocol == 3);
+  const std::string service = ReadSource("online/online_service.cpp");
+  const size_t list = service.find("    case Purpose::kLobbyList:");
+  const size_t publish = service.find("    case Purpose::kLobbyPublish:");
+  CHECK(list != std::string::npos && publish != std::string::npos && publish < list);
+  const std::string handlers = service.substr(publish, service.find("    case Purpose::kInviteDecline:", list) - publish);
+  CHECK(!Has(handlers, "connection_") && !Has(handlers, "OnLinkLost") && !Has(handlers, "Notice("));
+  CHECK(Has(ReadSource("online/protocol.cpp"), "kLobbyProtocol"));
+}
+
+void TestSettingsAndFriendsTabsAreUnchangedByTheLobby() {
+  CHECK((OnlinePageSections(true, OnlineTab::kSettings, 0) ==
+         std::vector<OnlineSection>{OnlineSection::kOnlinePlay, OnlineSection::kTabs, OnlineSection::kOnlineName,
+                                    OnlineSection::kFriendCode, OnlineSection::kConnectionTest,
+                                    OnlineSection::kPingDisplay, OnlineSection::kSecretCharacters}));
+  CHECK((OnlinePageSections(true, OnlineTab::kFriends, 1) ==
+         std::vector<OnlineSection>{OnlineSection::kOnlinePlay, OnlineSection::kTabs, OnlineSection::kFriendRequests,
+                                    OnlineSection::kFriends}));
+  const std::string page = ReadSource("online_page.cpp");
+  CHECK(Has(page, "case OnlineSection::kSecretCharacters: DrawSecretCharacters(ui, state); break;"));
+  CHECK(!Has(FunctionBody(page, "void OnlinePage::DrawFriends("), "NoteLobbyViewed"));
+  CHECK(!Has(FunctionBody(page, "void OnlinePage::DrawFriendCode("), "Lobby"));
+}
+
+void TestLobbyServerDocumentsTheProtocol() {
+  const std::string readme = ReadFile(std::filesystem::path(SSF2T_SOURCE_DIR) / "server/ssf2t-lobby/README.md");
+  for (const char* part : {"lobby.publish", "lobby.list", "public_lobby", "unchanged"}) CHECK(Has(readme, part));
+  const std::string docs = ReadFile(std::filesystem::path(SSF2T_SOURCE_DIR) / "docs/online.md");
+  for (const char* part : {"Show me in Lobby", "## Public Lobby"}) CHECK(Has(docs, part));
 }
 
 void TestOnlineTabTextIsLocalized() {
@@ -295,11 +408,19 @@ void TestOnlineTabTextIsLocalized() {
   CHECK(Has(table, "\nSettings\t"));
   CHECK(Has(table, "\nFriends\t"));
   CHECK(Has(table, "\nLobby\t"));
-  CHECK(Has(table, "\nPublic Lobby will be available in this version.\t"));
+  CHECK(!Has(table, "Public Lobby will be available in this version."));
+  for (const char* english : {"Show me in Lobby", "Players in the Lobby", "Could not refresh the Lobby.",
+                              "The online service does not have the public Lobby yet.", "Cannot read the Lobby right now.",
+                              "Looking for players...", "No players are in the Lobby right now.", "Add friend", "Friend",
+                              "Request sent", kOnlineLobbyOffHelp, kOnlineLobbyOnHelp}) {
+    CHECK(Has(table, (std::string("\n") + english + "\t").c_str()));
+  }
 }
 
 void TestOnlinePageHasNoForeignIdentifiers() {
-  for (const char* source : {"online_page.cpp", "online_page.h", "online_tabs.h", "launcher.cpp"}) {
+  for (const char* source : {"online_page.cpp", "online_page.h", "online_tabs.h", "launcher.cpp", "online/friend_view.cpp",
+                             "online/friend_view.h", "online/protocol.cpp", "online/protocol.h",
+                             "online/online_service.cpp", "online/online_service.h"}) {
     const std::string text = ReadSource(source);
     for (const char* foreign : {"Dragon", "dragon", "DCP", "dcp", "OnlineClient", "PointToConnectionTest"}) {
       CHECK(!Has(text, foreign));
@@ -822,7 +943,15 @@ int main() {
   TestOnlinePlayOnReturnsToSettings();
   TestRefusedPlayReturnsToSettings();
   TestFriendRequestsKeepTheSidebarAttention();
-  TestLobbyTabAddsNoNetworkOperation();
+  TestLobbyVisibilitySettingDefaultsToOffAndReachesTheRuntime();
+  TestLobbyVisibilityHelpSaysWhatOthersSee();
+  TestLobbyTabHoldsTheRealLobby();
+  TestLobbyAddFriendUsesTheExistingFriendRequests();
+  TestLobbyRowsNeverShowTheFriendCodeOrConnectionDetails();
+  TestUnsupportedLobbyIsHandledWithoutRequests();
+  TestLobbyKeepsProtocolThreeAndCannotTakeTheServiceOffline();
+  TestSettingsAndFriendsTabsAreUnchangedByTheLobby();
+  TestLobbyServerDocumentsTheProtocol();
   TestOnlineTabTextIsLocalized();
   TestOnlinePageHasNoForeignIdentifiers();
   TestLauncherHasAnOnlinePageWithoutTechnicalControls();

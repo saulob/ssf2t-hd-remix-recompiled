@@ -2729,6 +2729,374 @@ void TestAMalformedRoomAnswerOffersNothing() {
   CHECK(!rig.service->SecretEffective().Any());
 }
 
+// ---- public Lobby ----
+const char kLobbyCaps[] = "\"capabilities\":{\"protocol_version\":3,\"worker_build\":\"test\",\"public_lobby\":true}";
+
+std::string LobbyRow(const char* player, const char* name, const char* guest = "base013", bool compatible = true,
+                     const char* state = "online") {
+  return std::string("{\"player\":\"") + player + "\",\"name\":\"" + name + "\",\"state\":\"" + state +
+         "\",\"platform\":\"Windows\",\"version\":\"0.4.0\",\"guest\":\"" + guest + "\",\"compatible\":" +
+         (compatible ? "true" : "false") + "}";
+}
+
+std::string LobbyAnswer(long long rev, const std::string& rows) {
+  return "\"players\":[" + rows + "],\"rev\":" + std::to_string(rev) + ",\"visible\":false";
+}
+
+void SignInToLobbyService(Rig& rig, bool visible = false, bool lobby = true) {
+  rig.service->Apply({true, "Saulo", visible});
+  rig.Tick();
+  rig.Event(ChannelEvent::Kind::kOpen);
+  rig.Reply("hello", "\"player\":\"" + rig.me + "\",\"name\":\"Saulo\",\"friend_code\":\"" + rig.me + "\"" +
+                         (lobby ? std::string(",") + kLobbyCaps : std::string()));
+}
+
+// Keeps the Lobby page "open" for `seconds`, as the launcher does by drawing it every frame.
+void ViewLobby(Rig& rig, double seconds) {
+  for (double spent = 0; spent < seconds; spent += 1.0) {
+    rig.service->NoteLobbyViewed();
+    rig.Tick(1.0);
+  }
+}
+
+void TestLobbyVisibilityDefaultsToOffAndSendsNothing() {
+  CHECK(!UserSettings{}.lobby_visible);
+  Rig rig;
+  SignInToLobbyService(rig);
+  for (int i = 0; i < 30; ++i) rig.Tick(5.0);
+  CHECK(rig.Count("lobby.publish") == 0 && rig.Count("lobby.list") == 0);
+  CHECK(rig.service->snapshot().lobby.supported && !rig.service->snapshot().lobby.visible);
+  CHECK(rig.CountLogs("online lobby service supported=true") == 1);
+}
+
+void TestLobbyVisibilityIsPublishedOnceAndOnChange() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  CHECK(rig.Count("lobby.publish") == 1 && Contains(rig.LastRequest("lobby.publish"), "\"visible\":true"));
+  for (int i = 0; i < 10; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("lobby.publish") == 1);
+  CHECK(!rig.service->snapshot().lobby.visible);
+  rig.Reply("lobby.publish", "\"visible\":true");
+  CHECK(rig.service->snapshot().lobby.visible && rig.CountLogs("online lobby visible=true") == 1);
+  for (int i = 0; i < 10; ++i) rig.Tick(5.0);
+  CHECK(rig.Count("lobby.publish") == 1);
+
+  rig.service->Apply({true, "Saulo", false});
+  rig.Tick();
+  CHECK(rig.Count("lobby.publish") == 2 && Contains(rig.LastRequest("lobby.publish"), "\"visible\":false"));
+  rig.Reply("lobby.publish", "\"visible\":false");
+  CHECK(!rig.service->snapshot().lobby.visible);
+  for (int i = 0; i < 10; ++i) rig.Tick(5.0);
+  CHECK(rig.Count("lobby.publish") == 2);
+}
+
+void TestLobbyVisibilityChangedWhileSendingFollowsTheLastChoice() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  rig.service->Apply({true, "Saulo", false});
+  for (int i = 0; i < 5; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("lobby.publish") == 1);
+  rig.Reply("lobby.publish", "\"visible\":true");
+  rig.Tick();
+  CHECK(rig.Count("lobby.publish") == 2 && Contains(rig.LastRequest("lobby.publish"), "\"visible\":false"));
+  rig.Reply("lobby.publish", "\"visible\":false");
+  CHECK(!rig.service->snapshot().lobby.visible);
+}
+
+void TestRefusedLobbyPublishIsRetriedLaterNotInALoop() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  rig.Reply("lobby.publish", "", "limit");
+  CHECK(!rig.service->snapshot().lobby.visible && rig.CountLogs("online lobby publish refused code=limit") == 1);
+  for (int i = 0; i < 12; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("lobby.publish") == 1);
+  for (int i = 0; i < 6; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("lobby.publish") == 2);
+  CHECK(rig.service->snapshot().connection == Connection::kOnline);
+}
+
+void TestLobbyIsReadOnlyWhileItsPageIsShownAndRefreshesBySelf() {
+  Rig rig;
+  SignInToLobbyService(rig);
+  for (int i = 0; i < 20; ++i) rig.Tick(5.0);
+  CHECK(rig.Count("lobby.list") == 0);
+
+  rig.service->NoteLobbyViewed();
+  rig.Tick();
+  CHECK(rig.Count("lobby.list") == 1 && !Contains(rig.LastRequest("lobby.list"), "\"rev\""));
+  CHECK(!rig.service->snapshot().lobby.fetched);
+  rig.Reply("lobby.list", LobbyAnswer(1700000000123, LobbyRow("JKLM-3456", "Kim") + "," + LobbyRow("NPQR-7892", "Zoe", "tu023", false)));
+  const Snapshot first = rig.service->snapshot();
+  CHECK(first.lobby.fetched && !first.lobby.failed && first.lobby.players.size() == 2);
+  CHECK(first.lobby.players[0].name == "Kim" && first.lobby.players[1].guest == "tu023" && !first.lobby.players[1].compatible);
+  CHECK(rig.CountLogs("online lobby players=2") == 1);
+
+  int ticks = 0;
+  while (rig.Count("lobby.list") == 1 && ticks < 60) {
+    rig.service->NoteLobbyViewed();
+    rig.Tick(1.0);
+    ++ticks;
+  }
+  CHECK(ticks >= 28 && ticks <= 32);
+  CHECK(rig.Count("lobby.list") == 2 && Contains(rig.LastRequest("lobby.list"), "\"rev\":1700000000123"));
+  rig.Reply("lobby.list", "\"unchanged\":true,\"rev\":1700000000123,\"visible\":false");
+  CHECK(rig.service->snapshot().lobby.players.size() == 2 && !rig.service->snapshot().lobby.failed);
+  CHECK(rig.CountLogs("online lobby players=") == 1);
+
+  for (int i = 0; i < 60; ++i) rig.Tick(5.0);
+  CHECK(rig.Count("lobby.list") == 2);
+}
+
+void TestReopeningTheLobbyPageReadsAtOnce() {
+  Rig rig;
+  SignInToLobbyService(rig);
+  ViewLobby(rig, 3);
+  CHECK(rig.Count("lobby.list") == 1);
+  rig.Reply("lobby.list", LobbyAnswer(10, LobbyRow("JKLM-3456", "Kim")));
+  for (int i = 0; i < 4; ++i) rig.Tick(1.0);
+  rig.service->NoteLobbyViewed();
+  rig.Tick();
+  CHECK(rig.Count("lobby.list") == 2 && Contains(rig.LastRequest("lobby.list"), "\"rev\":10"));
+}
+
+void TestLobbyAnswerReplacesThePlayers() {
+  Rig rig;
+  SignInToLobbyService(rig);
+  ViewLobby(rig, 1);
+  rig.Reply("lobby.list", LobbyAnswer(10, LobbyRow("JKLM-3456", "Kim")));
+  CHECK(rig.service->snapshot().lobby.players.size() == 1);
+  ViewLobby(rig, 31);
+  rig.Reply("lobby.list", LobbyAnswer(11, LobbyRow("NPQR-7892", "Zoe") + "," + LobbyRow("STUV-2345", "Ann")));
+  const Snapshot s = rig.service->snapshot();
+  CHECK(s.lobby.players.size() == 2 && s.lobby.players[0].name == "Zoe");
+  ViewLobby(rig, 31);
+  CHECK(Contains(rig.LastRequest("lobby.list"), "\"rev\":11"));
+  rig.Reply("lobby.list", LobbyAnswer(12, ""));
+  CHECK(rig.service->snapshot().lobby.fetched && rig.service->snapshot().lobby.players.empty());
+}
+
+void TestLobbyFailureNeverTakesTheServiceOffline() {
+  Rig rig;
+  SignInToLobbyService(rig);
+  rig.Reply("friends.list", "\"friends\":[" + FriendJson(kFriendA, "SauloB", true) + "]");
+  rig.Reply("friends.requests", "\"incoming\":[],\"outgoing\":[]");
+  ViewLobby(rig, 1);
+  rig.Reply("lobby.list", "", "internal");
+  Snapshot s = rig.service->snapshot();
+  CHECK(s.connection == Connection::kOnline && s.lobby.failed && !s.lobby.fetched && s.friends.size() == 1);
+  CHECK(LobbyMessage(s.lobby) == "Cannot read the Lobby right now.");
+  CHECK(rig.CountLogs("online lobby read failed code=internal") == 1);
+  CHECK(rig.service->AddFriend("JKLM-3456") == FriendRequestResult::kSent);
+  rig.Reply("friends.add", "\"player\":\"JKLM-3456\",\"name\":\"Kim\",\"state\":\"pending\"");
+
+  ViewLobby(rig, 20);
+  CHECK(rig.Count("lobby.list") == 1);
+  ViewLobby(rig, 12);
+  CHECK(rig.Count("lobby.list") == 2);
+  rig.Reply("lobby.list", LobbyAnswer(3, LobbyRow("JKLM-3456", "Kim")));
+  s = rig.service->snapshot();
+  CHECK(!s.lobby.failed && s.lobby.fetched && s.connection == Connection::kOnline);
+
+  ViewLobby(rig, 31);
+  rig.Reply("lobby.list", "", "limit");
+  s = rig.service->snapshot();
+  CHECK(s.lobby.failed && s.lobby.fetched && s.lobby.players.size() == 1 && LobbyMessage(s.lobby).empty());
+  CHECK(s.connection == Connection::kOnline);
+}
+
+void TestMalformedLobbyAnswerIsAFailedRead() {
+  Rig rig;
+  SignInToLobbyService(rig);
+  ViewLobby(rig, 1);
+  rig.Reply("lobby.list", "\"players\":[{\"name\":\"NoPlayer\"}],\"rev\":4");
+  const Snapshot s = rig.service->snapshot();
+  CHECK(s.lobby.failed && !s.lobby.fetched && s.connection == Connection::kOnline);
+  CHECK(rig.CountLogs("online lobby read failed code=malformed") == 1);
+}
+
+void TestAnOlderServiceGetsNoLobbyRequests() {
+  for (const bool announces_nothing : {true, false}) {
+    Rig rig;
+    if (announces_nothing) {
+      SignInToLobbyService(rig, true, false);
+    } else {
+      rig.service->Apply({true, "Saulo", true});
+      rig.Tick();
+      rig.Event(ChannelEvent::Kind::kOpen);
+      rig.Reply("hello", "\"player\":\"" + rig.me + "\",\"name\":\"Saulo\",\"friend_code\":\"" + rig.me +
+                             "\",\"capabilities\":{\"protocol_version\":3,\"public_lobby\":false}");
+    }
+    ViewLobby(rig, 120);
+    CHECK(rig.Count("lobby.publish") == 0 && rig.Count("lobby.list") == 0);
+    const Snapshot s = rig.service->snapshot();
+    CHECK(!s.lobby.supported && !s.lobby.visible && !s.lobby.fetched);
+    CHECK(Contains(LobbyMessage(s.lobby), "does not have the public Lobby"));
+    CHECK(s.connection == Connection::kOnline && rig.CountLogs("online lobby service supported=false") == 1);
+    rig.Reply("friends.list", "\"friends\":[]");
+    CHECK(rig.service->snapshot().fetched);
+  }
+}
+
+void TestAServiceThatDoesNotKnowTheOperationIsLeftAlone() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  rig.Reply("lobby.publish", "", "bad_request");
+  ViewLobby(rig, 120);
+  CHECK(rig.Count("lobby.publish") == 1 && rig.Count("lobby.list") == 0);
+  CHECK(!rig.service->snapshot().lobby.supported && rig.service->snapshot().connection == Connection::kOnline);
+
+  Rig reads;
+  SignInToLobbyService(reads);
+  ViewLobby(reads, 1);
+  reads.Reply("lobby.list", "", "bad_request");
+  ViewLobby(reads, 120);
+  CHECK(reads.Count("lobby.list") == 1 && !reads.service->snapshot().lobby.supported);
+}
+
+void TestLobbyStartsOverOnEveryNewConnection() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  rig.Reply("lobby.publish", "\"visible\":true");
+  ViewLobby(rig, 1);
+  rig.Reply("lobby.list", LobbyAnswer(7, LobbyRow("JKLM-3456", "Kim")));
+  CHECK(rig.service->snapshot().lobby.visible && rig.service->snapshot().lobby.players.size() == 1);
+
+  rig.Event(ChannelEvent::Kind::kClosed, "link_lost");
+  Snapshot s = rig.service->snapshot();
+  CHECK(!s.lobby.visible && !s.lobby.fetched && s.lobby.players.empty());
+  rig.Tick(2.0);
+  CHECK(rig.channels.size() == 2);
+  rig.Event(ChannelEvent::Kind::kOpen);
+  rig.Reply("hello", "\"player\":\"" + rig.me + "\",\"name\":\"Saulo\",\"friend_code\":\"" + rig.me + "\"," + kLobbyCaps);
+  CHECK(rig.Count("lobby.publish") == 1 && Contains(rig.LastRequest("lobby.publish"), "\"visible\":true"));
+  rig.service->NoteLobbyViewed();
+  rig.Tick();
+  CHECK(rig.Count("lobby.list") == 1 && !Contains(rig.LastRequest("lobby.list"), "\"rev\""));
+}
+
+void TestRenamingSignsInAgainAndListsAgain() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  rig.Reply("lobby.publish", "\"visible\":true");
+  rig.service->Apply({true, "Renamed", true});
+  for (int i = 0; i < 4; ++i) rig.Tick(1.0);
+  CHECK(rig.channels.size() == 2);
+  CHECK(!rig.service->snapshot().lobby.visible);
+  rig.Event(ChannelEvent::Kind::kOpen);
+  rig.Reply("hello", "\"player\":\"" + rig.me + "\",\"name\":\"Renamed\",\"friend_code\":\"" + rig.me + "\"," + kLobbyCaps);
+  CHECK(rig.Count("lobby.publish") == 1);
+}
+
+void TestOnlinePlayOffLeavesTheLobbyAndTurningItOnPublishesAgain() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  rig.Reply("lobby.publish", "\"visible\":true");
+  rig.service->Apply({false, "Saulo", true});
+  const Snapshot off = rig.service->snapshot();
+  CHECK(!off.lobby.visible && !off.lobby.fetched && off.lobby.players.empty());
+  rig.Tick(3.0);
+  CHECK(rig.Last().closed);
+  const size_t opened = rig.channels.size();
+  for (int i = 0; i < 10; ++i) rig.Tick(5.0);
+  CHECK(rig.channels.size() == opened);
+
+  rig.service->Apply({true, "Saulo", true});
+  rig.Tick();
+  rig.Event(ChannelEvent::Kind::kOpen);
+  rig.Reply("hello", "\"player\":\"" + rig.me + "\",\"name\":\"Saulo\",\"friend_code\":\"" + rig.me + "\"," + kLobbyCaps);
+  CHECK(rig.channels.size() == opened + 1 && rig.Count("lobby.publish") == 1);
+}
+
+void TestLobbyRowsFollowTheFriendsTab() {
+  Rig rig;
+  rig.SignIn();
+  rig.Reply("friends.list", "\"friends\":[" + FriendJson(kFriendA, "SauloB", true) + "]");
+  rig.Reply("friends.requests", "\"incoming\":[{\"player\":\"NPQR-7892\",\"name\":\"Zoe\"}],"
+                                "\"outgoing\":[{\"player\":\"JKLM-3456\",\"name\":\"Kim\"}]");
+  const Snapshot s = rig.service->snapshot();
+  const auto row = [](const char* player, const char* guest = "base013", bool compatible = true) {
+    LobbyPlayer p;
+    p.player = player;
+    p.name = "Someone";
+    p.platform = "Windows";
+    p.version = "0.4.0";
+    p.guest = guest;
+    p.compatible = compatible;
+    return p;
+  };
+
+  const LobbyRowView friend_row = DescribeLobbyPlayer(s, row(kFriendA));
+  CHECK(friend_row.relation == LobbyRelation::kFriend && !friend_row.can_add);
+  const LobbyRowView sent = DescribeLobbyPlayer(s, row("JKLM-3456"));
+  CHECK(sent.relation == LobbyRelation::kOutgoing && !sent.can_add);
+  const LobbyRowView waiting = DescribeLobbyPlayer(s, row("NPQR-7892"));
+  CHECK(waiting.relation == LobbyRelation::kIncoming && !waiting.can_add);
+  const LobbyRowView own = DescribeLobbyPlayer(s, row(rig.me.c_str()));
+  CHECK(own.relation == LobbyRelation::kNone && !own.can_add);
+  const LobbyRowView stranger = DescribeLobbyPlayer(s, row("STUV-2345"));
+  CHECK(stranger.relation == LobbyRelation::kNone && stranger.can_add && !stranger.incompatible);
+  CHECK(stranger.status == "Online \xC2\xB7 Windows \xC2\xB7 v0.4.0 \xC2\xB7 Base013");
+
+  const LobbyRowView other = DescribeLobbyPlayer(s, row("STUV-2345", "tu023", false));
+  CHECK(other.incompatible && other.can_add && Contains(other.status, "TU023"));
+
+  Snapshot offline = s;
+  offline.connection = Connection::kOffline;
+  CHECK(!DescribeLobbyPlayer(offline, row("STUV-2345")).can_add);
+  for (const Connection state : {Connection::kChecking, Connection::kError, Connection::kOff}) {
+    offline.connection = state;
+    CHECK(!DescribeLobbyPlayer(offline, row("STUV-2345")).can_add);
+  }
+}
+
+void TestLobbyMessagesSayWhyThereIsNoList() {
+  LobbySnapshot lobby;
+  CHECK(Contains(LobbyMessage(lobby), "does not have the public Lobby"));
+  lobby.supported = true;
+  CHECK(LobbyMessage(lobby) == "Looking for players...");
+  lobby.failed = true;
+  CHECK(LobbyMessage(lobby) == "Cannot read the Lobby right now.");
+  lobby.failed = false;
+  lobby.fetched = true;
+  CHECK(LobbyMessage(lobby) == "No players are in the Lobby right now.");
+  lobby.players.push_back(LobbyPlayer{});
+  CHECK(LobbyMessage(lobby).empty());
+  lobby.failed = true;
+  CHECK(LobbyMessage(lobby).empty());
+}
+
+void TestAddFriendFromTheLobbyIsTheFriendRequest() {
+  Rig rig;
+  SignInToLobbyService(rig);
+  rig.Reply("friends.list", "\"friends\":[" + FriendJson(kFriendA, "SauloB", true) + "]");
+  rig.Reply("friends.requests", "\"incoming\":[],\"outgoing\":[]");
+  CHECK(rig.service->AddFriend("JKLM-3456") == FriendRequestResult::kSent);
+  CHECK(Contains(rig.LastRequest("friends.add"), "\"code\":\"JKLM-3456\""));
+  rig.Reply("friends.add", "\"player\":\"JKLM-3456\",\"name\":\"Kim\",\"state\":\"pending\"");
+  rig.Reply("friends.requests", "\"incoming\":[],\"outgoing\":[{\"player\":\"JKLM-3456\",\"name\":\"Kim\"}]");
+  CHECK(rig.service->AddFriend("JKLM-3456") == FriendRequestResult::kAlreadyPending);
+  CHECK(rig.service->AddFriend(kFriendA) == FriendRequestResult::kAlreadyFriends);
+  CHECK(rig.service->AddFriend(rig.me) == FriendRequestResult::kOwnCode);
+  CHECK(rig.Count("friends.add") == 1);
+  const Snapshot s = rig.service->snapshot();
+  LobbyPlayer p;
+  p.player = "JKLM-3456";
+  p.name = "Kim";
+  CHECK(DescribeLobbyPlayer(s, p).relation == LobbyRelation::kOutgoing);
+}
+
+void TestLobbyRequestsNeverCarryPrivateData() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  ViewLobby(rig, 1);
+  for (const std::string& request : rig.Last().sent) {
+    if (!Contains(request, "\"op\":\"lobby.")) continue;
+    CHECK(!Contains(request, kToken) && !Contains(request, "token") && !Contains(request, "lan") && !Contains(request, "ip"));
+    CHECK(!Contains(request, rig.me));
+  }
+  for (const std::string& line : rig.logs) CHECK(!Contains(line, kToken));
+}
+
 int main() {
   std::printf("online service tests\n");
   TestHelloAdvertisesWhatThisBuildSupportsAndWhatIsOn();
@@ -2838,6 +3206,24 @@ int main() {
   TestEveryMatchAfterARelayMatchStartsClean();
   TestRefusedRelayChoiceFailsTheMatch();
   TestHostThenJoinWithoutRestartReversesRoles();
+  TestLobbyVisibilityDefaultsToOffAndSendsNothing();
+  TestLobbyVisibilityIsPublishedOnceAndOnChange();
+  TestLobbyVisibilityChangedWhileSendingFollowsTheLastChoice();
+  TestRefusedLobbyPublishIsRetriedLaterNotInALoop();
+  TestLobbyIsReadOnlyWhileItsPageIsShownAndRefreshesBySelf();
+  TestReopeningTheLobbyPageReadsAtOnce();
+  TestLobbyAnswerReplacesThePlayers();
+  TestLobbyFailureNeverTakesTheServiceOffline();
+  TestMalformedLobbyAnswerIsAFailedRead();
+  TestAnOlderServiceGetsNoLobbyRequests();
+  TestAServiceThatDoesNotKnowTheOperationIsLeftAlone();
+  TestLobbyStartsOverOnEveryNewConnection();
+  TestRenamingSignsInAgainAndListsAgain();
+  TestOnlinePlayOffLeavesTheLobbyAndTurningItOnPublishesAgain();
+  TestLobbyRowsFollowTheFriendsTab();
+  TestLobbyMessagesSayWhyThereIsNoList();
+  TestAddFriendFromTheLobbyIsTheFriendRequest();
+  TestLobbyRequestsNeverCarryPrivateData();
   std::printf("%d checks, %d failures\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;
 }

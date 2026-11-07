@@ -10,12 +10,13 @@ import { Metrics, SAMPLE_MS, countryCode, platformCategory, sampleBucket, versio
 import { sha256Hex, toHex } from './sha256.js';
 import {
   BUCKETS, CAPABILITIES, LIMITS, ProtocolError, RELAY, compatibleGuests, fail, ipGroup, isLocalAddress,
-  effectiveSecret, normalizeFriendCode, normalizeSecret, parseEndpoint, parseFightEvent, parseHello, parseRelayFrame,
-  secretEstablishment, secretFromMask, secretMask,
+  effectiveSecret, normalizeFriendCode, normalizeSecret, parseEndpoint, parseFightEvent, parseHello, parseLobbyPublish,
+  parseLobbyRevision, parseRelayFrame, secretEstablishment, secretFromMask, secretMask,
 } from './protocol.js';
 
 const DAY_MS = 24 * 3600 * 1000;
-const SOCIAL_OPS = new Set(['friends.add', 'pm.host', 'pm.join', 'invite.send', 'match.resume', 'secret.update']);
+const SOCIAL_OPS = new Set(['friends.add', 'pm.host', 'pm.join', 'invite.send', 'match.resume', 'secret.update',
+  'lobby.publish']);
 const RULE_KEY = /^[a-z_]{1,16}$/;
 const QOS_DATA = /^(?:[0-9a-f]{2}){0,256}$/;
 const ROLES = ['host', 'join'];
@@ -135,6 +136,8 @@ export class Hub {
     this.relayTold = new Set();
     this.relayFaults = new Map();
     this.alarmAt = options.alarmAt ?? null;
+    // Changes whenever the public list does. Time-based, so a restarted object never repeats a revision a client holds.
+    this.lobbyRev = host.now();
     this.guards = {
       hello: new RateLimiter(PROTECTION.hello),
       advertiseAccount: new RateLimiter(PROTECTION.advertiseAccount),
@@ -143,6 +146,7 @@ export class Hub {
       resumeAccount: new RateLimiter(PROTECTION.resumeAccount),
       inviteAccount: new RateLimiter(PROTECTION.inviteAccount),
       inviteAddress: new RateLimiter(PROTECTION.inviteAddress),
+      lobbyList: new RateLimiter(PROTECTION.lobbyList),
       rejects: new RateLimiter({ burst: 1, perSecond: 1000 / PROTECTION.rejectWindowMs }),
     };
     for (const statement of SCHEMA) host.sql.run(statement);
@@ -282,10 +286,13 @@ export class Hub {
         this.scheduleAlarm();
       }
     }
+    const listed = att.presence && att.lobby === true;
     att.match = null;
+    att.lobby = false;
     att.hello = false;
     conn.setAttachment(att);
     this.index = null;
+    if (listed) this.touchLobby();
     if (att.presence && !this.presentSockets(att.player, att.cid).length) {
       const advertised = this.playerMatchOf(att.player);
       if (advertised) this.dropPlayerMatch(advertised, 'host_left');
@@ -493,6 +500,35 @@ export class Hub {
     return this.host.sql.all('SELECT friend FROM friends WHERE player = ? ORDER BY friend', player).map((r) => r.friend);
   }
 
+  // ---- public Lobby ----
+  // Visibility is part of a present socket's attachment: it ends with the socket and is never written to SQL.
+  lobbyListed(player) {
+    return this.presentSockets(player).some((s) => s.att.lobby === true);
+  }
+
+  touchLobby() {
+    this.lobbyRev += 1;
+  }
+
+  // Visible players other than the viewer, compatible ones first. The rows carry what a launcher shows and what
+  // friends.add needs, never an address, token, endpoint or match.
+  lobbyPlayers(viewer) {
+    const seen = new Set();
+    const candidates = [];
+    for (const { att } of this.sockets()) {
+      if (att.lobby !== true || !att.presence || att.player === viewer.player || seen.has(att.player)) continue;
+      seen.add(att.player);
+      candidates.push({ att, compatible: compatibleGuests(viewer, att) });
+    }
+    const key = (c) => c.att.name.toLowerCase();
+    candidates.sort((a, b) => (b.compatible - a.compatible) || (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0)
+      || (a.att.player < b.att.player ? -1 : 1));
+    return candidates.slice(0, LIMITS.lobbyPlayers).map(({ att, compatible }) => ({
+      player: att.player, name: att.name, state: this.stateOf(att.player), platform: att.platform, version: att.version,
+      guest: att.guest, compatible,
+    }));
+  }
+
   areFriends(a, b) {
     return Boolean(this.host.sql.get('SELECT 1 AS x FROM friends WHERE player = ? AND friend = ?', a, b));
   }
@@ -502,6 +538,7 @@ export class Hub {
   }
 
   notifyStatus(player) {
+    if (this.lobbyListed(player)) this.touchLobby();
     for (const friend of this.friendsOf(player)) {
       for (const s of this.presentSockets(friend)) {
         this.send(s.conn, { ev: 'friend.status', friend: this.friendView(player, s.att) });
@@ -557,6 +594,12 @@ export class Hub {
     if (this.exempt(att) || this.guards.joinAccount.take(att.player, this.host.now())) return;
     this.diagnose('pm_join_limited');
     fail('limit', 'joining too fast');
+  }
+
+  limitLobbyList(att) {
+    if (this.exempt(att) || this.guards.lobbyList.take(att.player, this.host.now())) return;
+    this.diagnose('lobby_list_limited');
+    fail('limit', 'reading the lobby too fast');
   }
 
   limitResume(att) {
@@ -1012,6 +1055,26 @@ const HANDLERS = {
       att.player, att.player, other);
     if (were) this.notifyPlayer(other, { ev: 'friend.removed', player: att.player });
     return {};
+  },
+
+  // Shows or hides this connection's player in the public Lobby. Nothing is stored; an unchanged request changes nothing.
+  'lobby.publish'(att, msg) {
+    if (!att.presence) fail('bad_request', 'presence required');
+    const visible = parseLobbyPublish(msg);
+    if ((att.lobby === true) !== visible) {
+      att.lobby = visible;
+      this.touchLobby();
+    }
+    return { visible };
+  },
+
+  // The visible players. A client that sends the revision it holds hears `unchanged` while the list is still the same.
+  'lobby.list'(att, msg) {
+    const held = parseLobbyRevision(msg);
+    this.limitLobbyList(att);
+    const visible = att.lobby === true;
+    if (held === this.lobbyRev) return { unchanged: true, rev: this.lobbyRev, visible };
+    return { players: this.lobbyPlayers(att), rev: this.lobbyRev, visible };
   },
 
   // Advertises (or keeps alive) the sender's Player Match to compatible online friends.

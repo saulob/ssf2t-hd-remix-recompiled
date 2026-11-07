@@ -107,6 +107,7 @@ std::vector<std::string> GameSettingKeys() {
       kNetplayPeerAddressSetting,
       kOnlineEnabledSetting,
       kOnlineNameSetting,
+      kOnlineLobbySetting,
       kOnlinePingSetting,
       kConnectionTestSetting,
       "resolution_scale",

@@ -52,6 +52,35 @@ std::vector<InviteChoice> InviteChoices(const std::vector<Friend>& friends) {
   return choices;
 }
 
+LobbyRowView DescribeLobbyPlayer(const Snapshot& state, const LobbyPlayer& player) {
+  Friend shown;
+  shown.player = player.player;
+  shown.name = player.name;
+  shown.online = true;
+  shown.state = player.state;
+  shown.platform = player.platform;
+  shown.version = player.version;
+  LobbyRowView view;
+  view.status = FriendStatusLine(shown);
+  if (!player.guest.empty()) view.status += Tr(" \xC2\xB7 ") + GuestLabel(player.guest);
+  view.incompatible = !player.compatible;
+  const auto is_player = [&player](const auto& entry) { return entry.player == player.player; };
+  if (std::any_of(state.friends.begin(), state.friends.end(), is_player)) view.relation = LobbyRelation::kFriend;
+  else if (std::any_of(state.outgoing.begin(), state.outgoing.end(), is_player)) view.relation = LobbyRelation::kOutgoing;
+  else if (std::any_of(state.incoming.begin(), state.incoming.end(), is_player)) view.relation = LobbyRelation::kIncoming;
+  view.can_add = view.relation == LobbyRelation::kNone && player.player != state.friend_code &&
+                 state.connection == Connection::kOnline;
+  return view;
+}
+
+std::string LobbyMessage(const LobbySnapshot& lobby) {
+  if (!lobby.supported) return Tr("The online service does not have the public Lobby yet.");
+  if (lobby.failed && !lobby.fetched) return Tr("Cannot read the Lobby right now.");
+  if (!lobby.fetched) return Tr("Looking for players...");
+  if (lobby.players.empty()) return Tr("No players are in the Lobby right now.");
+  return {};
+}
+
 FriendRowView DescribeFriend(const Snapshot& state, const Friend& entry) {
   FriendRowView view;
   view.status = FriendStatusLine(entry);

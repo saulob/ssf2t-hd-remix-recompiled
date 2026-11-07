@@ -59,12 +59,14 @@ One JSON object per text frame; the literal `ping` is answered `pong`. Requests 
 | `match.transport` | `match`, `transport` (`direct`/`relay`); host only | |
 | `match.leave` / `match.resume` | `match` | `.resume` answers with the match |
 | `secret.update` | `secret` (as in `hello`) | `secret` (the match's view) when in a match |
+| `lobby.publish` | `visible` (boolean) | `visible` |
+| `lobby.list` | optional `rev` (the revision the client holds) | `players[]`, `rev`, `visible`; or `unchanged`, `rev`, `visible` |
 
 A friend row is `{player, name, online, state, platform, version, guest, build, compatible}`; `state` is `offline`,
 `online`, `player_match`, `connecting` or `in_game`.
 
 `capabilities` is `{protocol_version, worker_build, public_endpoints, relay_supported, relay_max_payload, fight_telemetry,
-secret_characters}`; an older service sends none, which clients read as no relay, no fight telemetry and no secret characters. `match.created` and the `pm.join` answer carry `relay_token` when
+secret_characters, public_lobby}`; an older service sends none, which clients read as no relay, no fight telemetry and no secret characters. `match.created` and the `pm.join` answer carry `relay_token` when
 the match has a relay.
 
 Events: `friend.request`, `friend.added`, `friend.removed`, `friend.status`, `friend.offline`, `match.created`
@@ -125,6 +127,36 @@ the stored mask is updated and both seats receive `{"ev":"match.secret","match":
 `match.resume` that changes the mask sends it to the peer. No player id is in any of it. `secret.update` shares the
 10 burst / 1 per second bucket of the other social operations.
 
+### Public Lobby (optional, protocol 3 unchanged)
+
+A player who wants to be found sends `lobby.publish` with `visible: true`; anyone can then read the visible players with
+`lobby.list` and send one a friend request with the ordinary `friends.add`. The Lobby never creates a match or a
+friendship. Service `capabilities.public_lobby` is `true` (worker build `2026-11-06-lobby`); a client that does not
+see it sends no Lobby request, and a Worker that does not know the operations answers `bad_request`, which the client
+reads as "no Lobby" and stops asking. The protocol number stays 3 and no other operation changed.
+
+- **Storage**: none. Visibility is a boolean in the socket's attachment (`lobby`), like the secret capabilities, so it
+  survives hibernation, ends with the socket and cannot outlive its player: closing the socket (or the player turning it
+  Off) removes the listing, with no table, no alarm and no cleanup. A player with several connections is listed once;
+  `presence: false` connections (the Connection test) cannot be listed.
+- **`lobby.publish`** needs `presence` and `visible` to be a boolean (`bad_request` otherwise). An unchanged value
+  changes nothing. It counts toward the per-socket social limit (burst 10, then one per second).
+- **`lobby.list`** returns up to 50 players other than the sender, compatible ones first, then by name. A row is
+  `{player, name, state, platform, version, guest, compatible}`: `player` is the public id that is also the friend code,
+  the target of `friends.add`, which a launcher uses and never shows; `state` is `online`, `player_match`,
+  `connecting` or `in_game`; `compatible` is the same rule as friends and Player Matches (same `guest` and `build`).
+  Never in a row, an answer or a log: token or its hash, address (public or LAN), endpoint, relay token, match, session,
+  QoS, rules, country or the sender's relationship to anyone. Incompatible players are listed, marked.
+- **Revision**: `rev` changes whenever the visible set or a visible player's `state` does (a counter in memory that
+  starts at the time the object wakes, so a restart never repeats a number a client holds). A request that sends the
+  current `rev` is answered `unchanged`, without the list.
+- **Limits**: reads are limited to 6 per player in a burst, then one per 5 s (`limit`, counted as `lobby_list_limited` in
+  the dashboard's abuse table); malformed requests spend nothing. Neither operation writes to SQL, rewrites a presence or
+  player row, or broadcasts to anyone: the clients poll, only while their Lobby page is open, every 30 s.
+- **Local**: `local/server.js` runs the same hub, so two local instances can test visibility, listing,
+  compatibility (start one with `SSF2T_LOBBY=ws://127.0.0.1:8791/` on each), adding a friend from the Lobby and
+  disappearance after Off or a closed connection.
+
 ### Fight telemetry (optional, protocol 3 unchanged)
 
 A client that sets `telemetry: true` in `hello` reports its online fights with `telemetry.fight`:
@@ -171,6 +203,8 @@ None of this changes the protocol, the wire format or what a released client see
   An unchanged advertisement refreshed within 30 s is not rewritten (the client refreshes every 60 s; the advertisement
   lasts 180 s). Limits apply after validation, so a failed join or host spends nothing, and `match.leave` is never limited.
 - **Invites**: 20 per player burst, one per 3 s, and 60 per address burst, one per 2 s.
+- **Public Lobby**: `lobby.list` 6 per player burst, one per 5 s, and `lobby.publish` shares the social message limit;
+  neither writes to SQL (see Public Lobby above). Loopback is exempt from the read limit in `local/server.js`.
 - **Relay**: budgets are unchanged. A sender that keeps producing frames no client sends (malformed, bad token, not in
   a match, a seat that was taken, a relay that closed while both players are seated, before `hello`) is allowed 200
   of them, then 5 per second, and is then closed with code 1008. A peer that is away (grace, resuming) is not a fault.

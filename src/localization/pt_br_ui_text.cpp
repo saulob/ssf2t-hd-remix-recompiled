@@ -432,7 +432,18 @@ Run test	Executar teste
 Settings	Configurações
 Friends	Amigos
 Lobby	Lobby
-Public Lobby will be available in this version.	O Lobby público estará disponível nesta versão.
+Show me in Lobby	Aparecer no Lobby
+Turn on to let other players of this game see your Online name in the Lobby and send you a friend request.	Ative para que outros jogadores deste jogo vejam seu nome online no Lobby e possam enviar um pedido de amizade.
+Other players of this game can see your Online name in the Lobby and send you a friend request. Nothing else about you is shown.	Outros jogadores deste jogo podem ver seu nome online no Lobby e enviar um pedido de amizade. Nada mais sobre você é mostrado.
+Players in the Lobby	Jogadores no Lobby
+Could not refresh the Lobby.	Não foi possível atualizar o Lobby.
+The online service does not have the public Lobby yet.	O serviço online ainda não tem o Lobby público.
+Cannot read the Lobby right now.	Não foi possível ler o Lobby agora.
+Looking for players...	Procurando jogadores...
+No players are in the Lobby right now.	Não há jogadores no Lobby agora.
+Add friend	Adicionar amigo
+Friend	Amigo
+Request sent	Pedido enviado
 Add a friend	Adicionar amigo
 Their friend code, for example ABCD-EFGH.	O código de amigo do jogador, por exemplo ABCD-EFGH.
 Send request	Enviar pedido

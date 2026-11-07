@@ -56,7 +56,7 @@ test('the service announces secret characters and the protocol number stays 3', 
   assert.equal(CAPABILITIES.secret_characters, true);
   assert.equal(CAPABILITIES.protocol_version, 3);
   assert.equal(PROTOCOL, 3);
-  assert.equal(WORKER_BUILD, '2026-11-04-secret2');
+  assert.equal(WORKER_BUILD, '2026-11-06-lobby');
 });
 
 test('hello stores the advertised capabilities and answers secret_characters', () => {

@@ -13,7 +13,7 @@ export const DIMENSIONS = ['platform', 'version', 'country', 'reject', 'transpor
   'fight_platform', 'abuse', 'secret', 'secret_fight', 'secret_match'];
 export const DIAGNOSTICS = new Set(['ws_upgrade_accepted', 'ws_upgrade_limited', 'ws_upgrade_ip_cap', 'hello_accepted',
   'hello_reconnect_deduped', 'hello_limited', 'pm_host_accepted', 'pm_host_limited', 'pm_join_limited', 'invite_limited',
-  'match_resume_limited', 'relay_abuse_closed', 'fight_secret_rejected']);
+  'match_resume_limited', 'relay_abuse_closed', 'fight_secret_rejected', 'lobby_list_limited']);
 export const PLATFORMS = ['Windows', 'Linux', 'Steam Deck'];
 
 const DAY_MS = 24 * 3600 * 1000;
