@@ -86,9 +86,9 @@ void PollGpuWait(PPCContext& ctx, uint8_t* base, PPCFunc* original, const GpuWai
 }  // namespace
 
 REX_EXTERN(__imp__base013_sub_839A14B8);
-REX_HOOK_RAW(base013_sub_839A14B8) { PollGpuWait(ctx, base, __imp__base013_sub_839A14B8, ssf2t::kBase013GpuWaits); }
+REX_HOOK_RAW(base013_sub_839A14B8) { PollGpuWait(ctx, base, __imp__base013_sub_839A14B8, ssf2t::Base013GpuFence::kSites); }
 
 #if SSF2T_TITLE_UPDATE_IMAGE
 REX_EXTERN(__imp__tu023_sub_839A1C10);
-REX_HOOK_RAW(tu023_sub_839A1C10) { PollGpuWait(ctx, base, __imp__tu023_sub_839A1C10, ssf2t::kTitleUpdate023GpuWaits); }
+REX_HOOK_RAW(tu023_sub_839A1C10) { PollGpuWait(ctx, base, __imp__tu023_sub_839A1C10, ssf2t::TitleUpdate023GpuFence::kSites); }
 #endif

@@ -168,6 +168,8 @@ inline constexpr Feature kFeatures[] = {
     {"Graphics card", "", "", "ssf2t_graphics_adapter", "", "d3d12_adapter", "vulkan_device", "",
      "src/graphics_adapters.h,src/graphics_adapters.cpp", "", "", "src/graphics_adapters.cpp:ListGraphicsAdapters",
      "src/graphics_adapters.cpp:ListGraphicsAdapters", "tests/graphics_adapter_tests.cpp", "Graphics card"},
+    {"GPU wait CPU usage", "GpuFence::kPoll", "GpuFence::kPoll", "", "", "", "", "",
+     "src/gpu_fence_wait.cpp,src/gpu_fence_wait.h", "", "", "", "", "tests/gpu_fence_wait_tests.cpp"},
     {"Language", "", "", "kLanguageSetting", "", "", "", "", "src/language_setting.h", "", "", "", "",
      "tests/launcher_settings_tests.cpp", "kLanguageLabel"},
     {"Language: Português Brasil (game text, launcher and overlays)", "GameText::kTextTableRead,GameText::kTextTableReadReturn,GameText::kTextureParse,GameText::kPromptText,GameText::kLeaderboardError,GameText::kArcadeQuoteInit,GameText::kArcadeQuotePool",
@@ -203,8 +205,9 @@ inline constexpr Feature kFeatures[] = {
     {"Launcher", "", "", "",
      "ssf2t_launcher,ssf2t_skip_launcher,ssf2t_launcher_x,ssf2t_launcher_y,ssf2t_launcher_width,ssf2t_launcher_height,"
      "ssf2t_launcher_maximized,ssf2t_launcher_fullscreen",
-     "", "", "", "src/launcher.cpp,src/launcher.h,src/launcher_quit.h", "", "", "", "",
-     "tests/launcher_quit_tests.cpp,tests/launcher_settings_tests.cpp"},
+     "", "", "", "src/launcher.cpp,src/launcher.h,src/launcher_quit.h,src/launcher_pages.h,src/launcher_page_icons.cpp,"
+     "src/launcher_page_icons.h,src/page_margin.h", "", "", "", "",
+     "tests/launcher_quit_tests.cpp,tests/launcher_settings_tests.cpp,tests/launcher_visual_tests.cpp"},
     {"Launcher controller navigation", "", "", "", "", "", "", "", "src/imgui_gamepad.cpp,src/imgui_gamepad.h", "", "",
      "src/imgui_gamepad.cpp:ImGuiGamepad::Read", "src/imgui_gamepad.cpp:ImGuiGamepad::Read",
      "tests/launcher_gamepad_tests.cpp"},
@@ -430,6 +433,7 @@ inline constexpr GateReview kAvailabilityMessages[] = {
     {"src/game_files.cpp", "the installed game files are missing or of another version"},
     {"src/launcher.cpp", "the installed game files are missing or of another version"},
     {"src/crash_report.cpp", "the stack of a crash could not be captured"},
+    {"src/character/character_packages.cpp", "the installed character files are missing or damaged"},
     {"src/netplay/determinism.cpp", "a state dump has the wrong size"},
     {"src/online/websocket_posix.cpp", "the system has no OpenSSL library, which Windows has in WinHTTP"},
     {"src/player_match.h", "the online service cannot be reached"},

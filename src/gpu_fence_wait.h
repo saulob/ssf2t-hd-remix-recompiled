@@ -33,16 +33,22 @@ struct GpuWaitSite {
 inline constexpr size_t kGpuWaitSiteCount = 3;
 using GpuWaitSites = std::array<GpuWaitSite, kGpuWaitSiteCount>;
 
-inline constexpr GpuWaitSites kBase013GpuWaits = {{
-    {"fence", 0x839B18D8, 0},
-    {"ring_space", 0x839B0BC4, 60},
-    {"ring_progress", 0x839B0B20, 4},
-}};
-inline constexpr GpuWaitSites kTitleUpdate023GpuWaits = {{
-    {"fence", 0x839B2038, 0},
-    {"ring_space", 0x839B1324, 60},
-    {"ring_progress", 0x839B1280, 4},
-}};
+struct Base013GpuFence {
+  static constexpr uint32_t kPoll = 0x839A14B8;
+  static constexpr GpuWaitSites kSites = {{
+      {"fence", 0x839B18D8, 0},
+      {"ring_space", 0x839B0BC4, 60},
+      {"ring_progress", 0x839B0B20, 4},
+  }};
+};
+struct TitleUpdate023GpuFence {
+  static constexpr uint32_t kPoll = 0x839A1C10;
+  static constexpr GpuWaitSites kSites = {{
+      {"fence", 0x839B2038, 0},
+      {"ring_space", 0x839B1324, 60},
+      {"ring_progress", 0x839B1280, 4},
+  }};
+};
 
 inline constexpr uint32_t kGpuWritebackBlockOffset = 10896;  // in the device
 inline constexpr uint32_t kGpuWaitStartOffset = 20;          // in the wait, the time base when it began

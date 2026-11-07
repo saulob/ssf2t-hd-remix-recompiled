@@ -71,12 +71,12 @@ double ProcessCpuSeconds() {
 
 void TestSites() {
   for (size_t i = 0; i < kGpuWaitSiteCount; ++i) {
-    CHECK(kTitleUpdate023GpuWaits[i].poll_return - kBase013GpuWaits[i].poll_return == 0x760);
-    CHECK(kTitleUpdate023GpuWaits[i].word_offset == kBase013GpuWaits[i].word_offset);
+    CHECK(TitleUpdate023GpuFence::kSites[i].poll_return - Base013GpuFence::kSites[i].poll_return == 0x760);
+    CHECK(TitleUpdate023GpuFence::kSites[i].word_offset == Base013GpuFence::kSites[i].word_offset);
   }
-  CHECK(kBase013GpuWaits[0].word_offset == 0);
-  CHECK(kBase013GpuWaits[1].word_offset == 60);
-  CHECK(kBase013GpuWaits[2].word_offset == 4);
+  CHECK(Base013GpuFence::kSites[0].word_offset == 0);
+  CHECK(Base013GpuFence::kSites[1].word_offset == 60);
+  CHECK(Base013GpuFence::kSites[2].word_offset == 4);
 }
 
 // Each site's poll call and the word its caller checks next, in the generated code of one image.
@@ -104,8 +104,8 @@ void CheckImage(const char* variant, const char* poll, const GpuWaitSites& sites
 }
 
 void TestGeneratedCode() {
-  CheckImage("base", "0x839a14b8", kBase013GpuWaits);
-  CheckImage("tu", "0x839a1c10", kTitleUpdate023GpuWaits);
+  CheckImage("base", "0x839a14b8", Base013GpuFence::kSites);
+  CheckImage("tu", "0x839a1c10", TitleUpdate023GpuFence::kSites);
 }
 
 void TestHardwareAddress() {
@@ -196,8 +196,8 @@ void TestWiring() {
   const size_t guard = hook.find("#if SSF2T_TITLE_UPDATE_IMAGE");
   CHECK(hook.find("REX_HOOK_RAW(base013_sub_839A14B8)") < guard);
   CHECK(guard < hook.find("REX_HOOK_RAW(tu023_sub_839A1C10)"));
-  CHECK(Has(hook, "kBase013GpuWaits"));
-  CHECK(Has(hook, "kTitleUpdate023GpuWaits"));
+  CHECK(Has(hook, "Base013GpuFence::kSites"));
+  CHECK(Has(hook, "TitleUpdate023GpuFence::kSites"));
   CHECK(!Has(hook, "StoreBE"));
   CHECK(!Has(hook, "GuestStore"));
 

@@ -858,11 +858,11 @@ if(WIN32)
     target_link_libraries(ssf2t_update_tests PRIVATE shell32)
 
     add_executable(ssf2t_update_restart_marker WIN32 EXCLUDE_FROM_ALL tests/update_restart_marker.cpp)
-    target_link_libraries(ssf2t_update_restart_marker PRIVATE shell32)
     target_link_options(ssf2t_update_restart_marker PRIVATE -static)
     target_compile_options(ssf2t_update_restart_marker PRIVATE -Wall -Wextra)
 
     add_executable(ssf2t_update_helper_tests EXCLUDE_FROM_ALL tests/update_helper_tests.cpp)
+    target_link_libraries(ssf2t_update_helper_tests PRIVATE shell32)
     target_compile_options(ssf2t_update_helper_tests PRIVATE -Wall -Wextra)
     target_compile_definitions(ssf2t_update_helper_tests PRIVATE
         SSF2T_UPDATER_EXE="$<TARGET_FILE:trg-updater>"
