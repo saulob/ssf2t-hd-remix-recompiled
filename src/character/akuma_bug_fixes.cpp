@@ -76,7 +76,7 @@ template <typename H, typename G>
 void SyncAkumaFixes(uint8_t* base) {
   const bool option = REXCVAR_GET(ssf2t_akuma_bug_fixes);
   if (!option && !g_fixes_active) return Report(Reported::kOff);
-  const bool developer_netplay = rex::cvar::GetFlagByName(kNetplayRoleSetting) != kNetplayRoleOff;
+  const bool developer_netplay = NetplayTestRole(rex::cvar::GetFlagByName(kNetplayRoleSetting));
   const bool active = AkumaBugFixesActive(option, *GuestHost(base, G::kGameMode), developer_netplay);
   GuestFrames frames{base};
   const uint32_t actions = RemixAkumaActions(frames, H::kRemixFighterData);

@@ -1,7 +1,6 @@
 #include <cstdint>
 
 #include <rex/hook.h>
-#include <rex/logging.h>
 
 #include "character/akuma_navigation.h"
 #include "character/host_rollback.h"
@@ -94,10 +93,6 @@ void NavigateAkuma(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     *(base + S::kSpecial + move.side) = next == kAkumaSelect ? 1 : 0;
     // The cursor step sends live back unless the hover says Akuma, and the hover follows this byte within the tick.
     if (classic) StoreBE16(base, S::kSelected, next);
-    if (next == kAkumaSelect) {
-      REXLOG_INFO("DEBUG_SAULO ULTRA select side={} identity=Akuma mode={} style={}", move.side + 1,
-                  GameModeName(*GuestHost(base, G::kGameMode)), HdStyleName(hd_style));
-    }
     return;
   }
   if (held_side == kNoColumn) return;
@@ -130,9 +125,6 @@ bool NavigateUltra(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const UltraMove move = GlobalUltraNavigation().Resolve(cells.evil_ryu, cells.violent_ken, side,
                                                          *GuestHost(base, S::kLive + side), direction);
   if (move.action == UltraMoveAction::kNone) return false;
-  REXLOG_INFO("DEBUG_SAULO ULTRA select side={} action={} identity={} mode={} style={}", side + 1, int(move.action),
-              IdentityName(RequestedIdentity(side)), GameModeName(game_mode),
-              HdStyleName(*GuestHost(base, S::kHdStyle)));
   if (move.action == UltraMoveAction::kEnter) original(ctx, base);
   *(base + S::kLive + side) = move.live;
   *(base + S::kSpecial + side) = 0;

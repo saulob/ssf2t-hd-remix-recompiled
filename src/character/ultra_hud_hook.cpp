@@ -88,10 +88,9 @@ uint32_t IconCell(bool violent, PPCContext& ctx, uint8_t* base) {
     state.cell = state.wrapper != 0 ? GuestAlloc(4) : 0;
     if (state.cell == 0) {
       state.failed = true;
-      REXLOG_ERROR("DEBUG_SAULO EVIL_RYU hud-icon unavailable");
+      REXLOG_WARN("{} HUD icon unavailable", violent ? "Violent Ken" : "Evil Ryu");
       return 0;
     }
-    REXLOG_INFO("DEBUG_SAULO EVIL_RYU hud-icon wrapper={:08X}", state.wrapper);
   }
   // Tearing down an element zeroes the cell it holds.
   GuestStoreBE32(base, state.cell, state.wrapper);
@@ -170,9 +169,6 @@ void UpdateHud(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
       if (!show && !was) continue;
       ApplyPortrait<H>(side, show, kind == 1, ctx, base);
       if (show) ApplyName<H>(side, kind == 1, ctx, base);
-      if (show != was) {
-        REXLOG_INFO("DEBUG_SAULO ULTRA hud side={} kind={} action={}", side + 1, kind, show ? "ultra" : "restore");
-      }
       was = show;
     }
   }

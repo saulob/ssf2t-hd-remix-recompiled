@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <string_view>
+
+#include "online_setting.h"
 
 namespace ssf2t {
 
@@ -21,6 +24,11 @@ inline constexpr char kNetplayRoleHelp[] =
 inline constexpr char kNetplayRoleOff[] = "off";
 inline constexpr char kNetplayRoleHost[] = "host";
 inline constexpr char kNetplayRoleJoin[] = "join";
+
+// A role saved during an earlier developer session must not start a hidden Netplay Test for a player.
+inline bool NetplayTestRole(std::string_view role) {
+  return DeveloperControlsEnabled() && (role == kNetplayRoleHost || role == kNetplayRoleJoin);
+}
 
 inline constexpr char kNetplayPeerAddressSetting[] = "ssf2t_netplay_peer_address";
 inline constexpr char kDefaultNetplayPeerAddress[] = "127.0.0.1";

@@ -21,7 +21,6 @@ struct Base013VersusCpu {
   static constexpr uint32_t kSetGameDifficulty = 0x823C7618;
   static constexpr uint32_t kEnterSelect = 0x823E9B98;
   static constexpr uint32_t kSelectInput = 0x82247E90;
-  static constexpr uint32_t kCursorInput = 0x82245748;
   static constexpr uint32_t kLoadMatch = 0x82248188;
   static constexpr uint32_t kGameMode = 0x83CA294F;
   static constexpr uint32_t kLobbySlots = 0x83A37C08;
@@ -29,7 +28,6 @@ struct Base013VersusCpu {
   static constexpr uint32_t kSelectMask = 0x83C133A7;
   static constexpr uint32_t kSideState = 0x83C133C0;
   static constexpr uint32_t kColourPrompt = 0x83CA6C78;
-  static constexpr uint32_t kActiveFighter = 0x83CD52E0;
   static constexpr uint32_t kSideHuman = 0x83C133AC;
   static constexpr uint32_t kGameState = 0x83CD52DC;
   static constexpr uint32_t kFighterBlock = 0x83E09CC0;
@@ -47,7 +45,6 @@ struct TitleUpdate023VersusCpu {
   static constexpr uint32_t kSetGameDifficulty = 0x823C7C10;
   static constexpr uint32_t kEnterSelect = 0x823EA2D0;
   static constexpr uint32_t kSelectInput = 0x82247ED8;
-  static constexpr uint32_t kCursorInput = 0x822457B0;
   static constexpr uint32_t kLoadMatch = 0x822481D0;
   static constexpr uint32_t kGameMode = 0x83CA2E67;
   static constexpr uint32_t kLobbySlots = 0x83A37C08;
@@ -55,7 +52,6 @@ struct TitleUpdate023VersusCpu {
   static constexpr uint32_t kSelectMask = 0x83C13427;
   static constexpr uint32_t kSideState = 0x83C13440;
   static constexpr uint32_t kColourPrompt = 0x83CA7190;
-  static constexpr uint32_t kActiveFighter = 0x83CD57F8;
   static constexpr uint32_t kSideHuman = 0x83C1342C;
   static constexpr uint32_t kGameState = 0x83CD57F4;
   static constexpr uint32_t kFighterBlock = 0x83E0A1D8;
@@ -66,11 +62,8 @@ inline constexpr uint32_t kFighterOldVersionOffset = 950;
 inline constexpr uint32_t kFighterPadOffset = 912;
 inline constexpr uint32_t kFighterPadPreviousOffset = 914;
 inline constexpr uint32_t kFighterLockedOffset = 899;
-inline constexpr uint32_t kFighterJoinedOffset = 965;
 inline constexpr uint32_t kFighterConfirmWindowOffset = 940;
 inline constexpr uint32_t kFighterCommitOffset = 162;
-inline constexpr uint32_t kBlockSelectStateOffset = 23648;
-inline constexpr uint32_t kBlockSelectDelayOffset = 23660;
 inline constexpr uint32_t kGameDifficultyOffset = 901;
 inline constexpr uint32_t kGameLadderOffset = 1232;
 

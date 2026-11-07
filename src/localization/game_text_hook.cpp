@@ -61,9 +61,7 @@ void ReadTextTable(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     REXLOG_INFO("Language: pt-BR game text replaced={} kept={} stale={} guest={}", table.replaced, table.kept,
                 table.stale, G::kName);
   }
-  if (moves != 0) {
-    REXLOG_INFO("DEBUG_SAULO EVIL_RYU character-moves text lines={} guest={}", moves, G::kName);
-  }
+  if (moves != 0) REXLOG_INFO("character moves text lines={} guest={}", moves, G::kName);
 }
 
 template <typename G>

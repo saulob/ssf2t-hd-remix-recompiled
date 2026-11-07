@@ -63,7 +63,7 @@ inline constexpr UltraEnding kViolentKenEnding = {
     0x82009030,
     0x82009038,
     0x21,
-    "VIOLENT_KEN"};
+    "Violent Ken"};
 
 inline constexpr UltraEnding kEvilRyuEnding = {
     FighterIdentity::kEvilRyu,
@@ -79,7 +79,7 @@ inline constexpr UltraEnding kEvilRyuEnding = {
     0x82009088,
     0x82009090,
     0x23,
-    "EVIL_RYU"};
+    "Evil Ryu"};
 
 inline constexpr std::array<const UltraEnding*, 2> kUltraEndings = {&kEvilRyuEnding, &kViolentKenEnding};
 

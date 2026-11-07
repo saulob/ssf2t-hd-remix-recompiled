@@ -2,7 +2,6 @@
 #include <cstdint>
 
 #include <rex/hook.h>
-#include <rex/logging.h>
 #include <rex/system/kernel_state.h>
 
 #include "character/evil_ryu_actions.h"
@@ -105,7 +104,6 @@ constexpr uint32_t kActionD1Below = 0x11;
 constexpr uint32_t kActionD0Below = 0x0D;
 constexpr uint32_t kActionPointerAbove = 0x14;
 constexpr uint32_t kActionTableIndexBelow = 0x26;
-constexpr uint32_t kActionRecordCompared = 15;
 constexpr uint32_t kEmittedObjectAbove = 0x10;
 constexpr uint8_t kClassSpecial = 12;
 constexpr uint8_t kRagingDemonMoveId = 10;
@@ -128,7 +126,6 @@ constexpr uint8_t kFullMeter = 0x30;
 constexpr uint8_t kStandAction = 0x00;
 constexpr uint8_t kCrouchAction = 0x02;
 constexpr uint8_t kStandSubs = 4;
-constexpr const char* kTeleportNames[] = {"forward-punch", "forward-kick", "back-punch", "back-kick"};
 
 constexpr uint32_t kState = 3;
 constexpr uint32_t kStep = 4;
@@ -279,7 +276,6 @@ const EvilActionTable* TableFor(uint8_t* base, uint32_t fighter) {
   const size_t slot = next++ % tables.size();
   if (memory[slot] == 0) memory[slot] = GuestAlloc(kEvilActionBytes);
   if (memory[slot] == 0 || !tables[slot].Build(base, address, memory[slot], kEvilActionBytes)) return nullptr;
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU actions table={:08X} skipped={}", address, tables[slot].skipped());
   return &tables[slot];
 }
 
@@ -296,10 +292,9 @@ void UseEvilPack(uint8_t* base, uint32_t fighter) {
   const size_t slot = next++ % source.size();
   if (memory[slot] == 0) memory[slot] = GuestAlloc(kEvilPackBytes);
   if (memory[slot] == 0) return;
-  const int applied = BuildEvilPack(base, pack, memory[slot]);
+  BuildEvilPack(base, pack, memory[slot]);
   source[slot] = pack;
   GuestStoreBE32(base, fighter + kBoxPack, memory[slot]);
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU box-pack source={:08X} patches={}", pack, applied);
 }
 
 struct WalkRows {
@@ -320,7 +315,6 @@ void UseWalkRow(uint8_t* base, uint32_t fighter, WalkRows& rows, int16_t forward
   if (rows.memory[slot] == 0 || !BuildWalkRow(base, row, rows.memory[slot], forward, back)) return;
   rows.source[slot] = row;
   GuestStoreBE32(base, fighter + kWalkRow, rows.memory[slot]);
-  REXLOG_INFO("DEBUG_SAULO ULTRA walk-row source={:08X} forward={:X}", row, forward);
 }
 
 void UseEvilWalk(uint8_t* base, uint32_t fighter) {
@@ -344,7 +338,6 @@ bool StartTeleport(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side, i
   move.kind = HostMoveKind::kTeleport;
   move.phase = HostMovePhase::kStartup;
   move.variant = int8_t(variant);
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU teleport side={} kind={}", side + 1, kTeleportNames[variant]);
   return true;
 }
 
@@ -380,7 +373,6 @@ bool StartRagingDemon(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side
   BeginMove<H>(ctx, base, fighter, kRagingDemonMoveId);
   GlobalHostMoves().For(side).kind = HostMoveKind::kRagingDemon;
   QueueRagingDemonVoice<H>(ctx, base, side);
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU raging-demon side={} state=start", side + 1);
   return true;
 }
 
@@ -400,7 +392,6 @@ const ViolentActionTable* ViolentTableFor(uint8_t* base, uint32_t fighter) {
   if (memory[slot] == 0 || !tables[slot].Build(base, address, memory[slot], kViolentActionBytes, *gameplay)) {
     return nullptr;
   }
-  REXLOG_INFO("DEBUG_SAULO VIOLENT_KEN actions table={:08X} skipped={}", address, tables[slot].skipped());
   return &tables[slot];
 }
 
@@ -418,10 +409,9 @@ void UseViolentPack(uint8_t* base, uint32_t fighter) {
   const size_t slot = next++ % source.size();
   if (memory[slot] == 0) memory[slot] = GuestAlloc(kViolentPackBytes);
   if (memory[slot] == 0) return;
-  const int applied = BuildViolentPack(base, pack, memory[slot], *gameplay);
+  BuildViolentPack(base, pack, memory[slot], *gameplay);
   source[slot] = pack;
   GuestStoreBE32(base, fighter + kBoxPack, memory[slot]);
-  REXLOG_INFO("DEBUG_SAULO VIOLENT_KEN box-pack source={:08X} attacks={}", pack, applied);
 }
 
 int32_t FacingSign(const uint8_t* base, uint32_t fighter) { return U8(base, fighter + kFacing) != 0 ? 1 : -1; }
@@ -440,7 +430,6 @@ bool StartViolentMove(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side
   move.phase = HostMovePhase::kDash;
   move.ticks = 0;
   move.ground_y = int32_t(LoadBE32(GuestHost(base, fighter + kPositionY), 0));
-  REXLOG_INFO("DEBUG_SAULO VIOLENT_KEN move side={} kind={} sub={}", side + 1, int(kind), sub);
   return true;
 }
 
@@ -546,7 +535,6 @@ bool StartSenpuKyaku(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side)
   move.kind = HostMoveKind::kSenpuKyaku;
   move.phase = HostMovePhase::kStartup;
   move.ground_y = int32_t(LoadBE32(GuestHost(base, fighter + kPositionY), 0));
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU senpu-kyaku side={} state=start", side + 1);
   return true;
 }
 
@@ -567,14 +555,6 @@ void DetectMoves(PPCContext& ctx, uint8_t* base, uint32_t fighter, int side) {
     const EvilActionTable* table = TableFor<H>(base, fighter);
     if (table && OnEvilNeutralRecord<H>(base, fighter, *table)) StartSenpuKyaku<H>(ctx, base, fighter, side);
   }
-}
-
-void LogFightStart(int side) {
-  static std::array<uint32_t, 2> logged{};
-  const uint32_t session = GlobalSelectSession().id();
-  if (logged[size_t(side)] == session) return;
-  logged[size_t(side)] = session;
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU fight-setup side={} identity=EvilRyu carrier=Ryu", side + 1);
 }
 
 // Runs before the guest's own special trackers so the three-button teleports win over the single-button moves.
@@ -982,19 +962,7 @@ void RunKenSpecialClass(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (violent < 0) return original(ctx, base);
   if (GlobalHostMoves().Active(violent)) return StepViolentMove<H>(ctx, base, fighter, violent);
   if (!ViolentMoveRemoved(U8(base, fighter + kMoveId))) return original(ctx, base);
-  REXLOG_INFO("DEBUG_SAULO VIOLENT_KEN removed-move side={} id={}", violent + 1, U8(base, fighter + kMoveId));
   FinishHostMove<H>(ctx, base, fighter, violent);
-}
-
-void LogInstalledRecord(const uint8_t* base, uint32_t fighter, uint8_t action, uint32_t table, uint32_t record) {
-  static uint32_t logged = 0;
-  const uint32_t session = GlobalSelectSession().id();
-  if (logged == session) return;
-  logged = session;
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU crash-trace fighter={:08X} action={:02X} table={:08X} record={:08X} field0={:08X} "
-              "field1={:02X}",
-              fighter, action, table, record, LoadBE32(GuestHost(base, fighter + kAnimationRecord), 0),
-              U8(base, record + kActionRecordCompared));
 }
 
 template <typename H>
@@ -1044,7 +1012,6 @@ void LookupAction(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   }
   const int side = EvilSide<H>(base, fighter);
   if (side < 0) return original(ctx, base);
-  LogFightStart(side);
   const EvilActionTable* table = TableFor<H>(base, fighter);
   if (!table) return original(ctx, base);
   const uint32_t work = H::Netplay::kFightWork;
@@ -1060,7 +1027,6 @@ void LookupAction(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   SetFighterAnimation(base, fighter, record);
   // The guest set Ryu's spin count just before selecting this action.
   if (action == kTatsuAction) SetU8(base, fighter + kStepTimer, TatsuSpins(U8(base, fighter + kTatsuStrength)));
-  LogInstalledRecord(base, fighter, action, table->table(), record);
 }
 
 // USF2 Evil Ryu has no forward + heavy punch unique: the guest's choice falls back to the plain heavy punch.
@@ -1072,14 +1038,6 @@ void HeavyPunch(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (EvilSide<H>(base, fighter) < 0 || U8(base, fighter + kAttackSelection) != kUniqueHeavyPunch) return;
   const bool close = U16(base, fighter + kOpponentRange) < kCloseHeavyPunchRange;
   SetU8(base, fighter + kAttackSelection, close ? kCloseHeavyPunch : kFarHeavyPunch);
-}
-
-void LogEmittedFrame(int side, uint32_t record, uint32_t source) {
-  static std::array<uint32_t, 2> logged{};
-  const uint32_t session = GlobalSelectSession().id();
-  if (logged[size_t(side)] == session) return;
-  logged[size_t(side)] = session;
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU sprite-key side={} record={:08X} source={:08X}", side + 1, record, source);
 }
 
 // The sprite emitters derive the HD art key from the record's offset in the character's action data, which a copied
@@ -1094,7 +1052,6 @@ void EmitSprites(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const uint32_t record = LoadBE32(GuestHost(base, object + kAnimationRecord), 0);
   const uint32_t source = violent ? ViolentSourceFrame(record) : EvilSourceFrame(record);
   if (source == 0) return original(ctx, base);
-  if (!violent) LogEmittedFrame(side, record, source);
   GuestStoreBE32(base, object + kAnimationRecord, source);
   original(ctx, base);
   GuestStoreBE32(base, object + kAnimationRecord, record);

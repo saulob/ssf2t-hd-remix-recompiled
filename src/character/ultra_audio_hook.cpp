@@ -140,9 +140,8 @@ void LoadSounds(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   g_installed.store(installed, std::memory_order_relaxed);
   if (installed) {
     g_announcer_frames.store(EvilAnnouncerFrames(evil->Clip(EvilClip::kAnnouncerName)), std::memory_order_relaxed);
-    REXLOG_INFO("DEBUG_SAULO EVIL_RYU audio installed sounds={}", kEvilSounds.size());
   } else {
-    REXLOG_ERROR("DEBUG_SAULO EVIL_RYU audio unavailable, Ryu voices stay");
+    REXLOG_WARN("Evil Ryu audio unavailable, Ryu voices are used");
   }
   const ViolentKenAudioPackage* violent = LoadedViolentKenAudio();
   const bool violent_installed = InstallSounds<H>(base, violent, kViolentSounds, "VioKenSound");
@@ -150,26 +149,9 @@ void LoadSounds(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (violent_installed) {
     g_violent_announcer_frames.store(EvilAnnouncerFrames(violent->Clip(ViolentClip::kAnnouncerName)),
                                      std::memory_order_relaxed);
-    REXLOG_INFO("DEBUG_SAULO VIOLENT_KEN audio installed sounds={}", kViolentSounds.size());
   } else {
-    REXLOG_ERROR("DEBUG_SAULO VIOLENT_KEN audio unavailable, Ken voices stay");
+    REXLOG_WARN("Violent Ken audio unavailable, Ken voices are used");
   }
-}
-
-void LogSwap(uint16_t sound, uint16_t replacement) {
-  static std::array<bool, 16> logged{};
-  bool& seen = logged[size_t(replacement - kEvilVoiceP1) % logged.size()];
-  if (seen) return;
-  seen = true;
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU audio sound={} plays={:#x}", sound, replacement);
-}
-
-void LogViolentSwap(uint16_t sound, uint16_t replacement) {
-  static std::array<bool, 16> logged{};
-  bool& seen = logged[size_t(replacement - kViolentVoiceP1) % logged.size()];
-  if (seen) return;
-  seen = true;
-  REXLOG_INFO("DEBUG_SAULO VIOLENT_KEN audio sound={} plays={:#x}", sound, replacement);
 }
 
 // The queue drains later, when the fight work may already have moved on, so the side is kept by queue slot.
@@ -223,7 +205,6 @@ void RequestSound(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     const uint16_t replacement = ViolentSoundFor(sound, CurrentViolentState<H>(base));
     if (replacement) {
       ctx.r5.u64 = replacement;
-      LogViolentSwap(sound, replacement);
       ConsumeViolentMarks(sound, replacement);
     }
   }
@@ -232,7 +213,6 @@ void RequestSound(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     const uint16_t replacement = EvilSoundFor(sound, state);
     if (replacement) {
       ctx.r5.u64 = replacement;
-      LogSwap(sound, replacement);
       if (sound == kRyuAnnouncerNameSound) g_announce_name.store(false, std::memory_order_relaxed);
       if (replacement == kEvilVoiceP1 + kEvilRagingDemonOffset) g_raging_demon[0].store(false, std::memory_order_relaxed);
       if (replacement == kEvilVoiceP2 + kEvilRagingDemonOffset) g_raging_demon[1].store(false, std::memory_order_relaxed);

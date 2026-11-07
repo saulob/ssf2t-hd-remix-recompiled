@@ -2,7 +2,6 @@
 #include <cstdint>
 
 #include <rex/hook.h>
-#include <rex/logging.h>
 
 #include "character/evil_ryu_palette.h"
 #include "character/ultra_fight.h"
@@ -46,11 +45,6 @@ void ApplyEvilRyuPalette(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     const int colour = MatchRyuColour(*palette, current.data());
     if (colour < 0) continue;
     for (int word = 0; word < kPaletteWords; ++word) GuestStoreBE16(base, page + word * 2, palette->evil[colour][word]);
-    static std::array<int, 2> logged{{-1, -1}};
-    if (logged[side] != colour) {
-      logged[side] = colour;
-      REXLOG_INFO("DEBUG_SAULO ULTRA palette side={} colour={} applied", side + 1, colour);
-    }
   }
 }
 

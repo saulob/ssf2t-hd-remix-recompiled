@@ -4,7 +4,6 @@
 #include <chrono>
 
 #include <rex/hook.h>
-#include <rex/logging.h>
 
 #include "character/akuma_navigation.h"
 #include "character/secret_select.h"
@@ -105,8 +104,6 @@ void CommitAkuma(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   GuestStoreBE16(base, fighter + kFighterPadOffset, pad);
   const bool committed = *GuestHost(base, fighter + kFighterHiddenOffset) != 0;
   if (committed) *(base + S::kSpecial + side) = 0;
-  REXLOG_INFO("DEBUG_SAULO ULTRA classic-akuma confirm side={} native_commit={} mode={}", side + 1, committed,
-              GameModeName(*GuestHost(base, S::kMode)));
 }
 
 // This state runs once per Character Select entry and clears the guest's join bits, so they are read before it.

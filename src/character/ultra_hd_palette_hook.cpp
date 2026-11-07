@@ -160,11 +160,10 @@ bool PrepareSheet(EvilSheet& sheet, int side, int index, const EvilRyuHdPalette&
     ctx = saved;
     if (!PlausibleGuestPointer(wrapper) || LoadBE32(GuestHost(base, wrapper), 0) != kSheetWrapperSize) {
       sheet.failed = true;
-      REXLOG_ERROR("DEBUG_SAULO EVIL_RYU hd-palette sheet creation failed side={}", side + 1);
+      REXLOG_WARN("Evil Ryu HD palette unavailable: palette texture creation failed");
       return false;
     }
     sheet.wrapper = wrapper;
-    REXLOG_INFO("DEBUG_SAULO EVIL_RYU hd-palette sheet side={} created", side + 1);
   }
   // The guest clears this row whenever it rebuilds its sprite tables.
   GuestStoreBE32(base, H::kRyuPaletteSlot10 + row_offset + uint32_t(side) * 4, sheet.wrapper);
@@ -177,7 +176,7 @@ bool PrepareSheet(EvilSheet& sheet, int side, int index, const EvilRyuHdPalette&
   ctx = saved;
   if (!PlausibleGuestPointer(memory)) {
     sheet.failed = true;
-    REXLOG_ERROR("DEBUG_SAULO EVIL_RYU hd-palette lock failed side={}", side + 1);
+    REXLOG_WARN("Evil Ryu HD palette unavailable: palette texture lock failed");
     return false;
   }
   uint8_t* target = GuestHost(base, memory);
@@ -187,7 +186,6 @@ bool PrepareSheet(EvilSheet& sheet, int side, int index, const EvilRyuHdPalette&
   H::UnlockPalette(ctx, base);
   ctx = saved;
   sheet.written_colour = index;
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU hd-palette side={} palette={} applied", side + 1, index);
   return true;
 }
 
@@ -233,7 +231,7 @@ bool UploadArt(EvilTexture& texture, const EvilSpriteImage& image, bool mirrored
     std::memset(target, 0, size);
     WriteIndexedRows(target, pitch, image, mirrored);
   } else {
-    REXLOG_ERROR("DEBUG_SAULO EVIL_RYU art layout pitch={} size={}", pitch, size);
+    REXLOG_WARN("Character art skipped: texture pitch {} size {} does not fit", pitch, size);
   }
   REX_KERNEL_MEMORY()->SystemHeapFree(scratch);
   ctx.r3.u64 = object;
@@ -272,10 +270,9 @@ const EvilTexture* TextureFor(EvilArt art, PPCContext& ctx, uint8_t* base, bool 
   const bool mirrored = art == EvilArt::kLargePortrait || art == EvilArt::kLosePortrait;
   if (!image || !UploadArt<H>(texture, *image, mirrored, ctx, base)) {
     texture.failed = true;
-    REXLOG_ERROR("DEBUG_SAULO EVIL_RYU art={} unavailable", int(art));
+    REXLOG_WARN("{} art {} unavailable", violent ? "Violent Ken" : "Evil Ryu", int(art));
     return nullptr;
   }
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU art={} uploaded", int(art));
   return &texture;
 }
 
@@ -351,16 +348,6 @@ void RestoreSprite(uint32_t sprite, const SpriteRestore& restore, uint8_t* base)
   GuestStoreBE32(base, sprite + kSpriteRecordOffset, restore.record);
 }
 
-void LogNameTile(uint16_t code, uint16_t attr, int x, int side) {
-  if (side < 0) return;
-  static std::array<uint32_t, 2> last{{~0u, ~0u}};
-  const uint32_t state = uint32_t(code) << 16 | attr;
-  if (state == last[side]) return;
-  last[side] = state;
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU name-tile side={} code={:03X} attr={:04X} x={} identity={}", side + 1, code, attr,
-              x, int(RequestedIdentity(side)));
-}
-
 template <typename H>
 bool DrawEvilName(uint32_t sprite, uint16_t code, PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const uint16_t attr = LoadBE16(GuestHost(base, sprite + kSpriteAttrOffset), 0);
@@ -368,7 +355,6 @@ bool DrawEvilName(uint32_t sprite, uint16_t code, PPCContext& ctx, uint8_t* base
   const int ryu_side = RyuNameSide(code, attr, x);
   const int ken_side = KenNameSide(code, attr, x);
   const int side = ryu_side >= 0 ? ryu_side : ken_side;
-  LogNameTile(code, attr, x, side);
   if (side < 0) return false;
   const bool violent = ken_side >= 0;
   if (RequestedIdentity(side) != (violent ? FighterIdentity::kViolentKen : FighterIdentity::kEvilRyu)) return false;
@@ -397,24 +383,14 @@ bool DrawCpuMarker(uint32_t sprite, uint16_t code, PPCContext& ctx, uint8_t* bas
     const EvilSpriteImage* image = LoadedCpuMarker(index);
     if (!image || !UploadArt<H>(texture, *image, false, ctx, base)) {
       texture.failed = true;
-      REXLOG_ERROR("DEBUG_SAULO VS_CPU cpu-marker art={} unavailable", index);
+      REXLOG_WARN("CPU select marker {} unavailable", index);
       return false;
     }
-    REXLOG_INFO("DEBUG_SAULO VS_CPU cpu-marker art={} side={} uploaded", index, kCpuMarkerArt[size_t(index)].side + 1);
   }
   const SpriteRestore restore = ReplaceSprite(sprite, texture, {}, base);
   original(ctx, base);
   RestoreSprite(sprite, restore, base);
   return true;
-}
-
-void LogBodyDraw(int side, uint16_t code, EvilRenderState state, const uint8_t* base, uint32_t sprite) {
-  static std::array<std::array<bool, 6>, 2> logged{};
-  bool& seen = logged[size_t(side)][size_t(state)];
-  if (seen) return;
-  seen = true;
-  REXLOG_INFO("DEBUG_SAULO EVIL_RYU body-draw side={} code={:04X} attr={:04X} state={}", side + 1, code,
-              LoadBE16(GuestHost(base, sprite + kSpriteAttrOffset), 0), int(state));
 }
 
 // Violent Ken shares every sheet with Ken except the one dash pose, so only the palette and that pose differ here.
@@ -474,7 +450,6 @@ void DrawSprite(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const EvilPose pose = body ? PoseOf<H>(base, side) : EvilPose::kNone;
   if (body) {
     const EvilRenderState state = RenderStateOf<H>(base, side, pose);
-    LogBodyDraw(side, code, state, base, sprite);
     if (BodySuppressed(state, GlobalHostMoves().For(side).ticks)) return;
   }
   const EvilRyuHdPalette* palette = LoadedEvilRyuHdPalette();
@@ -482,7 +457,7 @@ void DrawSprite(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const int colour = *colour_byte;
   if (!palette || colour >= kPaletteColours) {
     static bool logged = false;
-    if (!logged) REXLOG_ERROR("DEBUG_SAULO EVIL_RYU hd-palette unavailable colour={}", colour);
+    if (!logged) REXLOG_WARN("Evil Ryu HD palette unavailable for colour {}", colour);
     logged = true;
     return original(ctx, base);
   }
@@ -514,20 +489,6 @@ bool UsesSharedPortraits(uint32_t mode) {
     if (mode == shared) return true;
   }
   return false;
-}
-
-void LogSelectPresentation(const SelectPresentation& presentation, const std::array<FighterIdentity, 2>& requested,
-                           const std::array<bool, 2>& on_cell, const std::array<uint32_t, 2>& hover) {
-  static std::array<uint32_t, 2> last{{~0u, ~0u}};
-  for (int side = 0; side < 2; ++side) {
-    const uint32_t state = uint32_t(presentation.evil[side] || presentation.violent[side]) | uint32_t(presentation.hide[side]) << 1 |
-                           uint32_t(requested[side]) << 2 | uint32_t(on_cell[side]) << 8 | (hover[side] & 0xFF) << 16;
-    if (state == last[side]) continue;
-    last[side] = state;
-    REXLOG_INFO("DEBUG_SAULO EVIL_RYU select-portrait side={} evil={} hidden={} requested={} cell={} hover={}",
-                side + 1, presentation.evil[side], presentation.hide[side], int(requested[side]), on_cell[side],
-                hover[side]);
-  }
 }
 
 // The Losing and Continue tables stop at the last guest character, so unlike the shared tables they have no spare id: the
@@ -608,7 +569,6 @@ void DrawPortraits(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   std::array<uint32_t, 2> hover{LoadBE32(GuestHost(base, kSelectHoverWords[0]), 0),
                                 LoadBE32(GuestHost(base, kSelectHoverWords[1]), 0)};
   const SelectPresentation presentation = ResolveSelectPresentation(requested, on_cell, hover);
-  LogSelectPresentation(presentation, requested, on_cell, hover);
   if (!presentation.any()) return original(ctx, base);
   const bool any_evil = presentation.evil[0] || presentation.evil[1];
   const bool any_violent = presentation.violent[0] || presentation.violent[1];

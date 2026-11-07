@@ -72,11 +72,12 @@ struct OnlineMenuHooks {
       std::string moves_xml = patch ? patch->xml : std::string(guest_text);
       const bool ultra = ssf2t::character::UltraFightersEnabled();
       const bool moves = ultra && ssf2t::character::PatchCharacterMovesScreen(moves_xml);
-      if (moves) REXLOG_INFO("DEBUG_SAULO EVIL_RYU character-moves screen patched guest={}", G::kName);
       const bool results = ultra && ssf2t::character::PatchResultsScreen(moves_xml);
-      if (results) REXLOG_INFO("DEBUG_SAULO EVIL_RYU results screen patched guest={}", G::kName);
       const bool ending = ultra && ssf2t::character::PatchEndingScreen(moves_xml);
-      if (ending) REXLOG_INFO("DEBUG_SAULO ULTRA_ENDING screen patched guest={}", G::kName);
+      if (moves || results || ending) {
+        REXLOG_INFO("ultra fighter screens patched moves={} results={} ending={} guest={}", moves, results, ending,
+                    G::kName);
+      }
       if ((!patch && !moves && !results && !ending) || !ParsePatched(ctx, base, original, moves_xml)) {
         REXLOG_INFO("multiplayer menu layout original guest={}", G::kName);
         original(ctx, base);
@@ -102,14 +103,13 @@ struct OnlineMenuHooks {
       const bool lobby_input = ssf2t::character::PatchLobbyCpuScript(scripts);
       const bool lobby_footer = ssf2t::character::PatchLobbyFooterScript(scripts);
       const bool versus_cpu = lobby_input || lobby_footer;
-      if (versus_cpu) REXLOG_INFO("DEBUG_SAULO VS_CPU lobby-script patched guest={}", G::kName);
       if ((patch || moves || results || versus_cpu) && ParsePatched(ctx, base, original, scripts)) {
         if (patch) {
           REXLOG_INFO("game_lobby actions removed gamer_card={} players_list={} slot_help={} guest={}",
                       patch->gamer_card, patch->players_list, patch->slot_help, G::kName);
         }
-        if (moves) REXLOG_INFO("DEBUG_SAULO EVIL_RYU character-moves scripts patched guest={}", G::kName);
-        if (results) REXLOG_INFO("DEBUG_SAULO EVIL_RYU results scripts patched guest={}", G::kName);
+        REXLOG_INFO("scripts patched moves={} results={} versus_cpu={} guest={}", moves, results, versus_cpu,
+                    G::kName);
         return;
       }
     }
@@ -119,8 +119,8 @@ struct OnlineMenuHooks {
       const bool animations = ssf2t::character::PatchResultsAnimations(descriptors);
       const bool ending = ssf2t::character::PatchEndingAnimations(descriptors);
       if ((grid || animations || ending) && ParsePatched(ctx, base, original, descriptors)) {
-        REXLOG_INFO("DEBUG_SAULO EVIL_RYU results descriptors patched grid={} animations={} ending={} guest={}", grid,
-                    animations, ending, G::kName);
+        REXLOG_INFO("ultra fighter descriptors patched grid={} animations={} ending={} guest={}", grid, animations,
+                    ending, G::kName);
         return;
       }
     }

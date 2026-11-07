@@ -1,8 +1,6 @@
-#include <array>
 #include <cstdint>
 
 #include <rex/hook.h>
-#include <rex/logging.h>
 
 #include "character/character_moves.h"
 #include "character/fighter_identity.h"
@@ -24,12 +22,6 @@ void PlayerCharacterIndex(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const bool violent = ctx.r3.u32 == uint32_t(kKenGuestCharacter) && ViolentKenOnSide<G>(base, side);
   if (!evil && !violent) return;
   ctx.r3.u64 = uint64_t(evil ? kEvilRyuMoveListIndex : kViolentKenMoveListIndex);
-  static std::array<std::array<bool, 2>, 2> logged{};
-  bool& seen = logged[evil ? 0 : 1][size_t(side)];
-  if (!seen) {
-    seen = true;
-    REXLOG_INFO("DEBUG_SAULO ULTRA character-moves side={} page={}", side + 1, evil ? "evil-ryu" : "violent-ken");
-  }
 }
 
 }  // namespace

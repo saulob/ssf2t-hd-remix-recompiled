@@ -663,7 +663,8 @@ bool BugReportPage::AcceptDraft() {
 
 std::shared_ptr<const BugReportPackage> BugReportPage::Build(const BugReportContext& context) {
   build_failure_ = BuildFailure::kNone;
-  const PrivateFacts private_facts = GatherPrivateFacts(places_.install_folders, places_.user_dir, context.online_name);
+  const PrivateFacts private_facts = GatherPrivateFacts(places_.install_folders, places_.user_dir, context.online_name,
+                                                        context.local_player_names);
   BuildResult built = BuildBugReport(description_, logs_[selected_], context.facts, private_facts);
   if (!built.package) {
     build_failure_ = built.failure;

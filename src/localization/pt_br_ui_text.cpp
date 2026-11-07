@@ -438,7 +438,7 @@ Friends	Amigos
 Lobby	Lobby
 Show me in Lobby	Aparecer no Lobby
 Turn on to let other players of this game see your Online name in the Lobby and send you a friend request.	Ative para que outros jogadores deste jogo vejam seu nome online no Lobby e possam enviar um pedido de amizade.
-Other players of this game can see your Online name in the Lobby and send you a friend request. Nothing else about you is shown.	Outros jogadores deste jogo podem ver seu nome online no Lobby e enviar um pedido de amizade. Nada mais sobre você é mostrado.
+Other players of this game can see your Online name, status, platform and game version in the Lobby and send you a friend request. Nothing else about you is shown.	Outros jogadores deste jogo podem ver seu nome online, status, plataforma e versão do jogo no Lobby e enviar um pedido de amizade. Nada mais sobre você é mostrado.
 Players in the Lobby	Jogadores no Lobby
 Could not refresh the Lobby.	Não foi possível atualizar o Lobby.
 The online service does not have the public Lobby yet.	O serviço online ainda não tem o Lobby público.

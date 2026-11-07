@@ -1312,7 +1312,7 @@ void TestSource() {
   for (const char* configured : {"XamUserGetName", "UserDisplayName", "kNameTable", "user_name"}) {
     CHECK(!Has(hook, configured));
   }
-  CHECK(Has(hook, "hud-label"));
+  CHECK(!Has(hook, "DEBUG_SAULO"));
   CHECK(Has(hook, "ctx.r3.s32 == kCpuActiveQuerySeat") && Has(hook, "ctx.r3.u32 == kRemoveCpuOpponentArgument"));
 
   CHECK(Has(hook, "kNetplayRoleSetting"));

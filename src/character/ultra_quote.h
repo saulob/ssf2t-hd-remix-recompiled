@@ -16,15 +16,14 @@ struct QuoteSet {
   int carrier;
   std::span<const std::string_view> ids;
   std::span<const uint8_t> weights;
-  const char* log;
 };
 
 inline constexpr size_t kMaxQuotes = 5;
 static_assert(kEvilRyuQuotes <= int(kMaxQuotes) && kViolentKenQuotes <= int(kMaxQuotes));
 
 inline constexpr std::array<QuoteSet, 2> kQuoteSets = {{
-    {FighterIdentity::kEvilRyu, kRyuGuestCharacter, kEvilRyuQuoteIds, kEvilRyuQuoteWeights, "EVIL_RYU"},
-    {FighterIdentity::kViolentKen, kKenGuestCharacter, kViolentKenQuoteIds, kViolentKenQuoteWeights, "VIOLENT_KEN"},
+    {FighterIdentity::kEvilRyu, kRyuGuestCharacter, kEvilRyuQuoteIds, kEvilRyuQuoteWeights},
+    {FighterIdentity::kViolentKen, kKenGuestCharacter, kViolentKenQuoteIds, kViolentKenQuoteWeights},
 }};
 
 // The winner dialog is called with the carrier's guest character; the quotes follow the fighter the side chose.

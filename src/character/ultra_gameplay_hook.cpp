@@ -1,7 +1,6 @@
 #include <cstdint>
 
 #include <rex/hook.h>
-#include <rex/logging.h>
 
 #include "character/ultra_fight.h"
 #include "character/ultra_gameplay.h"
@@ -32,11 +31,6 @@ void GateSuper(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   StoreBE32(base, work - kGateAddressBelowWork, 0);
   StoreBE32(base, work - kGateStrengthBelowWork, 1);
   StoreBE32(base, work - kGateResultBelowWork, 1);
-  static bool logged[2];
-  if (!logged[side]) {
-    logged[side] = true;
-    REXLOG_INFO("DEBUG_SAULO ULTRA super-gate side={} identity={} refused", side + 1, IdentityName(identity));
-  }
 }
 
 }  // namespace

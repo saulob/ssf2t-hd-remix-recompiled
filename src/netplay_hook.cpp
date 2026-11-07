@@ -433,7 +433,7 @@ class FightRuntime {
       return true;
     }
     const std::string role = REXCVAR_GET(ssf2t_netplay_role);
-    if (role != ssf2t::kNetplayRoleHost && role != ssf2t::kNetplayRoleJoin) return false;
+    if (!ssf2t::NetplayTestRole(role)) return false;
     plan = {};
     plan.host = role == ssf2t::kNetplayRoleHost;
     if (!plan.host) {

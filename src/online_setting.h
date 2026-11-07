@@ -22,8 +22,8 @@ inline constexpr char kOnlineLobbyLabel[] = "Show me in Lobby";
 inline constexpr char kOnlineLobbyOffHelp[] =
     "Turn on to let other players of this game see your Online name in the Lobby and send you a friend request.";
 inline constexpr char kOnlineLobbyOnHelp[] =
-    "Other players of this game can see your Online name in the Lobby and send you a friend request. Nothing else "
-    "about you is shown.";
+    "Other players of this game can see your Online name, status, platform and game version in the Lobby and send you "
+    "a friend request. Nothing else about you is shown.";
 
 inline constexpr char kOnlinePingSetting[] = "ssf2t_online_ping_display";
 inline constexpr bool kDefaultOnlinePing = false;

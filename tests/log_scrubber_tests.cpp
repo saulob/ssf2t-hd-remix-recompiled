@@ -155,6 +155,8 @@ void TestFriendCodesAndIdentifiers() {
   CHECK(!Has(ids, "3f9a1c2b") && !Has(ids, "abcdef0123"));
   CHECK(ScrubAnonymous("peers match=12 left") == "peers match=12 left");
   CHECK(ScrubAnonymous("player_match=3f9a1c2b7d4e5f60") == "player_match=3f9a1c2b7d4e5f60");
+  const std::string host = ScrubAnonymous("player_match create session_id=abcdef0123456789");
+  CHECK(Has(host, "session_id=<session_id>") && !Has(host, "abcdef0123"));
 }
 
 void TestCharacterHandling() {
@@ -192,6 +194,9 @@ void TestGatherUsesTheOnlineIdentity() {
   CHECK(none.secrets.empty() && none.own_codes.empty());
   CHECK(!fs::exists(dir / online::kIdentityFileName));
   CHECK(!none.player_names.empty() && none.player_names.front() == "Ryu_Fan");
+  const PrivateFacts local = GatherPrivateFacts({}, dir, "Ryu_Fan", {"Maria Silva"});
+  const std::string names = ScrubText("Local player names (Local Match only): Player 1=Maria Silva, Player 2=Player 2", local);
+  CHECK(!Has(names, "Maria Silva") && Has(names, "Player 2=Player 2"));
 
   const online::Identity identity = online::LoadOrCreateIdentity(dir);
   CHECK(identity.ok());

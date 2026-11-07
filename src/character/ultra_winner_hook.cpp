@@ -4,7 +4,6 @@
 #include <string_view>
 
 #include <rex/hook.h>
-#include <rex/logging.h>
 #include <rex/system/kernel_state.h>
 
 #include "character/character_moves.h"
@@ -82,10 +81,7 @@ void ShowWinText(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
       const int winner = work >= 0x10000 ? int(*GuestHost(base, work + kFightWorkWinner)) - 1 : -1;
       if (ryu ? EvilRyuOnSide<G>(base, winner) : ViolentKenOnSide<G>(base, winner)) {
         const uint32_t name = WinsTextName(base, ken);
-        if (name) {
-          ctx.r3.u64 = name;
-          REXLOG_INFO("DEBUG_SAULO ULTRA winner-banner side={} fighter={}", winner + 1, ken ? "violent-ken" : "evil-ryu");
-        }
+        if (name) ctx.r3.u64 = name;
       }
     }
   }
@@ -133,7 +129,6 @@ void ShowQuote(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   }
   original(ctx, base);
   for (uint32_t i = 0; i < kTauntsPerCharacter; ++i) GuestStoreBE32(base, row + i * 4, kept[i]);
-  REXLOG_INFO("DEBUG_SAULO {} quote side={}", set.log, side + 1);
 }
 
 }  // namespace

@@ -1,9 +1,7 @@
-#include <array>
 #include <chrono>
 #include <cstdint>
 
 #include <rex/hook.h>
-#include <rex/logging.h>
 
 #include "character/evil_ryu_moves.h"
 #include "character/secret_select.h"
@@ -20,19 +18,16 @@ namespace ssf2t::character {
 namespace {
 
 struct Base013Confirm {
-  static constexpr uint32_t kHdStyle = 0x83A3876D;
   static constexpr uint32_t kOldVersionPrompt = 0x83CA6C76;
   static constexpr uint32_t kGameMode = 0x83CA294F;
 };
 
 struct TitleUpdate023Confirm {
-  static constexpr uint32_t kHdStyle = 0x83A387E5;
   static constexpr uint32_t kOldVersionPrompt = 0x83CA718E;
   static constexpr uint32_t kGameMode = 0x83CA2E67;
 };
 
 constexpr uint32_t kWorkSideOffset = 897;
-constexpr uint32_t kWorkLockedOffset = 899;
 constexpr uint32_t kWorkClassicOffset = 950;
 constexpr uint32_t kFighterSelectingOffset = 898;
 constexpr uint32_t kFighterPlayedOffset = 942;
@@ -70,21 +65,13 @@ void TouchInteractiveSelect(const uint8_t* base) {
   const uint8_t kept = UltraMaskKeptByDefender(GlobalUltraNavigation().Mask(), entry);
   GlobalUltraNavigation().Restore(kept);
   GlobalHostMoves().Reset();
-  if (kept == 0) return;
-  for (int side = 0; side < 2; ++side) {
-    if (!GlobalUltraNavigation().OnUltraCell(side)) continue;
-    REXLOG_INFO("DEBUG_SAULO ULTRA reenter-select side={} guest={} restored={} reason=local_join", side + 1,
-                entry.sides[size_t(side)].guest_character, IdentityName(RequestedIdentity(side)));
-  }
 }
 
 // Both guest routes to the classic flag run inside the hooked function, so this sees them on the frame they happen.
-void GuardClassic(uint8_t* base, uint32_t work, int side, uint8_t game_mode, uint8_t hd_style) {
+void GuardClassic(uint8_t* base, uint32_t work, int side) {
   if (!UltraDropsOldVersion(GlobalUltraNavigation().OnUltraCell(side), *GuestHost(base, work + kWorkClassicOffset))) {
     return;
   }
-  REXLOG_INFO("DEBUG_SAULO ULTRA classic guard side={} mode={} style={}", side + 1, GameModeName(game_mode),
-              HdStyleName(hd_style));
   GuestStore8(base, work + kWorkClassicOffset, 0);
 }
 
@@ -98,14 +85,7 @@ void ObserveLock(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (work < 0x10000 || work >= 0xFFFF0000u) return;
   const int side = *GuestHost(base, work + kWorkSideOffset);
   if (side < 0 || side > 1) return;
-  GuardClassic(base, work, side, *GuestHost(base, G::kGameMode), *GuestHost(base, S::kHdStyle));
-  static std::array<bool, 2> locked{};
-  const bool now = *GuestHost(base, work + kWorkLockedOffset) != 0;
-  if (now == locked[side]) return;
-  locked[side] = now;
-  if (!GlobalUltraNavigation().OnUltraCell(side)) return;
-  REXLOG_INFO("DEBUG_SAULO ULTRA {} side={} identity={}", now ? "confirm" : "unconfirm", side + 1,
-              IdentityName(RequestedIdentity(side)));
+  GuardClassic(base, work, side);
 }
 
 // Outside Arcade a locked side answers NORMAL / SUPER, and NORMAL is the old version. The option byte is 0 in Remix.

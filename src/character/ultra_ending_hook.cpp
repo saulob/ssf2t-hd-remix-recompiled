@@ -160,7 +160,6 @@ void PlayEnding(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   if (choice.ending == nullptr || !UltraFightersEnabled() || !CharacterMovesPageReady()) return original(ctx, base);
   const UltraEnding& ending = *choice.ending;
   const size_t slot = choice.slot;
-  const int side = choice.side;
   const UltraEndingArt* art = LoadUltraEndingArt(ending);
   if (art == nullptr) return original(ctx, base);
 
@@ -178,7 +177,7 @@ void PlayEnding(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   uint32_t name = group_names[slot];
   uint32_t group = ElementNamed<H>(name, ctx, base);
   if (!PlausibleGuestAddress(group) || !ShowCuts<H>(ending, slot, *art, ctx, base)) {
-    REXLOG_ERROR("DEBUG_SAULO {} ending unavailable, playing the carrier's", ending.log_name);
+    REXLOG_WARN("{} ending unavailable, playing the carrier's", ending.log_name);
     name = ending.guest_set_name;
     group = ElementNamed<H>(name, ctx, base);
   }
@@ -189,7 +188,6 @@ void PlayEnding(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     CallWith(H::SendEvent, HashOf<H>(name, ctx, base), ctx, base);
     CallWith(H::PrepareMusic, ending.guest_music, ctx, base);
     CallWith(H::PlayMusic, ending.guest_music, ctx, base);
-    REXLOG_INFO("DEBUG_SAULO {} ending side={} group={:08X}", ending.log_name, side + 1, group);
   } else {
     CallWith(H::FinishCinematic, kFinishWithoutCinematic, ctx, base);
   }

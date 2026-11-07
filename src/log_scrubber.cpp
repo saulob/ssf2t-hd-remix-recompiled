@@ -32,7 +32,7 @@ constexpr std::string_view kSecretWords[] = {
 };
 
 // Identifiers of a match or an invitation: they let someone join or follow it.
-constexpr std::string_view kIdentifierLabels[] = {"session=", "match=", "invite="};
+constexpr std::string_view kIdentifierLabels[] = {"session=", "session_id=", "match=", "invite="};
 
 // Default account and machine names: they say nothing about a person and are ordinary words in a log.
 constexpr std::string_view kGenericNames[] = {"admin", "administrator", "deck",   "default", "game", "guest",     "localhost",
@@ -690,12 +690,13 @@ void AddSystemFacts(PrivateFacts& facts) {
 }  // namespace
 
 PrivateFacts GatherPrivateFacts(const std::vector<std::filesystem::path>& install_folders, const std::filesystem::path& user_dir,
-                                const std::string& online_name) {
+                                const std::string& online_name, const std::vector<std::string>& local_player_names) {
   PrivateFacts facts;
   AddSystemFacts(facts);
   for (const std::filesystem::path& folder : install_folders) AddOnce(facts.install_folders, Narrow(folder));
   AddOnce(facts.install_folders, Narrow(user_dir));
   AddOnce(facts.player_names, online_name);
+  for (const std::string& name : local_player_names) AddOnce(facts.player_names, name);
   const online::Identity identity = online::LoadExistingIdentity(user_dir);
   if (identity.ok()) {
     AddOnce(facts.secrets, identity.token);

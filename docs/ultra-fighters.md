@@ -307,8 +307,8 @@ Permanent messages useful for these characters:
 - `Roster cell <n> failed at '<step>'` and `Roster cell <n> failed at 'create texture'`: a roster cell or name plate image could not be used (`open file`, `decode`, `find entry`, ...). `<n>` is the `RosterArt` value (1 Evil Ryu cell, 2 Violent Ken cell, 3 and 4 the name plates).
 - `online secret-cap local|peer|effective ...` and `online secret-cap locked ...`: the negotiated set.
 - `online fighter side=<n> base=<name> variant=<EvilRyu|ViolentKen|Akuma|none>` and `online fighter reject ...`: the selection check at the start of an online fight.
-
-The per-hook messages (select, palette, audio, ending, HUD, sprite) carry the temporary `DEBUG_SAULO` prefix and are not a supported feature; they are expected to be removed.
+- `Evil Ryu|Violent Ken audio unavailable`, `... ending unavailable, playing the carrier's`, `... HUD icon unavailable`, `... art <n> unavailable`, `Evil Ryu HD palette unavailable ...`, `CPU select marker <n> unavailable`: a package or guest texture could not be used; the carrier's presentation stays.
+- `ultra fighter screens|descriptors patched ...`, `scripts patched ...`, `character moves text lines=<n>`: the menu, Results and ending patches applied at boot.
 
 ## Known limitations
 
@@ -351,8 +351,6 @@ The per-hook messages (select, palette, audio, ending, HUD, sprite) carry the te
 | `src/character/ultra_hook_table.h` | Guest function addresses per image |
 | `src/online/secret_characters.*`, `secret_view.*`, `src/online_runtime.cpp`, `src/netplay_hook.cpp` | Negotiation, Online page rows, locked set, selection check, reporting |
 | `src/launcher.cpp`, `src/settings.cpp` | Setting toggle and persistence |
-| `src/feature_parity.h` | Feature registry (also lists the dormant sources below) |
+| `src/feature_parity.h` | Feature registry |
 | `cmake/stage_character_packages.cmake`, `tools/character-packages.ps1`, `tools/update-character-packages.ps1`, `tools/linux-policy.sh` | Staging and checking the packages |
 | `tests/` | `character_packages_tests`, `ultra_*_tests`, `evil_ryu_*_tests`, `violent_ken_*_tests`, `roster_cells_tests`, `secret_select_tests`, `fighter_identity_tests`, `character_moves_tests` |
-
-Four character sources are kept on disk but built by no target and are listed as dormant in `feature_parity.h`: `character_hook.cpp`, `character_select_debug.cpp`, `ultra_name_hook.cpp`, `ultra_presentation_hook.cpp`.

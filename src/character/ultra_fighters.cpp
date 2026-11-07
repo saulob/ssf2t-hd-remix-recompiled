@@ -17,7 +17,7 @@ bool UltraFightersEnabled() { return REXCVAR_GET(ssf2t_enable_ultra_fighters); }
 SecretCells SecretCellsFor(uint8_t game_mode) {
   SecretCellInputs in;
   in.online_select = OnlineSelectMode(game_mode);
-  in.developer_netplay = rex::cvar::GetFlagByName(kNetplayRoleSetting) != kNetplayRoleOff;
+  in.developer_netplay = NetplayTestRole(rex::cvar::GetFlagByName(kNetplayRoleSetting));
   in.akuma_option = AkumaEnabled();
   in.ultra_option = UltraFightersEnabled();
   in.evil_ryu_packages = EvilRyuPackagesReady();

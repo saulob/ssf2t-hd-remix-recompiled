@@ -395,6 +395,10 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     BugReportContext context;
     context.facts = *bug_facts_;
     context.online_name = online::CleanOnlineName(settings_.Get(kOnlineNameSetting, kDefaultOnlineNameValue));
+    for (const PlayerNameSetting& player : kPlayerNames) {
+      const std::string name = settings_.Get(player.key, "");
+      if (!name.empty() && name != player.default_name) context.local_player_names.push_back(name);
+    }
     context.service.url = Online().url();
     context.service.guest = context.facts.guest;
     context.service.build = netplay::kNetplayBuild;

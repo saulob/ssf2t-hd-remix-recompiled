@@ -4,7 +4,6 @@
 #include <cstring>
 
 #include <rex/hook.h>
-#include <rex/logging.h>
 #include <rex/system/kernel_state.h>
 
 #include "character/evil_ryu_results.h"
@@ -80,11 +79,6 @@ void RecordMatch(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
     const uint32_t carrier = uint32_t(kHostResultsRows[host].carrier) * 4;
     if (correction.carrier_win_side >= 0) TakeBack<H>(base, correction.carrier_win_side, kRecordWins + carrier);
     if (correction.carrier_loss_side >= 0) TakeBack<H>(base, correction.carrier_loss_side, kRecordLosses + carrier);
-    if (fought[host][0] || fought[host][1]) {
-      REXLOG_INFO("DEBUG_SAULO ULTRA results {} winner={} sides={}{} p1={}-{} p2={}-{}", kHostResultsRows[host].label,
-                  winner + 1, int(fought[host][0]), int(fought[host][1]), book.wins(0), book.losses(0), book.wins(1),
-                  book.losses(1));
-    }
   }
 }
 

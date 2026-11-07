@@ -70,7 +70,7 @@ inline constexpr Feature kFeatures[] = {
      "", "", "", "", "tests/akuma_bug_fixes_tests.cpp", "kAkumaBugFixesLabel"},
     {"Ultra fighters (Evil Ryu and Violent Ken)",
      "Audio::kSoundFlags,Audio::kSoundQueue,Audio::kSoundQueueHead,Audio::kSoundQueueTail,"
-     "Audio::kSoundSlots,Confirm::kHdStyle,Confirm::kOldVersionPrompt,Cursor::kHdPositions,Cursor::kLive,"
+     "Audio::kSoundSlots,Confirm::kOldVersionPrompt,Cursor::kHdPositions,Cursor::kLive,"
      "Cursor::kVersusPositions,"
      "Ending::kEndingCharacter,Hd::kBeatenSide,Hd::kColourP1,Hd::kColourP2,Hd::kContinuePortraits,"
      "Hd::kLoserPortraitSlot,Hd::kLosingPortraits,Hd::kMysteryLargePortrait,Hd::kPortraitPaletteRows,"
@@ -193,12 +193,12 @@ inline constexpr Feature kFeatures[] = {
      "VersusCpu::kTextHudPlayerName,VersusCpu::kSetGameDifficulty,VersusCpu::kSelectInput,"
      "VersusCpu::kEnterSelect,VersusCpu::kSelectMask,"
      "VersusCpu::kLoadMatch,VersusCpu::kGameMode,VersusCpu::kLobbySlots,VersusCpu::kSelectDone,VersusCpu::kSideHuman,"
-     "VersusCpu::kSideState,VersusCpu::kActiveFighter,VersusCpu::kCursorInput,VersusCpu::kGameState,"
+     "VersusCpu::kSideState,VersusCpu::kGameState,"
      "VersusCpu::kFighterBlock,VersusCpu::kColourPrompt,Confirm::kGameMode",
      "VersusCpu::kUpdateLocalLobby,VersusCpu::kInitLocalLobby,VersusCpu::kIsSlotOccupied,"
      "VersusCpu::kIsSlotOccupiedResults,VersusCpu::kGetPlayerName,VersusCpu::kTextPlayerName,"
      "VersusCpu::kTextHudPlayerName,VersusCpu::kSetGameDifficulty,VersusCpu::kSelectInput,"
-     "VersusCpu::kEnterSelect,VersusCpu::kCursorInput,VersusCpu::kLoadMatch",
+     "VersusCpu::kEnterSelect,VersusCpu::kLoadMatch",
      "", "", "", "", "", "src/character/versus_cpu.h,src/character/versus_cpu_hook.cpp,src/character/cpu_marker.h,"
      "src/character/cpu_marker.cpp",
      "", "", "", "", "tests/versus_cpu_tests.cpp"},
@@ -371,19 +371,6 @@ inline constexpr Exception kExceptions[] = {
     {"Connection Test", "linux",
      "The note about Windows Firewall asking to allow network access has no counterpart: Linux does not prompt per program.",
      "src/connection_test_gate.h"},
-};
-
-// Sources left on disk that no target builds. The gates skip them; none may gain a build target unreviewed.
-struct DormantSource {
-  const char* file;
-  const char* reason;
-};
-
-inline constexpr DormantSource kDormantSources[] = {
-    {"src/character/character_hook.cpp", "replaced by ultra_fight.h; delete at final review"},
-    {"src/character/character_select_debug.cpp", "DEBUG_SAULO select tracer, never in CMake; delete at final review"},
-    {"src/character/ultra_name_hook.cpp", "replaced by the name tile swap; delete at final review"},
-    {"src/character/ultra_presentation_hook.cpp", "replaced by the portrait loans; delete at final review"},
 };
 
 // Source files with platform or build conditionals that belong to no feature's list above: what the conditional

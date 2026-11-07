@@ -494,7 +494,8 @@ void TestRegistration() {
         "both images hook PlayCinematic once");
   Check(Count(hook, "ChooseUltraEnding(") == 1 && Count(hook, "kUltraEndings") >= 1,
         "the hook routes through the shared choice");
-  Check(Count(hook, "DEBUG_SAULO") == 2, "one diagnostic per ending and one when it falls back");
+  Check(Count(hook, "ending unavailable") == 1 && Count(hook, "DEBUG_SAULO") == 0,
+        "one warning when an ending falls back to the carrier's");
   const std::string parity = ReadText("src/feature_parity.h");
   Check(Count(parity, "UltraHooks::kPlayEnding1") >= 2 && Count(parity, "src/character/ultra_ending_hook.cpp") >= 1 &&
             Count(parity, "tests/ultra_ending_tests.cpp") == 1,

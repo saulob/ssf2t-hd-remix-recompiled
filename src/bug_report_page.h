@@ -20,6 +20,7 @@ struct BugReportContext {
   ReportFacts facts;
   online::IncidentServiceConfig service;
   std::string online_name;
+  std::vector<std::string> local_player_names;
   // From the Online connection when it has announced the service's capabilities; empty before that.
   std::optional<bool> service_takes_reports;
 };

@@ -21,10 +21,11 @@ struct PrivateFacts {
   std::vector<std::string> player_names; // the Online name
 };
 
-// The running system's facts, the online identity in `user_dir` when there is one (none is created), the Online name
-// and `install_folders`.
+// The running system's facts, the online identity in `user_dir` when there is one (none is created), the Online name,
+// the Local Match player names and `install_folders`.
 PrivateFacts GatherPrivateFacts(const std::vector<std::filesystem::path>& install_folders,
-                                const std::filesystem::path& user_dir, const std::string& online_name = {});
+                                const std::filesystem::path& user_dir, const std::string& online_name = {},
+                                const std::vector<std::string>& local_player_names = {});
 
 // Valid UTF-8 with LF line ends and no other control characters than tabs, whatever `text` held.
 std::string ScrubText(std::string_view text, const PrivateFacts& facts);
