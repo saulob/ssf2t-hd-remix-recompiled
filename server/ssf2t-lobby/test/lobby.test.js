@@ -25,7 +25,7 @@ test('the service announces the public Lobby and the protocol number stays 3', (
   assert.equal(CAPABILITIES.public_lobby, true);
   assert.equal(CAPABILITIES.protocol_version, 3);
   assert.equal(PROTOCOL, 3);
-  assert.equal(WORKER_BUILD, '2026-11-06-lobby');
+  assert.equal(WORKER_BUILD, '2026-11-07-bug-reports');
   const env = makeHub();
   const reply = env.connect(identity(1)).hello();
   assert.equal(reply.capabilities.public_lobby, true);

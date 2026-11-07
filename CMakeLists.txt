@@ -135,6 +135,9 @@ set(SSF2T_NETPLAY_SOURCES
 
 # Online play: the lobby client, identity and signalling. No game runtime needed; the tests build it as it is.
 set(SSF2T_ONLINE_SOURCES
+    src/bug_report.cpp
+    src/log_scrubber.cpp
+    src/report_history.cpp
     src/netplay/online_game_socket.cpp
     src/netplay/relay_frame.cpp
     src/netplay/udp_transport.cpp
@@ -142,6 +145,7 @@ set(SSF2T_ONLINE_SOURCES
     src/online/fight_telemetry.cpp
     src/online/friend_view.cpp
     src/online/identity.cpp
+    src/online/incident_client.cpp
     src/online/instance.cpp
     src/online/lobby_link.cpp
     src/online/local_addresses.cpp
@@ -229,6 +233,7 @@ set(SSF2T_SOURCES
     src/game_files.cpp
     src/gpu_fence_wait.cpp
     src/graphics_adapters.cpp
+    src/bug_report_page.cpp
     src/friend_code_field.cpp
     src/imgui_gamepad.cpp
     src/guest_functions.cpp
@@ -679,6 +684,18 @@ foreach(_test protocol identity service rendezvous connection integration)
     set(_name ssf2t_online_${_test}_tests)
     add_executable(${_name} EXCLUDE_FROM_ALL tests/online_${_test}_tests.cpp ${SSF2T_ONLINE_SOURCES})
     target_include_directories(${_name} PRIVATE src tests)
+    target_compile_options(${_name} PRIVATE -Wall -Wextra)
+    target_link_libraries(${_name} PRIVATE ${SSF2T_ONLINE_LIBS})
+    add_dependencies(ssf2t_runtime_tests ${_name})
+endforeach()
+
+# Bug reports: the log scrubber, the report and its preview, My reports and the service calls over a scripted channel.
+# Headless; nothing opens a window.
+foreach(_test log_scrubber bug_report)
+    set(_name ssf2t_${_test}_tests)
+    add_executable(${_name} EXCLUDE_FROM_ALL tests/${_test}_tests.cpp ${SSF2T_ONLINE_SOURCES})
+    target_include_directories(${_name} PRIVATE src tests)
+    target_compile_definitions(${_name} PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     target_compile_options(${_name} PRIVATE -Wall -Wextra)
     target_link_libraries(${_name} PRIVATE ${SSF2T_ONLINE_LIBS})
     add_dependencies(ssf2t_runtime_tests ${_name})

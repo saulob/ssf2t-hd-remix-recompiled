@@ -392,6 +392,14 @@ void TestPublicLobbyOnTheWire() {
   CHECK(legacy && !legacy->capabilities);
   CHECK(kLobbyProtocol == 3);
   CHECK(!ServiceCapabilities{}.public_lobby);
+  CHECK(!ServiceCapabilities{}.bug_reports);
+  CHECK(older && older->capabilities && !older->capabilities->bug_reports);
+  const auto reports = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"capabilities\":{\"protocol_version\":3,\"bug_reports\":true}}");
+  CHECK(reports && reports->capabilities && reports->capabilities->bug_reports && !reports->capabilities->public_lobby);
+  CHECK(EncodeIncidentStatus(2, {}) == "{\"op\":\"incident.status\",\"seq\":2,\"reports\":[]}");
+  CHECK(EncodeIncidentRead(3, {"SSF2-ABCDEF", "ab"}) == "{\"op\":\"incident.read\",\"seq\":3,\"ticket\":\"SSF2-ABCDEF\",\"receipt\":\"ab\"}");
+  CHECK(EncodeIncidentFile(4, {{"description", "a \"b\""}, {"log_text", "x\ny"}}) ==
+        "{\"op\":\"incident.file\",\"seq\":4,\"description\":\"a \\\"b\\\"\",\"log_text\":\"x\\ny\"}");
 }
 
 int main() {

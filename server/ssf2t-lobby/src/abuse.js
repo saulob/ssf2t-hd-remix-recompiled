@@ -13,6 +13,12 @@ export const PROTECTION = {
   inviteAccount: { burst: 20, perSecond: 1 / 3 },
   inviteAddress: { burst: 60, perSecond: 1 / 2 },
   lobbyList: { burst: 6, perSecond: 1 / 5 },
+  incidentAll: { burst: 40, perSecond: 1 / 3 },
+  incidentAccount: { burst: 8, perSecond: 1 / 60 },
+  incidentAddress: { burst: 16, perSecond: 1 / 30 },
+  incidentLookupAll: { burst: 200, perSecond: 2 },
+  incidentStatusAddress: { burst: 20, perSecond: 1 / 15 },
+  incidentReadAddress: { burst: 10, perSecond: 1 / 30 },
   trackedKeys: 4096,
 };
 

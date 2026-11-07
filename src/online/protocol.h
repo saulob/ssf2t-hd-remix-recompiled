@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -90,6 +91,16 @@ struct ServiceCapabilities {
   bool fight_telemetry = false;  // the service takes passive fight reports (telemetry.fight)
   bool secret_characters = false;  // the service negotiates secret characters (hello secret, secret.update)
   bool public_lobby = false;       // the service has the public Lobby (lobby.publish, lobby.list)
+  bool bug_reports = false;        // the service takes problem reports (incident.file, incident.status, incident.read)
+};
+
+// What the service says of one report its owner holds a receipt for.
+struct IncidentStatus {
+  std::string ticket;
+  std::string status;
+  int64_t updated_at = 0;
+  std::string fixed_version;
+  std::string player_message;
 };
 
 struct PeerInfo {
@@ -155,6 +166,11 @@ struct ServerMessage {
   bool lobby_unchanged = false;                           // lobby.list: the revision the client sent is still current
   int64_t lobby_rev = -1;                                 // lobby.list: -1 when the answer carried none
   std::optional<bool> lobby_visible;                      // lobby.publish and lobby.list: whether this connection is listed
+  std::string incident_ticket;                            // incident.file
+  std::string incident_receipt;                           // incident.file: proves ownership of the report, never logged
+  int64_t incident_submitted_at = 0;                      // incident.file
+  std::optional<std::vector<IncidentStatus>> incident_statuses;      // incident.status
+  std::optional<std::map<std::string, std::string>> incident_report;  // incident.read: the stored report's text fields
 };
 
 // Nothing for text that is not a known, well-formed server message.
@@ -181,6 +197,19 @@ std::string EncodePing(int seq);
 std::string EncodeLobbyPublish(int seq, bool visible);
 // `held_rev` is the revision of the list the client already shows; the service then answers "unchanged" while it stands.
 std::string EncodeLobbyList(int seq, std::optional<int64_t> held_rev = std::nullopt);
+
+// `text` as a JSON string literal.
+std::string JsonQuote(std::string_view text);
+
+// A problem report: every field is a string the player could read in the preview.
+using IncidentFields = std::vector<std::pair<std::string, std::string>>;
+struct IncidentClaim {
+  std::string ticket;
+  std::string receipt;
+};
+std::string EncodeIncidentFile(int seq, const IncidentFields& fields);
+std::string EncodeIncidentStatus(int seq, const std::vector<IncidentClaim>& claims);
+std::string EncodeIncidentRead(int seq, const IncidentClaim& claim);
 std::string EncodeFriendsList(int seq);
 std::string EncodeFriendsRequests(int seq);
 std::string EncodeFriendsAdd(int seq, const std::string& code);

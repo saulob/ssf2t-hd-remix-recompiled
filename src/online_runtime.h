@@ -9,6 +9,9 @@
 
 namespace ssf2t {
 
+// The platform name the service is told: Windows or Linux.
+const char* OnlinePlatformName();
+
 // Called when the launcher opens: the service then knows the user folder and which game image will run.
 void ConfigureOnline(const std::filesystem::path& user_dir, GuestVersion guest);
 

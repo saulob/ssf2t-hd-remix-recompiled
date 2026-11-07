@@ -206,6 +206,7 @@ ServiceCapabilities ReadCapabilities(const json::Value& v) {
   caps.fight_telemetry = BoolOf(v.Find("fight_telemetry"), false);
   caps.secret_characters = BoolOf(v.Find("secret_characters"), false);
   caps.public_lobby = BoolOf(v.Find("public_lobby"), false);
+  caps.bug_reports = BoolOf(v.Find("bug_reports"), false);
   return caps;
 }
 
@@ -222,6 +223,30 @@ bool ReadMatch(const json::Value& v, MatchInfo& out) {
   }
   out.secret = ReadMatchSecrets(v.Find("secret"));
   return !out.match.empty() && (out.role == "host" || out.role == "join") && !out.guest.empty();
+}
+
+std::optional<std::vector<IncidentStatus>> ReadIncidentStatuses(const json::Value* v) {
+  if (!v || !v->IsArray()) return std::nullopt;
+  std::vector<IncidentStatus> out;
+  for (const json::Value& row : v->AsArray()) {
+    if (!row.IsObject()) return std::nullopt;
+    const auto updated = row.Find("status_updated_at") && row.Find("status_updated_at")->IsNumber()
+                             ? row.Find("status_updated_at")->AsInt64()
+                             : std::nullopt;
+    out.push_back({StringOf(row.Find("ticket")), StringOf(row.Find("status")), updated.value_or(0),
+                   StringOf(row.Find("fixed_version")), StringOf(row.Find("player_message"))});
+    if (out.back().ticket.empty()) return std::nullopt;
+  }
+  return out;
+}
+
+std::optional<std::map<std::string, std::string>> ReadIncidentReport(const json::Value* v) {
+  if (!v || !v->IsObject()) return std::nullopt;
+  std::map<std::string, std::string> out;
+  for (const auto& [key, value] : v->AsObject()) {
+    if (value.IsString()) out[key] = value.AsString();
+  }
+  return out;
 }
 
 bool IsLoopback(const std::string& ip) { return ip.rfind("127.", 0) == 0; }
@@ -247,6 +272,11 @@ std::optional<ServerMessage> DecodeServerMessage(std::string_view text) {
     message.outgoing = ReadRequests(root->Find("outgoing"));
     message.lobby_players = ReadLobbyPlayers(root->Find("players"));
     message.lobby_unchanged = BoolOf(root->Find("unchanged"), false);
+    message.incident_ticket = StringOf(root->Find("ticket"));
+    message.incident_receipt = StringOf(root->Find("receipt"));
+    if (const json::Value* at = root->Find("submitted_at"); at && at->IsNumber()) message.incident_submitted_at = at->AsInt64().value_or(0);
+    message.incident_statuses = ReadIncidentStatuses(root->Find("reports"));
+    message.incident_report = ReadIncidentReport(root->Find("report"));
     if (const json::Value* rev = root->Find("rev"); rev && rev->IsNumber()) {
       if (const auto n = rev->AsInt64()) message.lobby_rev = *n;
     }
@@ -381,6 +411,30 @@ std::string EncodeSecretUpdate(int seq, const SecretCapabilities& secret) {
 std::string EncodePing(int seq) { return Envelope("ping", seq); }
 std::string EncodeLobbyPublish(int seq, bool visible) {
   return Envelope("lobby.publish", seq, std::string(",\"visible\":") + (visible ? "true" : "false"));
+}
+
+std::string JsonQuote(std::string_view text) { return Quote(text); }
+
+std::string EncodeIncidentFile(int seq, const IncidentFields& fields) {
+  std::string body;
+  for (const auto& [key, value] : fields) body += "," + Quote(key) + ":" + Quote(value);
+  return Envelope("incident.file", seq, body);
+}
+
+namespace {
+std::string ClaimJson(const IncidentClaim& claim) {
+  return "{\"ticket\":" + Quote(claim.ticket) + ",\"receipt\":" + Quote(claim.receipt) + "}";
+}
+}  // namespace
+
+std::string EncodeIncidentStatus(int seq, const std::vector<IncidentClaim>& claims) {
+  std::string list;
+  for (const IncidentClaim& claim : claims) list += (list.empty() ? "" : ",") + ClaimJson(claim);
+  return Envelope("incident.status", seq, ",\"reports\":[" + list + "]");
+}
+
+std::string EncodeIncidentRead(int seq, const IncidentClaim& claim) {
+  return Envelope("incident.read", seq, ",\"ticket\":" + Quote(claim.ticket) + ",\"receipt\":" + Quote(claim.receipt));
 }
 
 std::string EncodeLobbyList(int seq, std::optional<int64_t> held_rev) {

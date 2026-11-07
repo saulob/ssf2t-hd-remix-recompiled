@@ -6,6 +6,7 @@
 // The same class runs in the development server (local/server.js).
 import { PROTECTION, RateLimiter } from './abuse.js';
 import { SECRET_CHARACTER, SECRET_KEYS } from './characters.js';
+import { INCIDENT, INCIDENT_LIMITED, IncidentDesk, readClaims, readIncident, readReadClaim, ticketCode } from './incidents.js';
 import { Metrics, SAMPLE_MS, countryCode, platformCategory, sampleBucket, versionCategory } from './metrics.js';
 import { sha256Hex, toHex } from './sha256.js';
 import {
@@ -21,6 +22,9 @@ const RULE_KEY = /^[a-z_]{1,16}$/;
 const QOS_DATA = /^(?:[0-9a-f]{2}){0,256}$/;
 const ROLES = ['host', 'join'];
 const GROWING_OPS = new Set(['hello', 'pm.host', 'pm.join', 'match.resume']);
+// A receipt is the proof of a report lookup, so these need no sign-in.
+const NO_SESSION_OPS = new Set(['hello', 'incident.status', 'incident.read']);
+const INCIDENT_FRAME_START = '{"op":"incident.file"';
 const REJECT_CODES = new Set(['proto', 'bad_game', 'bad_guest', 'version_mismatch']);
 const MATCH_LIST_MAX = 50;
 
@@ -147,6 +151,12 @@ export class Hub {
       inviteAccount: new RateLimiter(PROTECTION.inviteAccount),
       inviteAddress: new RateLimiter(PROTECTION.inviteAddress),
       lobbyList: new RateLimiter(PROTECTION.lobbyList),
+      incidentAll: new RateLimiter(PROTECTION.incidentAll),
+      incidentAccount: new RateLimiter(PROTECTION.incidentAccount),
+      incidentAddress: new RateLimiter(PROTECTION.incidentAddress),
+      incidentLookupAll: new RateLimiter(PROTECTION.incidentLookupAll),
+      incidentStatusAddress: new RateLimiter(PROTECTION.incidentStatusAddress),
+      incidentReadAddress: new RateLimiter(PROTECTION.incidentReadAddress),
       rejects: new RateLimiter({ burst: 1, perSecond: 1000 / PROTECTION.rejectWindowMs }),
     };
     for (const statement of SCHEMA) host.sql.run(statement);
@@ -155,6 +165,7 @@ export class Hub {
       try { host.sql.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`); } catch { /* already there */ }
     }
     if (!this.meta('salt')) this.setMeta('salt', this.randomHex(16));
+    this.incidents = new IncidentDesk(host.sql, this.meta('salt'));
     this.reconcileSeats();
   }
 
@@ -216,7 +227,9 @@ export class Hub {
     this.current = att;
     try {
       if (typeof text !== 'string') fail('bad_request', 'text frames only');
-      if (text.length > LIMITS.frameBytes) fail('too_large');
+      if (text.length > LIMITS.frameBytes && (text.length > INCIDENT.frameChars || !text.startsWith(INCIDENT_FRAME_START))) {
+        fail('too_large');
+      }
       let msg;
       try {
         msg = JSON.parse(text);
@@ -225,6 +238,7 @@ export class Hub {
       }
       if (!isObject(msg) || typeof msg.op !== 'string' || !isInt(msg.seq, 0, 0x7fffffff)) fail('bad_request', 'envelope');
       seq = msg.seq;
+      if (text.length > LIMITS.frameBytes && msg.op !== 'incident.file') fail('too_large');
       const now = this.host.now();
       const any = takeToken(att.ra, BUCKETS.any, now);
       if (!any) fail('limit', 'slow down');
@@ -235,7 +249,7 @@ export class Hub {
         att.rs = social;
       }
       if (!Object.hasOwn(HANDLERS, msg.op)) fail('bad_request', 'unknown op');
-      if (msg.op !== 'hello' && !att.hello) fail('no_session');
+      if (!NO_SESSION_OPS.has(msg.op) && !att.hello) fail('no_session');
       this.index = null;
       const body = HANDLERS[msg.op].call(this, att, msg, conn) ?? {};
       conn.setAttachment(att);
@@ -433,6 +447,53 @@ export class Hub {
 
   ipKey(ip) {
     return sha256Hex(`${this.meta('salt')}|${ipGroup(ip)}`).slice(0, 32);
+  }
+
+  // In memory, so a flood of refused attempts costs no SQL; the quota is counted in SQL because it has to outlive the
+  // object's hibernation.
+  limitIncidentAttempt(att) {
+    const now = this.host.now();
+    const address = ipGroup(att.ip);
+    const { incidentAll, incidentAccount, incidentAddress } = this.guards;
+    if (!incidentAll.allows('all', now) || !incidentAccount.allows(att.player, now) || !incidentAddress.allows(address, now)) {
+      this.diagnose('incident_limited');
+      fail('limit', 'too many report attempts');
+    }
+    incidentAll.take('all', now);
+    incidentAccount.take(att.player, now);
+    incidentAddress.take(address, now);
+  }
+
+  // Its own budget: a lookup is no report, and no report's quota pays for it.
+  limitIncidentLookup(att, guard) {
+    const now = this.host.now();
+    const address = ipGroup(att.ip);
+    if (!this.guards.incidentLookupAll.allows('all', now) || !this.guards[guard].allows(address, now)) {
+      this.diagnose('incident_lookup_limited');
+      fail('limit', 'too many lookups');
+    }
+    this.guards.incidentLookupAll.take('all', now);
+    this.guards[guard].take(address, now);
+  }
+
+  newTicket() {
+    let ticket;
+    do ticket = ticketCode(crypto.getRandomValues(new Uint8Array(6)));
+    while (this.incidents.taken(ticket));
+    return ticket;
+  }
+
+  incidentList() {
+    return this.incidents.list();
+  }
+
+  incidentForAdmin(ticket) {
+    const found = this.incidents.get(ticket);
+    return found ? { ...found, ...this.incidents.status(ticket) } : null;
+  }
+
+  setIncidentStatus(ticket, change) {
+    return this.incidents.setStatus(ticket, change, this.host.now());
   }
 
   // Greeted sockets; the one whose message is being handled carries its live attachment, not a stored copy.
@@ -1075,6 +1136,48 @@ const HANDLERS = {
     const visible = att.lobby === true;
     if (held === this.lobbyRev) return { unchanged: true, rev: this.lobbyRev, visible };
     return { players: this.lobbyPlayers(att), rev: this.lobbyRev, visible };
+  },
+
+  // A report from the launcher's Bug Report page; only the /admin dashboard reads it back (incidents.js).
+  'incident.file'(att, msg) {
+    this.limitIncidentAttempt(att);
+    const { incident, code, detail } = readIncident(msg);
+    if (!incident) fail(code, detail);
+    const now = this.host.now();
+    const address = ipGroup(att.ip);
+    const atomically = this.host.sql.transaction ?? ((work) => work());
+    const filed = atomically(() => {
+      const limited = this.incidents.refusal(att.player, address, now);
+      if (limited) return { limited };
+      const ticket = this.newTicket();
+      const receipt = this.randomHex(32);
+      this.incidents.file(incident, ticket, att.player, address, now);
+      this.incidents.track(ticket, receipt, now);
+      return { ticket, receipt };
+    });
+    if (filed.limited) {
+      this.diagnose(INCIDENT_LIMITED[filed.limited]);
+      fail(filed.limited, 'report limit');
+    }
+    this.diagnose('incident_filed');
+    return { ticket: filed.ticket, receipt: filed.receipt, submitted_at: now };
+  },
+
+  // The launcher's My reports: what became of the reports it holds receipts for.
+  'incident.status'(att, msg) {
+    this.limitIncidentLookup(att, 'incidentStatusAddress');
+    const claims = readClaims(msg);
+    if (!claims) fail('bad_request', 'reports');
+    return { reports: this.incidents.statuses(claims) };
+  },
+
+  'incident.read'(att, msg) {
+    this.limitIncidentLookup(att, 'incidentReadAddress');
+    const claim = readReadClaim(msg);
+    if (!claim) fail('bad_request', 'receipt');
+    const report = this.incidents.report(claim);
+    if (!report) fail('not_found');
+    return { report };
   },
 
   // Advertises (or keeps alive) the sender's Player Match to compatible online friends.

@@ -25,6 +25,9 @@ std::string DerivePlayerId(const std::string& token);
 // Reads <user_dir>/online_identity.ini, creating it on first use. An existing file is never overwritten.
 Identity LoadOrCreateIdentity(const std::filesystem::path& user_dir);
 
+// Reads <user_dir>/online_identity.ini without creating it; not ok() when there is none.
+Identity LoadExistingIdentity(const std::filesystem::path& user_dir);
+
 // Random, never written: the identity of a second instance on the same PC.
 Identity MakeEphemeralIdentity();
 

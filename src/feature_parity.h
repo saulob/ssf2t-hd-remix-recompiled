@@ -242,6 +242,9 @@ inline constexpr Feature kFeatures[] = {
      "tests/online_service_tests.cpp,tests/online_protocol_tests.cpp,tests/online_identity_tests.cpp,"
      "tests/online_setting_tests.cpp,tests/friend_field_tests.cpp,tests/wire_parity_tests.cpp,"
      "tests/online_websocket_tls_tests.cpp,tests/clipboard_sdl_tests.cpp", "kOnlineNameLabel,kOnlineEnabledLabel,kOnlineLobbyLabel,Your friend code,Add a friend"},
+    {"Bug reports", "", "", "", "", "", "", "",
+     "src/bug_report.cpp,src/bug_report_page.cpp,src/log_scrubber.cpp,src/report_history.cpp,src/online/incident_client.cpp",
+     "", "", "", "", "tests/bug_report_tests.cpp,tests/log_scrubber_tests.cpp"},
     {"Ping display", "", "", "kOnlinePingSetting", "", "", "", "F3=src/ping_display.cpp", "src/ping_display.cpp", "", "",
      "", "", "tests/online_setting_tests.cpp", "kOnlinePingLabel"},
     {"Connection Test", "", "", "", "kConnectionTestSetting", "", "", "",

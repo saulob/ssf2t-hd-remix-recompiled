@@ -92,6 +92,17 @@ Identity LoadOrCreateIdentity(const fs::path& user_dir) {
   return Read(file);
 }
 
+Identity LoadExistingIdentity(const fs::path& user_dir) {
+  const fs::path file = user_dir / kIdentityFileName;
+  std::error_code ec;
+  if (!fs::exists(file, ec)) {
+    Identity id;
+    id.error = "no online identity yet";
+    return id;
+  }
+  return Read(file);
+}
+
 Identity MakeEphemeralIdentity() {
   const std::string token = RandomHex(32);
   if (token.empty()) {

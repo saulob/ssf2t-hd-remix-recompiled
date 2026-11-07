@@ -66,7 +66,7 @@ A friend row is `{player, name, online, state, platform, version, guest, build, 
 `online`, `player_match`, `connecting` or `in_game`.
 
 `capabilities` is `{protocol_version, worker_build, public_endpoints, relay_supported, relay_max_payload, fight_telemetry,
-secret_characters, public_lobby}`; an older service sends none, which clients read as no relay, no fight telemetry and no secret characters. `match.created` and the `pm.join` answer carry `relay_token` when
+secret_characters, public_lobby, bug_reports}`; an older service sends none, which clients read as no relay, no fight telemetry, no secret characters and no reports. `match.created` and the `pm.join` answer carry `relay_token` when
 the match has a relay.
 
 Events: `friend.request`, `friend.added`, `friend.removed`, `friend.status`, `friend.offline`, `match.created`
@@ -157,6 +157,36 @@ reads as "no Lobby" and stops asking. The protocol number stays 3 and no other o
   compatibility (start one with `SSF2T_LOBBY=ws://127.0.0.1:8791/` on each), adding a friend from the Lobby and
   disappearance after Off or a closed connection.
 
+### Bug reports (optional, protocol 3 unchanged)
+
+The launcher's Bug Report page files a problem report with three operations. Service `capabilities.bug_reports` is
+`true` (worker build `2026-11-07-bug-reports`); a client that sees no such capability sends no report, and a Worker that
+does not know the operations answers `bad_request`, which the client reads as "no reports" and stops asking.
+The protocol number stays 3 and no other operation changed.
+
+- `incident.file` (after `hello`; the client signs in with `presence: false`) takes the report's fields, all strings:
+  `description` (10 to 500 characters, no control characters other than line feed and tab), `launcher_version`,
+  `guest` (`base013` or `tu023`), `platform`, `operating_system`, `runtime` (each up to 64 characters),
+  `log_file` (`ssf2t_hd_remix_<3 to 10 digits>.log`), `log_clipped` (`yes` or `no`) and `log_text` (up to 64 KiB of UTF-8, never
+  empty). Any other field, any missing field or any value out of range is refused (`bad_request`, or `too_large` for a
+  size) and nothing is stored. The answer is `{ticket, receipt, submitted_at}`: a ticket `SSF2-XXXXXX` and a 256-bit random
+  receipt, shown once.
+- `incident.status` takes `{reports: [{ticket, receipt}]}` (at most 30) and answers
+  `{reports: [{ticket, status, status_updated_at, fixed_version?, player_message?}]}` for the claims whose receipt matches.
+  A wrong receipt and an unknown ticket give the same answer: the claim is left out.
+- `incident.read` takes `{ticket, receipt}` and answers the stored report (the same fields plus `submitted_at`) or
+  `not_found`.
+
+`incident.status` and `incident.read` need no `hello`: the receipt is the proof. Only `incident.file` may exceed the
+usual 4096-character frame, up to 160 Ki characters; the frame must begin `{"op":"incident.file"`, which lets the object
+refuse every other large frame without parsing it. Statuses are `new` (shown as Open), `investigating`, `fixed`,
+`cannot_reproduce`, `duplicate`, `not_a_bug` and `closed`.
+
+**Storage** (the Durable Object's SQLite, apart from every gameplay and metrics table): `incidents` (the report, newest 500
+kept), `incident_tracking` (ticket, a salted SHA-256 of the receipt, status, fixed version and message; newest 5000 kept) and
+`incident_quota` (two salted 128-bit hashes, one of the account and one of the address group, and the time; rows older than
+a day are deleted). A report row holds no account, address, token, hash of a token or Friend Code.
+
 ### Fight telemetry (optional, protocol 3 unchanged)
 
 A client that sets `telemetry: true` in `hello` reports its online fights with `telemetry.fight`:
@@ -205,6 +235,14 @@ None of this changes the protocol, the wire format or what a released client see
 - **Invites**: 20 per player burst, one per 3 s, and 60 per address burst, one per 2 s.
 - **Public Lobby**: `lobby.list` 6 per player burst, one per 5 s, and `lobby.publish` shares the social message limit;
   neither writes to SQL (see Public Lobby above). Loopback is exempt from the read limit in `local/server.js`.
+- **Bug reports**: an `incident.file` attempt spends from three in-memory buckets before anything is validated or
+  written: everyone (40 burst, one per 3 s), the player (8 burst, one per 60 s) and the address group (16 burst, one per 30 s).
+  An accepted report then needs the SQL quota: 2 per hour and 10 per day per player, 30 per day per address group and 300
+  per day in all (answers `incident_hourly_limit`, `incident_daily_limit` and `limit`). Lookups have their own buckets:
+  everyone (200 burst, 2 per s), `incident.status` per address (20 burst, one per 15 s) and `incident.read` per address
+  (10 burst, one per 30 s) (`limit`). A refused or invalid request writes nothing. Report text is never logged and never
+  reaches a metric; the diagnostics only count `incident_filed`, `incident_limited`, `incident_hourly_limited`,
+  `incident_daily_limited` and `incident_lookup_limited`.
 - **Relay**: budgets are unchanged. A sender that keeps producing frames no client sends (malformed, bad token, not in
   a match, a seat that was taken, a relay that closed while both players are seated, before `hello`) is allowed 200
   of them, then 5 per second, and is then closed with code 1008. A peer that is away (grace, resuming) is not a fault.
@@ -228,6 +266,16 @@ mismatches, fights and matches with each, mirrors and the cross pairings), the l
 match list is read live and shows a short id only; relay tokens, connection ids, friend codes and addresses never
 leave the hub.
 
+After signing in, two tabs sit at the top, **Dashboard** (selected by default, the metrics above) and **Bugs**, and the same token
+authorizes both. Only the selected tab is shown, the choice survives a reload in the same browser tab, and Bugs is there even
+with no reports (it says "No bug reports yet."). Bugs lists the stored reports newest first (ticket, time,
+port version, game image, platform, operating system and the start of the description) with filters, then one report with
+its description, facts and sanitized log. **Download log** and **Copy log** give the log exactly as stored, and **Save status**
+sets the status, the fixed version and the message the player sees in My reports. The routes are
+`GET /admin/api/incidents`, `GET /admin/api/incidents/<ticket>`, `GET /admin/api/incidents/<ticket>/log` and
+`POST /admin/api/incidents/<ticket>/status` (body `{status, fixed_version?, player_message?}`), all answering 401 without the
+token and 400 for a malformed ticket. They reach the Durable Object only through the Worker, after the token matched.
+
 ```
 npx wrangler secret put SSF2T_DASHBOARD_TOKEN
 ```
@@ -243,6 +291,10 @@ node local/server.js                # ws://127.0.0.1:8791/ (add --db <file> to k
 ```
 
 To point game instances at it, set `SSF2T_LOBBY=ws://127.0.0.1:8791/` in the environment of each.
+
+The local server files, reads and answers bug reports like the Worker (`test/incidents.test.js` covers the protocol, the storage,
+the limits and the admin routes, including a full-size report over a real WebSocket), so the launcher's Bug Report page can be
+tried against it without Cloudflare. The dashboard is not served by the local server; the admin routes are tested in-process.
 
 ## Deploy (manual; nothing in this repository deploys)
 

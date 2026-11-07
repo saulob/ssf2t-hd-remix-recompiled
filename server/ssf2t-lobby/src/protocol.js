@@ -34,7 +34,7 @@ export const BUCKETS = {
   social: { burst: 10, perSecond: 1 },
 };
 
-export const WORKER_BUILD = '2026-11-06-lobby';
+export const WORKER_BUILD = '2026-11-07-bug-reports';
 
 // Binary relay frames: magic "SR", version, type, token (u32), sequence (u32), payload length (u16), payload.
 export const RELAY = {
@@ -59,6 +59,7 @@ export const CAPABILITIES = {
   fight_telemetry: true,
   secret_characters: true,
   public_lobby: true,
+  bug_reports: true,
 };
 
 export { SECRET_KEYS };

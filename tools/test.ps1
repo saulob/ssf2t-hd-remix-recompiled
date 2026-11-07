@@ -231,6 +231,8 @@ $Suites = @(
     @('online rendezvous', 'online_rendezvous', 'Direct / Relay'),
     @('online connection test', 'online_connection', 'Online protocol', 'Direct / Relay'),
     @('friend code field', 'friend_field', 'Online protocol'),
+    @('bug report: log privacy scrubber', 'log_scrubber', 'Online protocol', 'Saves / user data'),
+    @('bug report: logs, preview, tickets, My reports, service calls', 'bug_report', 'Online protocol', 'Saves / user data', 'Settings'),
     @('online setting', 'online_setting', 'Settings'),
     @('player match', 'player_match', 'Player Match', 'Base013', 'TU023'),
     @('guest ui', 'guest_ui', 'Player Match'),

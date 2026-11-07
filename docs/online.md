@@ -235,6 +235,52 @@ Match finds opponents: matches still start from Multiplayer > Online Match betwe
 - An older service without the Lobby makes the tab say so; the other tabs and Online play are not affected. If the Lobby
   cannot be read for a moment, the tab says so and keeps the last list; the rest of the page stays online.
 
+## Bug reports
+
+The launcher's **Bug Report** page sends a problem report to the developer: your description and one game log. Nothing is
+sent until you press **Send report**, and nothing about the log leaves your PC before you can read it.
+
+- **What is sent.** Only these fields: your description (10 to 500 characters), the port version, the game image
+  (`base013` or `tu023`), the platform, the operating system, the ReXGlue runtime version, the log's file name, whether
+  the log was shortened, and the log text after the privacy filter. No game files, saves, screenshots, settings or
+  account details are attached.
+- **When it is sent.** Only when you press **Send report**, over its own short connection to the online service. Online
+  play does not have to be On. Opening the page, writing a description and choosing a log send nothing. When the launcher
+  opens, when you open the page (at most every 30 seconds) and when you press **Refresh**, it asks the service about the
+  reports already listed in **My reports**, sending only their receipts (see below), never a new log.
+- **Choosing the log.** The page lists the newest five `ssf2t_hd_remix_<number>.log` files of the logs folder (the one
+  **Open logs folder** on About opens): this launcher's own session first, then newest first. Sessions that only opened and
+  closed the launcher are left out. The newest earlier session that reached the game is chosen for you; pick another if the
+  problem was in a different run. With **Detailed logging** off, only sessions that crashed keep a log.
+- **Preview.** **Open preview** shows exactly what will be sent: the report is built once, and the preview and the request
+  both read that same text. Change the description or the log and the preview closes, so it can never be out of date.
+- **Privacy filtering.** Before the preview is built the launcher takes out of the log and the description: your Windows
+  user name and computer name, your profile and home folders, the install and data folders, other folders on your disks
+  (only the file name is kept), network share paths, IPv4 and IPv6 addresses (version numbers such as `0.0.2.3` stay),
+  the online token and the hash the service keeps of it, receipts and authorization or bearer values, any password, secret or
+  token written as `name=value`, match, session and invite identifiers, your Online name and every Friend Code (yours
+  becomes `<own-code>`, anyone else's `<friend-code>`). Control characters are removed and line ends become LF. Automatic
+  filtering cannot promise to find everything, so read the preview if you want to be certain.
+- **Size.** A report holds at most 64 KiB of log. When the log is longer, the end of it is sent (it is where a problem
+  usually is), starting at a whole line, and the report says that the log was shortened. A description cannot pass 500
+  characters; the service refuses anything larger than these limits.
+- **Ticket.** A sent report returns a ticket such as `SSF2-7KQ4WX` (the page can copy it). The service also returns a private
+  receipt that proves the report is yours; it is stored only in the file `bug_reports.json` in your user folder, never in
+  a log, and the service keeps just a salted hash of it.
+- **My reports.** Lists the reports sent from this PC (the latest 30), with their last known status and date. **View
+  details** shows the facts of a report and **What was sent** reads the stored report back from the service with its receipt.
+  **Remove from this PC** only forgets it here. Reports sent from another PC or another user folder do not appear.
+- **Status.** The developer can mark a report **Open**, **Investigating**, **Fixed** (optionally with the version that fixes it),
+  **Cannot reproduce**, **Duplicate**, **Not a bug** or **Closed**, and leave a short message. The launcher checks when it opens, when
+  you open the page and when you press **Refresh**, marks a changed report **Updated** and puts a dot on the sidebar entry.
+- **Limits.** Two reports per hour and ten per day from one install, and fewer than that from one address and from everyone
+  together; the page says which limit was reached.
+- **An older online service** answers a report with an error the page explains ("The online service cannot take reports
+  yet"); your description is kept, and Play, Friends, Lobby, Player Match and every Online Match work as before.
+
+Files: the receipts and the list are `bug_reports.json` in the user folder, written next to `online_identity.ini`. The
+service side is described in [server/ssf2t-lobby/README.md](../server/ssf2t-lobby/README.md).
+
 ## Secret characters
 
 How the two Ultra fighters work inside the game is described in [ultra-fighters.md](ultra-fighters.md). Akuma, Evil Ryu and Violent Ken each appear in an Online Match only when both players have them on and both builds

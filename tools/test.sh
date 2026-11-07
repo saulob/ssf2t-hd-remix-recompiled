@@ -303,6 +303,8 @@ SUITES=(
   "online rendezvous (STUN, UDP punch, relay selection)|ssf2t_online_rendezvous_tests|$A_RELAY;$A_NET"
   "online connection test|ssf2t_online_connection_tests|$A_NET;$A_RELAY"
   "friend code field|ssf2t_friend_field_tests|$A_NET"
+  "bug report: log privacy scrubber|ssf2t_log_scrubber_tests|$A_NET;$A_DATA"
+  "bug report: logs, preview, tickets, My reports, service calls|ssf2t_bug_report_tests|$A_NET;$A_DATA;$A_SET"
   "online setting|ssf2t_online_setting_tests|$A_SET"
   "player match|ssf2t_player_match_tests|$A_PM;$A_B13;$A_TU"
   "guest ui|ssf2t_guest_ui_tests|$A_PM"

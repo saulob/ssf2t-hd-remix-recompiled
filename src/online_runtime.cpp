@@ -125,6 +125,8 @@ online::UserSettings SavedSettings() {
 
 }  // namespace
 
+const char* OnlinePlatformName() { return PlatformName(); }
+
 void ConfigureOnline(const std::filesystem::path& user_dir, GuestVersion guest) {
   std::lock_guard<std::mutex> lock(g_mutex);
   g_user_dir = user_dir;

@@ -31,7 +31,9 @@
 #include "trg/launcher.h"
 #include "trg/platform.h"
 
+#include "active_log.h"
 #include "aspect_ratio.h"
+#include "bug_report_page.h"
 #include "character/akuma.h"
 #include "character/akuma_bug_fixes.h"
 #include "character/character_packages.h"
@@ -48,6 +50,7 @@
 #include "localization/active_language.h"
 #include "localization/ui_text.h"
 #include "local_player_name.h"
+#include "netplay/packet.h"
 #include "netplay_setting.h"
 #include "online_page.h"
 #include "online_runtime.h"
@@ -60,6 +63,7 @@
 #include "platform.h"
 #include "presentation_setting.h"
 #include "settings.h"
+#include "system_info.h"
 #include "update_config.h"
 #include "updater/update_ui.h"
 
@@ -209,6 +213,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     sponsor_icon_ = LoadLauncherImage(paths_.immediate_drawer, "sponsor-heart.png", true);
     trg::SetTranslator(&TranslateLauncherText);
     localization::SetActiveLanguage(settings_.Get(kLanguageSetting, kDefaultLanguage));
+    bug_report_page_ = std::make_unique<BugReportPage>(
+        BugReportPage::Places{paths_.logs_dir, ActiveLogFile(), paths_.user_dir, {paths_.game_dir, PortFolder()}});
     launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
     updater_ = std::make_unique<trg::update::UpdateController>(MakeUpdateConfig(PortFolder()));
     updater_->StartCheck();
@@ -230,6 +236,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     PollInstall();
     PollUpdate();
     PollOnline();
+    CheckSentReports();
     TrackPlacement();
     if (!nav_taken_) {
       saved_nav_flags_ = io.ConfigFlags & kNavFlags;
@@ -362,6 +369,41 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     if (!notices.empty()) {
       launcher_->SetStatus(notices.back(), 5.0);
     }
+  }
+
+  // Once, when the launcher opens: only the receipts of reports already sent leave the PC, nothing new is uploaded.
+  void CheckSentReports() {
+    if (std::exchange(sent_reports_checked_, true)) {
+      return;
+    }
+    bug_report_page_->CheckReports(BugContext());
+  }
+
+  BugReportContext BugContext() {
+    if (!bug_facts_) {
+      ReportFacts facts;
+      facts.launcher_version = SSF2T_PORT_VERSION;
+      facts.guest = game_check_.guest == GuestVersion::kTitleUpdate023 ? online::kGuestTu023 : online::kGuestBase013;
+      facts.platform = OnlinePlatformName();
+      facts.operating_system = OsDescription();
+      facts.runtime = "ReXGlue SDK " REXGLUE_VERSION_STRING;
+      bug_facts_ = facts;
+    }
+    BugReportContext context;
+    context.facts = *bug_facts_;
+    context.online_name = online::CleanOnlineName(settings_.Get(kOnlineNameSetting, kDefaultOnlineNameValue));
+    context.service.url = Online().url();
+    context.service.guest = context.facts.guest;
+    context.service.build = netplay::kNetplayBuild;
+    context.service.version = context.facts.launcher_version;
+    context.service.platform = context.facts.platform;
+    context.service.name = context.online_name;
+    context.service.log = [](const std::string& line) { REXLOG_INFO("{}", line); };
+    const online::ServiceCapabilities capabilities = Online().Capabilities();
+    if (capabilities.announced) {
+      context.service_takes_reports = capabilities.bug_reports;
+    }
+    return context;
   }
 
   bool InstallBusy() const { return install_.running(); }
@@ -538,6 +580,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
          [this](trg::Ui& ui) { online_page_.Draw(ui); }, [this] { return online_page_.NeedsAttention(); }},
         {"Achievements", "Your achievements on this PC.", [this](trg::Ui& ui) { PageAchievements(ui); }},
         {"Controls", "Controller and keyboard.", [](trg::Ui& ui) { PageControls(ui); }},
+        {"Bug Report", "Report a problem to the developer, with the game log you choose.",
+         [this](trg::Ui& ui) { PageBugReport(ui); }, [this] { return bug_report_page_->HasReportUpdates(); }},
         {"About", "About this port, and where your files and settings live.",
          [this](trg::Ui& ui) { PageAbout(ui); }},
     };
@@ -1068,6 +1112,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     ui.settings().Set(action.key, binding);
   }
 
+  void PageBugReport(trg::Ui& ui) { bug_report_page_->Draw(ui, BugContext()); }
+
   void PageAbout(trg::Ui& ui) {
     ui.SponsorCard(
         "This open source PC port is maintained and developed in my free time. If you enjoy the project and would "
@@ -1133,6 +1179,9 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   std::unique_ptr<rex::ui::ImmediateTexture> sponsor_icon_;
   std::unique_ptr<trg::Launcher> launcher_;
   OnlinePage online_page_;
+  std::unique_ptr<BugReportPage> bug_report_page_;
+  std::optional<ReportFacts> bug_facts_;
+  bool sent_reports_checked_ = false;
   PlayAttemptDetector play_attempt_;
   ImGuiGamepad gamepad_;
   bool nav_taken_ = false;
