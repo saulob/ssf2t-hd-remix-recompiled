@@ -1,7 +1,9 @@
 #include "online_page.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cfloat>
+#include <cmath>
 #include <cstring>
 #include <string>
 
@@ -32,6 +34,7 @@ constexpr char kInfiniteTimeOff[] = "Infinite Time was turned off because Online
 constexpr char kSecretHelp[] =
     "Akuma, Evil Ryu and Violent Ken are in an Online Match only when both players have them on. Turn them on in "
     "Gameplay.";
+constexpr char kLobbyPending[] = "Public Lobby will be available in this version.";
 
 int OnlineNameFilter(ImGuiInputTextCallbackData* data) {
   return data->EventChar < 0x80 && online::OnlineNameChar(char(data->EventChar)) ? 0 : 1;
@@ -104,6 +107,7 @@ std::vector<std::string> OnlinePage::Tick(trg::SettingsStore& settings) {
   online::UserSettings edited;
   edited.enabled = settings.GetBool(kOnlineEnabledSetting, kDefaultOnlineEnabled);
   edited.name = settings.Get(kOnlineNameSetting, kDefaultOnlineNameValue);
+  tabs_.TrackOnlinePlay(edited.enabled);
   std::vector<std::string> notices;
   if (edited.enabled && settings.GetBool(kInfiniteTimeSetting, kDefaultInfiniteTime)) {
     settings.Set(kInfiniteTimeSetting, "false");
@@ -134,11 +138,12 @@ bool OnlinePage::NeedsAttention() const {
 void OnlinePage::Draw(trg::Ui& ui) {
   const bool on = ui.settings().GetBool(kOnlineEnabledSetting, kDefaultOnlineEnabled);
   const online::Snapshot state = Online().snapshot();
-  for (const OnlineSection section : OnlinePageSections(on, state.incoming.size())) {
+  for (const OnlineSection section : OnlinePageSections(on, tabs_.selected(), state.incoming.size())) {
     switch (section) {
       case OnlineSection::kOnlinePlay:
         ui.Toggle(kOnlineEnabledLabel, kOnlineEnabledHelp, kOnlineEnabledSetting, kDefaultOnlineEnabled, "Off", "On");
         break;
+      case OnlineSection::kTabs: DrawTabs(ui, state.incoming.size()); break;
       case OnlineSection::kFriendRequests: DrawFriendRequests(ui, state); break;
       case OnlineSection::kOnlineName: OnlineNameRow(ui); break;
       case OnlineSection::kFriendCode: DrawFriendCode(ui, state); break;
@@ -148,9 +153,53 @@ void OnlinePage::Draw(trg::Ui& ui) {
         break;
       case OnlineSection::kSecretCharacters: DrawSecretCharacters(ui, state); break;
       case OnlineSection::kFriends: DrawFriends(ui, state); break;
+      case OnlineSection::kLobby: DrawLobby(ui); break;
     }
   }
   ui.EndRows();
+}
+
+// Plain buttons, so keyboard navigation and its highlight work as anywhere else on the page.
+void OnlinePage::DrawTabs(trg::Ui& ui, size_t friend_requests) {
+  ui.Spacer(4);
+  const trg::Theme& t = ui.theme();
+  const float s = ui.scale();
+  const float left = ImGui::GetCursorScreenPos().x;
+  const float width = ImGui::GetContentRegionAvail().x;
+  float bottom = 0.0f;
+  float selected_left = 0.0f;
+  float selected_right = 0.0f;
+  ImGui::PushFont(ui.fonts().semibold, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(14.0f * s, 7.0f * s));
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+  ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ButtonHovered, t.frame_hot);
+  ImGui::PushStyleColor(ImGuiCol_ButtonActive, t.frame_active);
+  for (const OnlineTab tab : kOnlineTabs) {
+    const bool selected = tab == tabs_.selected();
+    if (tab != kOnlineTabs[0]) ImGui::SameLine(0.0f, 0.0f);
+    ImGui::PushID(int(tab));
+    ImGui::PushStyleColor(ImGuiCol_Text, selected ? t.accent : t.dim);
+    if (ImGui::Button(OnlineTabTitle(Tr(OnlineTabLabel(tab)), tab, friend_requests).c_str())) tabs_.Select(tab);
+    ImGui::PopStyleColor();
+    ImGui::PopID();
+    bottom = ImGui::GetItemRectMax().y;
+    if (selected) {
+      selected_left = ImGui::GetItemRectMin().x;
+      selected_right = ImGui::GetItemRectMax().x;
+    }
+  }
+  ImGui::PopStyleColor(3);
+  ImGui::PopStyleVar(3);
+  ImGui::PopFont();
+  ImDrawList* draw = ImGui::GetWindowDrawList();
+  const float base = std::floor(bottom);
+  draw->AddRectFilled(ImVec2(left, base - 1.0f), ImVec2(left + width, base),
+                      ImGui::GetColorU32(ImGuiCol_TableBorderLight));
+  const float thick = std::max(2.0f, std::round(2.0f * s));
+  draw->AddRectFilled(ImVec2(selected_left, base - thick), ImVec2(selected_right, base), trg::Col(t.accent));
+  ui.Spacer(4);
 }
 
 void OnlinePage::DrawFriendRequests(trg::Ui& ui, const online::Snapshot& state) {
@@ -307,7 +356,6 @@ void OnlinePage::DrawSecretCharacters(trg::Ui& ui, const online::Snapshot& state
 }
 
 void OnlinePage::DrawFriends(trg::Ui& ui, const online::Snapshot& state) {
-  ui.Heading("Friends");
   if (state.connection == online::Connection::kOffline || state.connection == online::Connection::kError) {
     ui.Help(state.connection_text.empty() ? kUnreachable : state.connection_text.c_str());
   } else if (state.connection == online::Connection::kChecking) {
@@ -345,5 +393,7 @@ void OnlinePage::DrawFriends(trg::Ui& ui, const online::Snapshot& state) {
   }
   ui.EndRows();
 }
+
+void OnlinePage::DrawLobby(trg::Ui& ui) { ui.Paragraph(kLobbyPending); }
 
 }  // namespace ssf2t

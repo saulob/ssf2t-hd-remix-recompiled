@@ -429,7 +429,10 @@ Could not copy the friend code.	Não foi possível copiar o código de amigo.
 Connection test	Teste de Conexão
 Testing...	Testando...
 Run test	Executar teste
+Settings	Configurações
 Friends	Amigos
+Lobby	Lobby
+Public Lobby will be available in this version.	O Lobby público estará disponível nesta versão.
 Add a friend	Adicionar amigo
 Their friend code, for example ABCD-EFGH.	O código de amigo do jogador, por exemplo ABCD-EFGH.
 Send request	Enviar pedido

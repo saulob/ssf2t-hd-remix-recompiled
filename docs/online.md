@@ -16,12 +16,15 @@ automatically; it has not been tried between real players over the internet.
 
 ## Playing
 
-1. Launcher > **Online** > **Online play** On. The rest of the page appears only then. **Online name** is what other
-   players see (up to 16 letters, digits, `-` or `_`; the field takes nothing else).
+1. Launcher > **Online** > **Online play** On. The **Settings**, **Friends** and **Lobby** tabs appear only then, and
+   turning it on always opens **Settings**. **Online name** is what other players see (up to 16 letters, digits, `-` or
+   `_`; the field takes nothing else). **Settings** also holds Your friend code, the Connection test, the Ping display
+   and the Secret characters status. A Play refused for the missing Connection test returns to it.
 2. Share **Your friend code** (`XXXX-XXXX`, **Copy** puts exactly that on the clipboard). Paste or type a friend's code
-   under **Friends**; the field shows it as `XXXX-XXXX` whatever case, spacing or hyphen it came with. **Send request**
-   is enabled once it is a valid code (letters except I and O, digits 2 to 9). They **Accept** or **Decline** the card
-   that appears on their page.
+   in the **Friends** tab; the field shows it as `XXXX-XXXX` whatever case, spacing or hyphen it came with. **Send
+   request** is enabled once it is a valid code (letters except I and O, digits 2 to 9). They **Accept** or **Decline**
+   the card in their **Friends** tab, which shows the number of waiting requests; the sidebar's dot marks them too.
+   **Lobby** only holds a placeholder for now: the public Lobby has no service support yet.
 3. A friend row shows `Online · Windows · v0.3.0`, `Online Match · ...` while they host one, or `In game · ...`.
    There are no match buttons in the launcher.
 4. Both press **Play**. The game signs in to the online service again by itself; nothing has to stay open.
@@ -104,7 +107,8 @@ temporary identity.
   search and join, the match, reconnect.
   `friend_view.*`: what a friend row shows. `connection_test.*`, `stun.*`, `upnp.*`, `net_addr.*`: the Connection test.
   `lobby_link.*`, `websocket_*`: transport.
-  `src/online_page.*`, `src/online_runtime.*`, `src/ping_display.*`: launcher page, process-wide service, overlay.
+  `src/online_page.*`, `src/online_tabs.h`, `src/online_runtime.*`, `src/ping_display.*`: launcher page and its tabs,
+  process-wide service, overlay.
 - `src/player_match*`: the game side. The title's own wrappers for XamUserGetSigninState, XUserCheckPrivilege,
   XamUserGetSigninInfo, XUserGetXUID and XNetGetTitleXnAddr report the title-local LIVE profile; the
   `RequestOnlineSignIn` script function (the Online Match gate) runs as the game wrote it, or shows
