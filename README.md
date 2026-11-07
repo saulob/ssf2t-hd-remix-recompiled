@@ -34,6 +34,7 @@
 - **In-game frame counter** (**F2**), online **Ping display** (**F3**), and optional frame rate or render resolution in
   the window title.
 - **Evil Ryu and Violent Ken** (optional, off by default): two extra fighters with their own Character Select cells, moves, palettes, presentation and online compatibility. Turn them on in the launcher's Gameplay page; see [docs/ultra-fighters.md](docs/ultra-fighters.md).
+- **Akuma bug fixes** (optional, off by default, experimental): corrects HD Remix Akuma bugs documented by designer David Sirlin. See [Akuma bug fixes](#akuma-bug-fixes).
 - **Portable user data**: saves, settings and achievements are in a `user_data` folder beside the program.
 
 The game runs at its original speed of 60 updates per second.
@@ -91,6 +92,26 @@ Your choices are saved to `settings.toml` in the `user_data` folder next to the 
 - **About**: GitHub Sponsors link, versions, folders (game, saves and settings, logs), **Show settings file**, **Detailed logging**, **Open logs folder** and **Reset all settings**
 
 During gameplay the mouse cursor follows the last input device: mouse activity shows it, keyboard or controller activity hides it, and mouse-driven overlays always show it.
+
+### Akuma bug fixes
+
+**Akuma bug fixes** is an optional Gameplay setting, **Off by default**. It is separate from **Enable Akuma**: Enable Akuma makes him selectable, this setting decides how he plays. It changes HD Remix Akuma only, including a CPU-controlled one. Classic mode stays original, and so do online matches and the developer Netplay Test, because the two players' games must run the same way and the option is not negotiated between them.
+
+Designer David Sirlin documented four unintended bugs in HD Remix Akuma ([Akuma, August 18, 2014](https://www.sirlin.net/sf-hdr/akuma), under "Bugs That Ruined Akuma"). This option follows [Issue #13](https://github.com/saulob/ssf2t-hd-remix-recompiled/issues/13). It is experimental: nothing here has been validated by experienced HD Remix players yet.
+
+| Sirlin's bug | Status | What the option does |
+| --- | --- | --- |
+| Raging Demon: about 25% chance to jump out after air-fireball blockstun | Corrected, needs community validation | While the opponent holds up in the tick between blockstun and pre-jump, the dash waits, so the jump always starts. |
+| Red fireball: invulnerable, unthrowable startup | Corrected, needs community validation | The first two startup frames get the standing hurt boxes the rest of the startup already uses. Timing and recovery are unchanged. |
+| Dragon Punch: zero-frame startup | Corrected, needs community validation | The extra hit on the move's first frames is removed. The article gives no target value: the first hit now comes from the attack data Ryu's Dragon Punch starts with, on the same pose, about 4 frames in (5 for fierce). Total length is unchanged. |
+| Air fireball: oversized hit box behind the projectile | Not corrected yet | The box is identified, but neither the article nor the game data gives the intended size, and it is shared with Classic. |
+
+Please compare Off and On in Training and report differences on Issue #13:
+
+- **Raging Demon:** block an air fireball, land, and start Raging Demon during the blockstun while the opponent holds up. With the option On the jump should always come out. Without holding up, or after a move the opponent is committed to, Demon should still catch as before.
+- **Red fireball:** hit or throw Akuma on the first frames of his red fireball. With the option On this should work. Speed, projectile and recovery should match Off.
+- **Dragon Punch:** try safe jumps against each strength. With the option On, Akuma should no longer hit on the first frame. Invulnerability, height and recovery should match Off.
+- **Air fireball** (unchanged, for reference): Honda's torpedo passing under the back of the fireball is the case the article names. Reports of where the collision feels wrong help finish this fix.
 
 ## Online play
 

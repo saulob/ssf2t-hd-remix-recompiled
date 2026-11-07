@@ -221,6 +221,7 @@ $Suites = @(
     @('debug hotkeys removed (F1, F4-F8 dispatch gone, real inputs wired)', 'debug_hotkeys_removed', 'Base013', 'TU023'),
     @('console removed (Backtick bind, key reservation, logging kept)', 'console_removed', 'Overlays / hotkeys'),
     @('skip intro (setting, launcher row, gameflow patch, hooks of both builds)', 'skip_intro', 'Base013', 'TU023', 'Hooks and patches', 'Settings'),
+    @('akuma bug fixes (setting, Remix frame patches on both builds, Classic and online safety, rejection)', 'akuma_bug_fixes', 'Base013', 'TU023', 'Hooks and patches', 'Settings'),
     @('versus cpu (opponent model, lobby patches, guest AI path on both images, hooks)', 'versus_cpu', 'Local multiplayer', 'Base013', 'TU023', 'Hooks and patches'),
     @('character moves page, winner quotes and legacy text lines', 'character_moves', 'Base013', 'TU023'),
     @('ultra endings (Evil Ryu and Violent Ken: package, text, routing, patches, guest switch)', 'ultra_ending', 'Base013', 'TU023', 'Hooks and patches'),

@@ -33,6 +33,7 @@
 
 #include "aspect_ratio.h"
 #include "character/akuma.h"
+#include "character/akuma_bug_fixes.h"
 #include "character/character_packages.h"
 #include "character/ultra_fighters.h"
 #include "dpi.h"
@@ -914,6 +915,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
               "ssf2t_show_frame_counter", false, "Hidden", "Shown");
     ui.Toggle(character::kEnableAkumaLabel, character::kEnableAkumaHelp, character::kEnableAkumaSetting,
               character::kDefaultEnableAkuma, "Off", "On");
+    ui.Toggle(character::kAkumaBugFixesLabel, character::kAkumaBugFixesHelp, character::kAkumaBugFixesSetting,
+              character::kDefaultAkumaBugFixes, "Off", "On");
     ui.Toggle(character::kEnableUltraFightersLabel, character::kEnableUltraFightersHelp,
               character::kEnableUltraFightersSetting, character::kDefaultEnableUltraFighters, "Off", "On");
     if (const char* notice = character::CharacterPackageNotice();

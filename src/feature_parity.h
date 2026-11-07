@@ -61,6 +61,13 @@ inline constexpr Feature kFeatures[] = {
      "src/character/akuma.cpp,src/character/akuma_navigation.cpp,src/character/select_activity.cpp,"
      "src/character/akuma_portrait.cpp,src/character/akuma_select.cpp",
      "", "", "", "", "tests/secret_select_tests.cpp", "kEnableAkumaLabel"},
+    {"Akuma bug fixes",
+     "AkumaFixes::kFighterBlock,AkumaFixes::kHdStyle,AkumaFixes::kInitFighter1,AkumaFixes::kRemixFighterData,"
+     "AkumaFixes::kThrowAttempt1",
+     "AkumaFixes::kInitFighter1,AkumaFixes::kThrowAttempt1",
+     "kAkumaBugFixesSetting", "", "", "", "",
+     "src/character/akuma_bug_fixes.cpp",
+     "", "", "", "", "tests/akuma_bug_fixes_tests.cpp", "kAkumaBugFixesLabel"},
     {"Ultra fighters (Evil Ryu and Violent Ken)",
      "Audio::kSoundFlags,Audio::kSoundQueue,Audio::kSoundQueueHead,Audio::kSoundQueueTail,"
      "Audio::kSoundSlots,Confirm::kHdStyle,Confirm::kOldVersionPrompt,Cursor::kHdPositions,Cursor::kLive,"

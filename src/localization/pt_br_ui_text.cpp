@@ -100,6 +100,8 @@ German	Alemão
 Italian	Italiano
 Spanish	Espanhol
 Skip intro	Pular introdução
+Akuma bug fixes	Correções do Akuma
+Experimental. Fixes HD Remix Akuma bugs documented by designer David Sirlin: red fireball startup, Dragon Punch startup and the Raging Demon escape after blockstun. Classic Akuma and online matches stay original.	Experimental. Corrige bugs do Akuma do HD Remix documentados pelo designer David Sirlin: início da bola de fogo vermelha, início do Dragon Punch e a fuga do Raging Demon após bloquear. O Akuma do modo Classic e as partidas online continuam originais.
 Evil Ryu and Violent Ken are unavailable: required character files are missing or damaged. Reinstall this release.	Evil Ryu e Violent Ken estão indisponíveis: arquivos de personagem necessários estão ausentes ou danificados. Reinstale esta versão.
 Evil Ryu is unavailable: required character files are missing or damaged. Reinstall this release.	Evil Ryu está indisponível: arquivos de personagem necessários estão ausentes ou danificados. Reinstale esta versão.
 Violent Ken is unavailable: required character files are missing or damaged. Reinstall this release.	Violent Ken está indisponível: arquivos de personagem necessários estão ausentes ou danificados. Reinstale esta versão.

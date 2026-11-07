@@ -24,6 +24,7 @@
 
 #include "aspect_ratio.h"
 #include "character/akuma.h"
+#include "character/akuma_bug_fixes.h"
 #include "character/ultra_fighters.h"
 #include "crash_report.h"
 #include "diagnostics.h"
@@ -99,6 +100,7 @@ std::vector<std::string> GameSettingKeys() {
       kFightAreaSetting,
       kInfiniteTimeSetting,
       ssf2t::character::kEnableAkumaSetting,
+      ssf2t::character::kAkumaBugFixesSetting,
       ssf2t::character::kEnableUltraFightersSetting,
       kNetplayDeterminismSetting,
       kNetplayRoleSetting,

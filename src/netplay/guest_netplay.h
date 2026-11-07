@@ -35,7 +35,7 @@ inline constexpr uint32_t kInputTableStateBytes = kPlayersInTable * kInputEntryS
 inline constexpr uint32_t kInputRingBytes = 64;
 
 // The step's random generator (a seed word and 31 state words with their index) and the fighter order a coin flip
-// sets once per fight.
+// sets each frame.
 inline constexpr uint32_t kRngStateBytes = 0x84;
 inline constexpr uint32_t kSideOrderBytes = 16;
 

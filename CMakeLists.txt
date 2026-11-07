@@ -183,6 +183,7 @@ set(SSF2T_SOURCES
     src/active_log.cpp
     src/aspect_render.cpp
     src/character/akuma.cpp
+    src/character/akuma_bug_fixes.cpp
     src/character/akuma_select.cpp
     src/character/akuma_navigation.cpp
     src/character/select_activity.cpp
@@ -451,6 +452,12 @@ add_executable(ssf2t_akuma_setting_tests EXCLUDE_FROM_ALL tests/akuma_setting_te
     src/character/akuma_select.cpp src/character/akuma_portrait.cpp src/updater/third_party/miniz/miniz.c)
 target_include_directories(ssf2t_akuma_setting_tests PRIVATE src "${SSF2T_SDK_DIR}/include" "${_trg_dir}/include")
 add_dependencies(ssf2t_runtime_tests ssf2t_akuma_setting_tests)
+
+add_executable(ssf2t_akuma_bug_fixes_tests EXCLUDE_FROM_ALL tests/akuma_bug_fixes_tests.cpp)
+target_include_directories(ssf2t_akuma_bug_fixes_tests PRIVATE src)
+target_compile_definitions(ssf2t_akuma_bug_fixes_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(ssf2t_akuma_bug_fixes_tests PRIVATE -Wall -Wextra)
+add_dependencies(ssf2t_runtime_tests ssf2t_akuma_bug_fixes_tests)
 
 add_executable(ssf2t_ultra_portraits_tests EXCLUDE_FROM_ALL tests/ultra_portraits_tests.cpp
     src/character/ultra_portraits.cpp src/character/akuma_portrait.cpp src/updater/third_party/miniz/miniz.c)
