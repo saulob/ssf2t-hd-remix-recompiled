@@ -1,0 +1,108 @@
+diff --git a/include/trg/launcher.h b/include/trg/launcher.h
+index f810507..7066397 100644
+--- a/include/trg/launcher.h
++++ b/include/trg/launcher.h
+@@ -217,6 +217,7 @@ struct LauncherConfig {
+ class Ui {
+  public:
+   float scale() const { return scale_; }
++  float pixel_ratio() const { return pixel_ratio_; }
+   const Theme& theme() const;
+   const Fonts& fonts() const;
+   SettingsStore& settings();
+@@ -305,6 +306,7 @@ class Ui {
+ 
+   Launcher* launcher_ = nullptr;
+   float scale_ = 1.0f;
++  float pixel_ratio_ = 1.0f;
+   bool in_rows_ = false;
+   int rows_id_ = 0;
+   float row_top_ = 0.0f;
+@@ -344,6 +346,8 @@ class Launcher {
+ 
+   LauncherConfig& config() { return config_; }
+   const LauncherConfig& config() const { return config_; }
++  // Device pixels per ImGui unit, for hosts that draw in logical units and do not set DisplayFramebufferScale.
++  void SetPixelRatio(float ratio) { host_pixel_ratio_ = ratio; }
+   SettingsStore& settings() { return *config_.settings; }
+ 
+  private:
+@@ -361,6 +365,8 @@ class Launcher {
+   LauncherConfig config_;
+   Ui ui_;
+   float s_ = 1.0f;
++  float pixel_ratio_ = 1.0f;
++  float host_pixel_ratio_ = 0.0f;
+   PageNavigation navigation_;
+   bool want_play_ = false, want_quit_ = false;
+   std::string status_;
+diff --git a/src/launcher.cpp b/src/launcher.cpp
+index 5bc8dc7..4ce6987 100644
+--- a/src/launcher.cpp
++++ b/src/launcher.cpp
+@@ -418,9 +418,10 @@ void Ui::DrawRowLines() {
+   row_lines_.push_back(ImGui::GetItemRectMax().y);
+   ImDrawList* dl = ImGui::GetWindowDrawList();
+   const ImU32 color = Col(theme().border_row);
++  const float thickness = layout::PassiveLineThickness(scale_ * pixel_ratio_) / pixel_ratio_;
+   for (const float y : row_lines_) {
+-    const float top = std::floor(y);
+-    dl->AddRectFilled(ImVec2(row_left_, top), ImVec2(row_right_, top + 1.0f), color);
++    const float top = std::floor(y * pixel_ratio_) / pixel_ratio_;
++    dl->AddRectFilled(ImVec2(row_left_, top), ImVec2(row_right_, top + thickness), color);
+   }
+ }
+ 
+@@ -1085,6 +1086,8 @@ Result Launcher::Frame() {
+   ImGui::PushFont(fonts.regular, fonts.size);
+   s_ = ImGui::GetFontSize() / fonts.size;
+   ui_.scale_ = s_;
++  pixel_ratio_ = std::max(host_pixel_ratio_ > 0.0f ? host_pixel_ratio_ : ImGui::GetIO().DisplayFramebufferScale.x, 1.0f);
++  ui_.pixel_ratio_ = pixel_ratio_;
+   ApplyTheme(config_.theme, s_, fonts.size);
+ 
+   const ImGuiViewport* vp = ImGui::GetMainViewport();
+@@ -1225,7 +1228,7 @@ void Launcher::DrawSidebar(ImVec2 size) {
+   ImGui::BeginChild("##sidebar", size, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
+   const float pad = layout::kSidebarPadding * s_;
+   const float item_h = layout::SidebarRowFor(int(config_.pages.size()), size.y / s_) * s_;
+-  const float framebuffer = std::max(ImGui::GetIO().DisplayFramebufferScale.x, 1.0f);
++  const float framebuffer = pixel_ratio_;
+   const int icon_pixels = int(layout::kSidebarIcon * s_ * framebuffer + 0.5f);
+   const float icon_size = float(icon_pixels) / framebuffer;
+   ImGui::SetCursorPos(ImVec2(pad, pad));
+@@ -1248,7 +1251,7 @@ void Launcher::DrawSidebar(ImVec2 size) {
+     if (icon != ImTextureID{}) {
+       // On the pixel grid, so the image stays one texel per pixel.
+       const ImVec2 min(std::floor((pos.x + layout::kSidebarIconInset * s_) * framebuffer) / framebuffer,
+-                       layout::CenteredTop(center_y, icon_size * 0.5f));
++                       std::floor((center_y - icon_size * 0.5f) * framebuffer + 0.5f) / framebuffer);
+       dl->AddImage(ImTextureRef(icon), min, ImVec2(min.x + icon_size, min.y + icon_size), ImVec2(0, 0), ImVec2(1, 1),
+                    Col(selected ? t.on_accent : hot ? t.text : t.dim));
+     }
+@@ -1318,10 +1321,12 @@ void Launcher::DrawContent(ImVec2 size) {
+ 
+ // Filled behind the panel: on SDL's software renderer a stroked rounded rectangle loses whole sides.
+ void Launcher::OutlinePanel(ImVec2 size) {
+-  const float line = layout::PanelBorderWidth(s_);
++  const float ratio = pixel_ratio_;
++  const auto snap = [ratio](float v) { return std::floor(v * ratio) / ratio; };
++  const float line = layout::PanelBorderWidth(s_ * ratio) / ratio;
+   const ImVec2 min = ImGui::GetCursorScreenPos();
+-  const ImVec2 outer(std::floor(min.x) - line, std::floor(min.y) - line);
+-  const ImVec2 outer_end(std::floor(min.x) + std::floor(size.x) + line, std::floor(min.y) + std::floor(size.y) + line);
++  const ImVec2 outer(snap(min.x) - line, snap(min.y) - line);
++  const ImVec2 outer_end(snap(min.x) + snap(size.x) + line, snap(min.y) + snap(size.y) + line);
+   ImGui::GetWindowDrawList()->AddRectFilled(outer, outer_end, Col(config_.theme.border_panel),
+                                             ImGui::GetStyle().ChildRounding + line);
+ }
+@@ -1373,7 +1378,8 @@ void Launcher::DrawFooter(ImVec2 origin, float w, float h) {
+     DrawKeyHints(dl, hints, fonts, t, ImVec2(origin.x, cy), s_);
+     if (!hints.empty() && (show_note || show_status)) {
+       const float x = std::floor(origin.x + hints_w + separator_gap), half = layout::kFooterSeparator * s_ * 0.5f;
+-      dl->AddLine(ImVec2(x, cy - half), ImVec2(x, cy + half), Col(t.border_row), layout::PassiveLineThickness(s_));
++      dl->AddLine(ImVec2(x, cy - half), ImVec2(x, cy + half), Col(t.border_row),
++                  layout::PassiveLineThickness(s_ * pixel_ratio_) / pixel_ratio_);
+     }
+   }
+   if (show_status) {

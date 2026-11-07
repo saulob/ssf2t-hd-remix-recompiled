@@ -100,6 +100,10 @@ German	Alemão
 Italian	Italiano
 Spanish	Espanhol
 Skip intro	Pular introdução
+Enable Akuma	Ativar Akuma
+Unlocks the original Akuma on Character Select without the secret input sequence.	Libera o Akuma original na seleção de personagem sem precisar do comando secreto.
+Enable Evil Ryu and Violent Ken	Ativar Evil Ryu e Violent Ken
+Adds Evil Ryu and Violent Ken as selectable fighters. The original roster stays available.	Adiciona Evil Ryu e Violent Ken como lutadores selecionáveis. O elenco original continua disponível.
 Akuma bug fixes	Correções do Akuma
 Experimental. Fixes HD Remix Akuma bugs documented by designer David Sirlin: red fireball startup, Dragon Punch startup and the Raging Demon escape after blockstun. Classic Akuma and online matches stay original.	Experimental. Corrige bugs do Akuma do HD Remix documentados pelo designer David Sirlin: início da bola de fogo vermelha, início do Dragon Punch e a fuga do Raging Demon após bloquear. O Akuma do modo Classic e as partidas online continuam originais.
 Evil Ryu and Violent Ken are unavailable: required character files are missing or damaged. Reinstall this release.	Evil Ryu e Violent Ken estão indisponíveis: arquivos de personagem necessários estão ausentes ou danificados. Reinstale esta versão.
@@ -414,7 +418,7 @@ Decline	Recusar
 Your friend code	Seu código de amigo
 Not available right now	Indisponível no momento
 Secret characters	Personagens secretos
-Akuma and Evil Ryu are in an Online Match only when both players have them on. Turn them on in Gameplay.	Akuma e Evil Ryu só aparecem em uma Partida Online quando os dois jogadores os ativam. Ative-os em Jogabilidade.
+Akuma, Evil Ryu and Violent Ken are in an Online Match only when both players have them on. Turn them on in Gameplay.	Akuma, Evil Ryu e Violent Ken só aparecem em uma Partida Online quando os dois jogadores os ativam. Ative-os em Jogabilidade.
 Available	Disponível
 Disabled locally	Desativado localmente
 Disabled by opponent	Desativado pelo oponente
@@ -649,41 +653,43 @@ Achievement Unlocked	Conquista Desbloqueada
 Sponsor on GitHub	Patrocinar no GitHub
 This open source PC port is maintained and developed in my free time. If you enjoy the project and would like to support its continued development, you can sponsor my work on GitHub.	Este port para PC de código aberto é mantido e desenvolvido no meu tempo livre. Se você gosta do projeto e quer apoiar seu desenvolvimento contínuo, pode patrocinar meu trabalho pelo GitHub.
 Support is completely optional and helps support ongoing improvements and future projects.	O apoio é totalmente opcional e ajuda no desenvolvimento de melhorias e novos projetos.
-Bug Report	Relatar Problema
-Report a problem to the developer, with the game log you choose.	Relate um problema ao desenvolvedor, com o log do jogo que você escolher.
-No personal user data is intentionally included.	Nenhum dado pessoal do usuário é incluído de propósito.
-Before anything is sent, the launcher takes addresses, user and computer names, private folders, passwords, online secrets and other players' details out of the selected log. Automatic filtering cannot promise to catch everything, so open the preview if you want to check what goes out.	Antes de enviar, o launcher retira do log selecionado endereços, nomes de usuário e do computador, pastas privadas, senhas, segredos online e dados de outros jogadores. O filtro automático não garante encontrar tudo, então abra a pré-visualização se quiser conferir o que será enviado.
+Bug Report	Relatar bug
+Size	Tamanho
+Last written	Última gravação
+View selected log	Ver log selecionado
+This report is no longer available online.	Este relatório não está mais disponível online.
+Report a problem and send it with one game log.	Relate um problema e envie-o com um log do jogo.
+No personal user data is intentionally included.	Nenhum dado pessoal do usuário é incluído intencionalmente.
+Before anything is sent, the launcher takes addresses, user and computer names, private folders, passwords, online secrets and other players' details out of the selected log. Automatic filtering cannot promise to catch everything, so open the preview if you want to check what goes out.	Antes de qualquer envio, o launcher remove do log selecionado endereços, nomes de usuário e de computador, pastas particulares, senhas, segredos online e dados de outros jogadores. A filtragem automática não garante pegar tudo, por isso abra a visualização se quiser conferir o que será enviado.
 The online service you use cannot take reports yet, so this version cannot send one.	O serviço online que você usa ainda não aceita relatórios, então esta versão não consegue enviar um.
-A report has an update	Um relatório teve atualização
+A report has an update	Um relatório foi atualizado
 Its status changed since you last looked.	O status mudou desde a última vez que você olhou.
 Show	Mostrar
-1. Report the problem	1. Descreva o problema
+1. Report the problem	1. Relate o problema
 2. Choose one game log	2. Escolha um log do jogo
-3. Preview what will be sent	3. Pré-visualize o que será enviado
-4. Send	4. Enviar
+3. Preview what will be sent	3. Visualize o que será enviado
+4. Send	4. Envie
 Please describe the problem, minimum 10 characters	Descreva o problema, mínimo de 10 caracteres
 What were you doing, what went wrong, and does it happen every time?	O que você estava fazendo, o que deu errado e isso acontece sempre?
-No game log is available yet, so a report cannot be sent. Start the game once and try again. With Detailed logging off on the About page, only sessions that crashed keep a log.	Ainda não há log do jogo, então não é possível enviar um relatório. Inicie o jogo uma vez e tente de novo. Com o Registro detalhado desativado na página Sobre, só sessões que travaram mantêm um log.
-There is no game log to send.	Não há log do jogo para enviar.
-The newest logs of the game, most recent first. Only the one you choose is sent.	Os logs mais recentes do jogo, do mais novo ao mais antigo. Só o que você escolher é enviado.
+No game log is available yet, so a report cannot be sent. Start the game once and try again. With Detailed logging off on the About page, only sessions that crashed keep a log.	Ainda não há nenhum log do jogo, então não é possível enviar um relatório. Inicie o jogo uma vez e tente de novo. Com o Registro detalhado desligado na página Sobre, só as sessões que travaram mantêm um log.
+There is no game log to send.	Não há nenhum log do jogo para enviar.
+The newest logs of the game, most recent first. Only the one you choose is sent.	Os logs mais recentes do jogo, do mais novo para o mais antigo. Só o log escolhido é enviado.
 Current session	Sessão atual
-Last gameplay	Última partida jogada
+Last gameplay	Última partida
 Gameplay session	Sessão de jogo
-Launcher only	Só o launcher
+Launcher only	Somente launcher
 Send this log	Enviar este log
 That log could not be read. Choose another one and try again.	Não foi possível ler esse log. Escolha outro e tente de novo.
 Selected log	Log selecionado
-Opens the folder that holds it.	Abre a pasta onde ele está.
-Show selected log	Mostrar log selecionado
-Preview	Pré-visualização
+Preview	Visualizar envio
 Shows exactly what will be sent, after the privacy filter.	Mostra exatamente o que será enviado, depois do filtro de privacidade.
-Open preview	Abrir pré-visualização
-Close preview	Fechar pré-visualização
+Open preview	Abrir visualização
+Close preview	Fechar visualização
 Send report	Enviar relatório
-Sends the selected log after the privacy filter is applied.	Envia o log selecionado depois de aplicado o filtro de privacidade.
+Sends the selected log after the privacy filter is applied.	Envia o log selecionado depois da aplicação do filtro de privacidade.
 Sending...	Enviando...
 Sending your report...	Enviando seu relatório...
-This takes a few seconds.	Leva alguns segundos.
+This takes a few seconds.	Isso leva alguns segundos.
 Report sent successfully	Relatório enviado com sucesso
 Report ID:	ID do relatório:
 Copy report ID	Copiar ID do relatório
@@ -691,28 +697,28 @@ Report ID copied.	ID do relatório copiado.
 The report was sent, but it could not be added to My reports on this PC.	O relatório foi enviado, mas não pôde ser adicionado a Meus relatórios neste PC.
 Too many reports were sent recently	Muitos relatórios foram enviados recentemente
 Daily report limit reached	Limite diário de relatórios atingido
-Please try again later	Tente de novo mais tarde
+Please try again later	Tente novamente mais tarde
 Cannot reach the online service	Não foi possível acessar o serviço online
-Check your connection and press Send report again; your text is kept.	Verifique sua conexão e use Enviar relatório de novo; seu texto foi mantido.
+Check your connection and press Send report again; your text is kept.	Verifique sua conexão e pressione Enviar relatório de novo; seu texto foi mantido.
 The report was not accepted	O relatório não foi aceito
 Change the description or choose another log, then send it again.	Altere a descrição ou escolha outro log e envie de novo.
 The online service cannot take reports yet	O serviço online ainda não aceita relatórios
 Direct reports need a newer online service. Your text is kept; try again after the service is updated.	O envio direto precisa de um serviço online mais novo. Seu texto foi mantido; tente de novo depois que o serviço for atualizado.
 The online service could not take the report	O serviço online não conseguiu receber o relatório
-This is not your fault. Try again in a few minutes; your text is kept.	A culpa não é sua. Tente de novo em alguns minutos; seu texto foi mantido.
+This is not your fault. Try again in a few minutes; your text is kept.	Isso não é culpa sua. Tente de novo em alguns minutos; seu texto foi mantido.
 Description	Descrição
 Game image	Imagem do jogo
 Platform	Plataforma
 Operating system	Sistema operacional
 Runtime	Ambiente de execução
-Log shortened to its end	Log reduzido ao final
-Log after privacy filtering	Log após o filtro de privacidade
+Log shortened to its end	Log reduzido ao trecho final
+Log after privacy filtering	Log depois do filtro de privacidade
 My reports	Meus relatórios
-No reports sent from this PC	Nenhum relatório enviado deste PC
-Only reports sent from this PC are listed here.	Só os relatórios enviados deste PC aparecem aqui.
+No reports sent from this PC	Nenhum relatório enviado por este PC
+Only reports sent from this PC are listed here.	Somente relatórios enviados por este PC aparecem aqui.
 Checking...	Verificando...
 Refresh	Atualizar
-Could not check for updates. The last known status is shown.	Não foi possível verificar atualizações. Mostrando o último status conhecido.
+Could not check for updates. The last known status is shown.	Não foi possível verificar. O último status conhecido é mostrado.
 The online service cannot update report statuses yet.	O serviço online ainda não atualiza o status dos relatórios.
 Updated	Atualizado
 Hide details	Ocultar detalhes
@@ -723,18 +729,20 @@ Status	Status
 Status updated	Status atualizado em
 Fixed in version	Corrigido na versão
 Message from developer	Mensagem do desenvolvedor
+New reply	Nova resposta
+A report has a new reply	Um relatório recebeu uma nova resposta
+The developer replied to one of your reports.	O desenvolvedor respondeu a um dos seus relatórios.
 Loading...	Carregando...
 Hide report	Ocultar relatório
 What was sent	O que foi enviado
 Could not load the report. Try again in a moment.	Não foi possível carregar o relatório. Tente de novo em instantes.
-This report is no longer stored online.	Este relatório não está mais guardado online.
 Remove from this PC	Remover deste PC
-Removes it from this list only. The report stays with the developer.	Remove só desta lista. O relatório continua com o desenvolvedor.
+Removes it from this list only. The report stays with the developer.	Remove apenas desta lista. O relatório continua com o desenvolvedor.
 Remove this report from this PC?	Remover este relatório deste PC?
 Open	Aberto
-Investigating	Em investigação
+Investigating	Investigando
 Fixed	Corrigido
-Cannot reproduce	Não reproduzido
+Cannot reproduce	Não foi possível reproduzir
 Duplicate	Duplicado
 Not a bug	Não é um bug
 Closed	Fechado

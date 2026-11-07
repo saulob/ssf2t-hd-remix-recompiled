@@ -1,0 +1,37 @@
+diff --git a/src/launcher.cpp b/src/launcher.cpp
+index a5b9c69..66de52e 100644
+--- a/src/launcher.cpp
++++ b/src/launcher.cpp
+@@ -887,7 +887,7 @@ void Ui::AchievementCardView(const AchievementCard& a, float width) {
+   LeaveRows();
+   const Theme& t = theme();
+   const Fonts& f = fonts();
+-  const float s = scale_, base = ImGui::GetFontSize();
++  const float s = scale_;
+   const float card_w = width > 0 ? width : ImGui::GetContentRegionAvail().x;
+   const float card_h = 86 * s, icon = 60 * s;
+   const ImVec2 p = ImGui::GetCursorScreenPos();
+@@ -904,17 +904,18 @@ void Ui::AchievementCardView(const AchievementCard& a, float width) {
+     tx = i0.x + icon + 14 * s;
+   }
+   const float right = p.x + card_w - 14 * s;
+-  dl->AddText(f.semibold, base, ImVec2(tx, p.y + 12 * s), Col(a.unlocked ? t.text : t.dim), T(a.title.c_str()));
++  dl->AddText(f.semibold, layout::kTextLabel * s, ImVec2(tx, p.y + 12 * s), Col(a.unlocked ? t.text : t.dim),
++              T(a.title.c_str()));
+   if (a.points > 0) {
+     const std::string g = std::to_string(a.points) + " G";
+-    const ImVec2 gs = f.semibold->CalcTextSizeA(base * 0.9f, FLT_MAX, 0, g.c_str());
+-    dl->AddText(f.semibold, base * 0.9f, ImVec2(right - gs.x, p.y + 13 * s), Col(a.unlocked ? t.accent : t.dim),
++    const ImVec2 gs = f.semibold->CalcTextSizeA(layout::kTextBody * s, FLT_MAX, 0, g.c_str());
++    dl->AddText(f.semibold, layout::kTextBody * s, ImVec2(right - gs.x, p.y + 13 * s), Col(a.unlocked ? t.accent : t.dim),
+                 g.c_str());
+   }
+   const std::string& desc = a.unlocked || a.locked_description.empty() ? a.description : a.locked_description;
+-  dl->AddText(f.regular, base * 0.84f, ImVec2(tx, p.y + 38 * s), Col(t.dim), T(desc.c_str()), nullptr, right - tx);
++  dl->AddText(f.regular, layout::kTextHelp * s, ImVec2(tx, p.y + 38 * s), Col(t.dim), T(desc.c_str()), nullptr, right - tx);
+   if (a.unlocked)
+-    dl->AddText(f.semibold, base * 0.72f, ImVec2(tx, p.y + card_h - 22 * s), Col(t.accent), T("UNLOCKED"));
++    dl->AddText(f.semibold, layout::kTextHelp * 0.8f * s, ImVec2(tx, p.y + card_h - 22 * s), Col(t.accent), T("UNLOCKED"));
+ }
+ 
+ void Ui::AchievementGrid(const std::vector<AchievementCard>& cards, int max_columns) {

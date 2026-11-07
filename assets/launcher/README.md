@@ -30,3 +30,8 @@ with rsvg-convert:
 ```sh
 rsvg-convert -w 64 -h 64 -f png -o assets/launcher/sponsor-heart.png assets/launcher/sponsor-heart.svg
 ```
+
+# Page icons
+
+`icons/` holds the sidebar icons, one SVG per launcher page. They are compiled into the executable; see
+`icons/SOURCES.md` for their sources and licences and `docs/launcher-visual-system.md` for how they are drawn.

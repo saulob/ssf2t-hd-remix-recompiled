@@ -244,6 +244,7 @@ $Suites = @(
     @('keyboard remapping and hotkeys', 'keyboard', 'Launcher controls', 'Local multiplayer', 'Overlays / hotkeys'),
     @('player names', 'player_name', 'Local multiplayer', 'Settings'),
     @('launcher quit', 'launcher_quit', 'Launcher controls'),
+    @('launcher visuals (pages, icons, sidebar fit, layout constants)', 'launcher_visual', 'Launcher controls', 'Display / Graphics'),
     @('launcher controller (issue #9: XInput on Windows, SDL on Linux)', 'launcher_gamepad', 'Launcher controls', 'Windows platform paths'),
     @('window placement', 'window_placement', 'Display / Graphics'),
     @('display scaling', 'dpi', 'Display / Graphics'),

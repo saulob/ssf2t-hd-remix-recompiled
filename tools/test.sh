@@ -315,6 +315,7 @@ SUITES=(
   "keyboard remapping and hotkeys|ssf2t_keyboard_tests|$A_KEYS;$A_CTRL"
   "player names|ssf2t_player_name_tests|$A_SET"
   "launcher quit|ssf2t_launcher_quit_tests|$A_CTRL"
+  "launcher visuals (pages, icons, sidebar fit, layout constants)|ssf2t_launcher_visual_tests|$A_CTRL;$A_DISP"
   "launcher controller (issue #9: XInput on Windows, SDL on Linux)|ssf2t_launcher_gamepad_tests|$A_CTRL;$A_PLAT"
   "window placement|ssf2t_window_placement_tests|$A_DISP"
   "display scaling|ssf2t_dpi_tests|$A_DISP"

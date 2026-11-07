@@ -59,6 +59,8 @@
 #include "launcher_achievements.h"
 #include "log_filter.h"
 #include "launcher_assets.h"
+#include "launcher_page_icons.h"
+#include "launcher_pages.h"
 #include "launcher_quit.h"
 #include "platform.h"
 #include "presentation_setting.h"
@@ -258,6 +260,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
       io.ClearInputMouse();
     }
     ImGui::BeginDisabled(starting_);
+    launcher_->SetPixelRatio(g_font_density);
     const trg::Result result = launcher_->Frame();
     ImGui::EndDisabled();
     if (result == trg::Result::kNone && !starting_) {
@@ -556,6 +559,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     c.note = "Play applies the changes. Save keeps them without starting.";
     c.hints = "Enter  Play     Alt+F4  Quit     Ctrl+S  Save";
     c.fonts = g_fonts;
+    c.fonts.size = trg::layout::kTextBody;
     c.branding.title = "SUPER STREET FIGHTER II TURBO HD REMIX";
     c.branding.subtitle_segments = {
         {"PC PORT   \xC2\xB7   ", ""},
@@ -569,23 +573,26 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     c.sponsor = {"Sponsor on GitHub", kSponsorUrl,
                  sponsor_icon_ ? reinterpret_cast<ImTextureID>(sponsor_icon_.get()) : ImTextureID{}};
     c.pages = {
-        {"Play", "Check the game files and start playing.", [this](trg::Ui& ui) { PagePlay(ui); },
-         [this] { return !playable_; }},
-        {"Display", "Window, monitor and how the picture fits your screen.",
-         [this](trg::Ui& ui) { PageDisplay(ui); }},
-        {"Graphics", "Graphics card, render resolution, anti-aliasing and texture filtering.",
-         [this](trg::Ui& ui) { PageGraphics(ui); }},
-        {"Gameplay", "Language, and what the window shows while you play.", [](trg::Ui& ui) { PageGameplay(ui); }},
-        {"Online", "Add friends and see who is online. Play them from Multiplayer > Online Match.",
-         [this](trg::Ui& ui) { online_page_.Draw(ui); }, [this] { return online_page_.NeedsAttention(); }},
-        {"Achievements", "Your achievements on this PC.", [this](trg::Ui& ui) { PageAchievements(ui); }},
-        {"Controls", "Controller and keyboard.", [](trg::Ui& ui) { PageControls(ui); }},
-        {"Bug Report", "Report a problem to the developer, with the game log you choose.",
-         [this](trg::Ui& ui) { PageBugReport(ui); }, [this] { return bug_report_page_->HasReportUpdates(); }},
-        {"About", "About this port, and where your files and settings live.",
-         [this](trg::Ui& ui) { PageAbout(ui); }},
+        MakePage(LauncherPage::kPlay, "Check the game files and start playing.", [this](trg::Ui& ui) { PagePlay(ui); },
+                 [this] { return !playable_; }),
+        MakePage(LauncherPage::kDisplay, "Window, monitor and how the picture fits your screen.",
+                 [this](trg::Ui& ui) { PageDisplay(ui); }),
+        MakePage(LauncherPage::kGraphics, "Graphics card, render resolution, anti-aliasing and texture filtering.",
+                 [this](trg::Ui& ui) { PageGraphics(ui); }),
+        MakePage(LauncherPage::kGameplay, "Language, and what the window shows while you play.",
+                 [](trg::Ui& ui) { PageGameplay(ui); }),
+        MakePage(LauncherPage::kOnline, "Add friends and see who is online. Play them from Multiplayer > Online Match.",
+                 [this](trg::Ui& ui) { online_page_.Draw(ui); }, [this] { return online_page_.NeedsAttention(); }),
+        MakePage(LauncherPage::kAchievements, "Your achievements on this PC.",
+                 [this](trg::Ui& ui) { PageAchievements(ui); }),
+        MakePage(LauncherPage::kControls, "Controller and keyboard.", [](trg::Ui& ui) { PageControls(ui); }),
+        MakePage(LauncherPage::kBugReport, "Report a problem and send it with one game log.",
+                 [this](trg::Ui& ui) { PageBugReport(ui); }, [this] { return bug_report_page_->HasReportUpdates(); }),
+        MakePage(LauncherPage::kAbout, "About this port, and where your files and settings live.",
+                 [this](trg::Ui& ui) { PageAbout(ui); }),
     };
-    const auto online = std::find_if(c.pages.begin(), c.pages.end(), [](const trg::Page& p) { return p.name == "Online"; });
+    const auto online = std::find_if(c.pages.begin(), c.pages.end(),
+                                     [](const trg::Page& p) { return p.name == PageInfo(LauncherPage::kOnline).name; });
     const int online_page = int(online - c.pages.begin());
     c.can_play = [this, online_page] {
       const bool pressed = play_attempt_.PressedThisCall(ImGui::GetFrameCount());
@@ -602,6 +609,29 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
       return trg::PlayCheck{};
     };
     return c;
+  }
+
+  trg::Page MakePage(LauncherPage page, const char* blurb, std::function<void(trg::Ui&)> draw,
+                     std::function<bool()> needs_attention = nullptr) {
+    trg::Page result{PageInfo(page).name, blurb, std::move(draw), std::move(needs_attention)};
+    result.icon = [this, page](int pixels) { return PageIconTexture(page, pixels); };
+    return result;
+  }
+
+  ImTextureID PageIconTexture(LauncherPage page, int pixels) {
+    const auto [slot, added] = page_icons_.try_emplace({page, pixels});
+    if (added) {
+      const std::vector<uint8_t> rgba = RenderPageIcon(page, pixels);
+      if (!rgba.empty() && paths_.immediate_drawer) {
+        slot->second = paths_.immediate_drawer->CreateTexture(uint32_t(pixels), uint32_t(pixels),
+                                                              rex::ui::ImmediateTextureFilter::kLinear, false,
+                                                              rgba.data());
+      }
+      if (!slot->second) {
+        REXLOG_WARN("Launcher page icon unavailable: {} at {} px", PageInfo(page).name, pixels);
+      }
+    }
+    return slot->second ? reinterpret_cast<ImTextureID>(slot->second.get()) : ImTextureID{};
   }
 
   void PagePlay(trg::Ui& ui) {
@@ -624,25 +654,15 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     if (paths_.game_dir.empty()) {
       ui.Help("No game folder was given: start the game with --game_data_root.");
     } else {
-      ui.Row("Game package",
-             "Title ID: 584108A4. This port requires your own Xbox Live Arcade game package (Install Game). "
-             "Title Update #1 is optional (Install Title Update) and plays the updated game version 0.0.2.3; "
-             "removing it returns to version 0.0.1.3. Settings, saves and achievements are kept either way. No game "
-             "files or Title Update files are included with this port.");
+      ui.Row("Game package");
       if (!ui.TaskProgress(install_)) {
         const GameButtons buttons = DescribeGameButtons(game_check_);
-        const float gap = 8 * ui.scale();
-        const float button_width =
-            buttons.update_available ? (ImGui::GetContentRegionAvail().x - gap) / 2.0f : ImGui::GetContentRegionAvail().x;
-        const bool game_clicked = buttons.game_installed
-                                       ? ImGui::Button(Tr(buttons.game_label).c_str(), ImVec2(button_width, 0))
-                                       : ui.AccentButton(buttons.game_label.c_str(), ImVec2(button_width, 0));
+        const bool game_clicked = buttons.game_installed ? ImGui::Button(Tr(buttons.game_label).c_str(), ImVec2(-FLT_MIN, 0))
+                                                         : ui.AccentButton(buttons.game_label.c_str());
         bool update_clicked = false;
         if (buttons.update_available) {
-          ImGui::SameLine(0, gap);
-          update_clicked = buttons.update_installed
-                               ? ImGui::Button(Tr(buttons.update_label).c_str(), ImVec2(button_width, 0))
-                               : ui.AccentButton(buttons.update_label.c_str(), ImVec2(button_width, 0));
+          update_clicked = buttons.update_installed ? ImGui::Button(Tr(buttons.update_label).c_str(), ImVec2(-FLT_MIN, 0))
+                                                    : ui.AccentButton(buttons.update_label.c_str());
         }
         if (game_clicked) {
           BrowseAndInstall(InstallKind::kGame);
@@ -654,6 +674,12 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
           }
         }
       }
+      ui.EndRows();
+      ui.Help(
+          "Title ID: 584108A4. This port requires your own Xbox Live Arcade game package (Install Game). "
+          "Title Update #1 is optional (Install Title Update) and plays the updated game version 0.0.2.3; "
+          "removing it returns to version 0.0.1.3. Settings, saves and achievements are kept either way. No game "
+          "files or Title Update files are included with this port.");
     }
     ui.LauncherVisibilityRow("ssf2t_launcher");
     ui.EndRows();
@@ -1021,7 +1047,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   }
 
   static void DrawAchievementSummary(trg::Ui& ui, const AchievementSummary& summary) {
-    ImGui::PushFont(ui.fonts().semibold, 0.0f);
+    ImGui::PushFont(ui.fonts().semibold, trg::layout::kTextLabel);
     ImGui::Text(Tr("%d / %d unlocked"), summary.unlocked, summary.total);
     ImGui::SameLine();
     ImGui::TextColored(kAccent, "%dG / %dG", summary.earned_gamerscore, summary.total_gamerscore);
@@ -1177,6 +1203,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   std::vector<GraphicsAdapter> graphics_adapters_;
   std::unique_ptr<rex::ui::ImmediateTexture> header_art_;
   std::unique_ptr<rex::ui::ImmediateTexture> sponsor_icon_;
+  std::map<std::pair<LauncherPage, int>, std::unique_ptr<rex::ui::ImmediateTexture>> page_icons_;
   std::unique_ptr<trg::Launcher> launcher_;
   OnlinePage online_page_;
   std::unique_ptr<BugReportPage> bug_report_page_;

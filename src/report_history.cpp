@@ -57,7 +57,8 @@ std::string EntryJson(const TrackedReport& report) {
   out += "\"status_updated_at\":" + std::to_string(report.status_updated_at) + ",";
   AppendField(out, "fixed_version", report.fixed_version);
   AppendField(out, "player_message", report.player_message);
-  out += std::string("\"unseen\":") + (report.unseen ? "true" : "false") + "}";
+  out += std::string("\"unseen\":") + (report.unseen ? "true" : "false") + ",";
+  out += std::string("\"message_unseen\":") + (report.message_unseen ? "true" : "false") + "}";
   return out;
 }
 
@@ -78,6 +79,11 @@ TrackedReport EntryOf(const json::Value& entry) {
   report.player_message = StringOf(entry, "player_message");
   const json::Value* unseen = entry.Find("unseen");
   report.unseen = unseen && unseen->IsBool() && unseen->AsBool();
+  const json::Value* message_unseen = entry.Find("message_unseen");
+  report.message_unseen = message_unseen && message_unseen->IsBool()
+                              ? message_unseen->AsBool()
+                              : report.unseen && !report.player_message.empty();
+  report.message_unseen = report.message_unseen && !report.player_message.empty();
   return report;
 }
 
@@ -170,6 +176,10 @@ bool ReportHistory::HasUnseen() const {
   return std::any_of(reports_.begin(), reports_.end(), [](const TrackedReport& report) { return report.unseen; });
 }
 
+bool ReportHistory::HasUnseenMessage() const {
+  return std::any_of(reports_.begin(), reports_.end(), [](const TrackedReport& report) { return report.message_unseen; });
+}
+
 bool ReportHistory::Add(TrackedReport report) {
   Remove(report.ticket);
   reports_.push_back(std::move(report));
@@ -187,6 +197,7 @@ bool ReportHistory::Apply(const std::vector<online::IncidentStatus>& statuses) {
         found->fixed_version == status.fixed_version && found->player_message == status.player_message) {
       continue;
     }
+    if (found->player_message != status.player_message) found->message_unseen = !status.player_message.empty();
     found->status = status.status;
     found->status_updated_at = status.updated_at;
     found->fixed_version = status.fixed_version;
@@ -199,8 +210,9 @@ bool ReportHistory::Apply(const std::vector<online::IncidentStatus>& statuses) {
 
 bool ReportHistory::MarkSeen(std::string_view ticket) {
   const auto found = std::find_if(reports_.begin(), reports_.end(), [&](const TrackedReport& r) { return r.ticket == ticket; });
-  if (found == reports_.end() || !found->unseen) return false;
+  if (found == reports_.end() || (!found->unseen && !found->message_unseen)) return false;
   found->unseen = false;
+  found->message_unseen = false;
   return true;
 }
 

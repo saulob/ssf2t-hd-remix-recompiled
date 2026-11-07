@@ -350,6 +350,55 @@ void TestHistoryPersistsReceiptsAndStatuses() {
   fs::remove_all(dir);
 }
 
+void TestDeveloperReplyReadState() {
+  const fs::path dir = FreshDir("ssf2t_bug_report_reply_state");
+  const fs::path file = dir / kReportHistoryFile;
+  ReportHistory history(file);
+  history.Load();
+  CHECK(history.Add(Tracked("SSF2-AAAAAA", 1000)));
+  CHECK(history.Add(Tracked("SSF2-BBBBBB", 2000, 'c')));
+  CHECK(!history.HasUnseenMessage());
+
+  CHECK(history.Apply({online::IncidentStatus{"SSF2-AAAAAA", "investigating", 3000, "", ""}}));
+  CHECK(history.HasUnseen() && !history.HasUnseenMessage());
+  CHECK(history.MarkSeen("SSF2-AAAAAA") && !history.HasUnseen());
+
+  CHECK(history.Apply({online::IncidentStatus{"SSF2-AAAAAA", "fixed", 4000, "0.4.1", "Update the port."}}));
+  CHECK(history.HasUnseen() && history.HasUnseenMessage());
+  CHECK(history.Save());
+  ReportHistory reloaded(file);
+  reloaded.Load();
+  CHECK(reloaded.HasUnseenMessage() && reloaded.HasUnseen());
+
+  CHECK(history.Apply({online::IncidentStatus{"SSF2-BBBBBB", "investigating", 3500, "", "We are looking."}}));
+  CHECK(history.MarkSeen("SSF2-AAAAAA"));
+  CHECK(history.HasUnseenMessage() && history.HasUnseen());
+  CHECK(history.MarkSeen("SSF2-BBBBBB") && !history.HasUnseenMessage() && !history.HasUnseen());
+
+  CHECK(history.Apply({online::IncidentStatus{"SSF2-AAAAAA", "closed", 5000, "", "Update the port."}}));
+  CHECK(history.HasUnseen() && !history.HasUnseenMessage());
+  CHECK(history.MarkSeen("SSF2-AAAAAA"));
+  CHECK(history.Apply({online::IncidentStatus{"SSF2-AAAAAA", "closed", 6000, "", "Updated text."}}));
+  CHECK(history.HasUnseenMessage());
+  CHECK(history.Apply({online::IncidentStatus{"SSF2-AAAAAA", "closed", 7000, "", ""}}));
+  CHECK(history.HasUnseen() && !history.HasUnseenMessage());
+  fs::remove_all(dir);
+
+  const fs::path legacy_dir = FreshDir("ssf2t_bug_report_reply_state_legacy");
+  const std::string receipt(64, 'a');
+  WriteFile(legacy_dir / kReportHistoryFile,
+            "{\"version\":1,\"reports\":["
+            "{\"ticket\":\"SSF2-AAAAAA\",\"receipt\":\"" + receipt + "\",\"status\":\"fixed\",\"submitted_at\":2,\"player_message\":\"Hi\",\"unseen\":true},"
+            "{\"ticket\":\"SSF2-BBBBBB\",\"receipt\":\"" + receipt + "\",\"status\":\"fixed\",\"submitted_at\":1,\"player_message\":\"Hi\",\"unseen\":false},"
+            "{\"ticket\":\"SSF2-CCCCCC\",\"receipt\":\"" + receipt + "\",\"status\":\"closed\",\"submitted_at\":0,\"unseen\":true}]}");
+  ReportHistory legacy(legacy_dir / kReportHistoryFile);
+  legacy.Load();
+  CHECK(legacy.reports().size() == 3);
+  CHECK(legacy.reports()[0].message_unseen && !legacy.reports()[1].message_unseen && !legacy.reports()[2].message_unseen);
+  CHECK(legacy.MarkSeen("SSF2-AAAAAA") && !legacy.HasUnseenMessage() && legacy.HasUnseen());
+  fs::remove_all(legacy_dir);
+}
+
 void TestHistoryIsBoundedAndRobust() {
   const fs::path dir = FreshDir("ssf2t_bug_report_history_bounds");
   const fs::path file = dir / kReportHistoryFile;
@@ -742,9 +791,7 @@ void TestIdScopesNeverCrossATableBoundary() {
   const std::string page = Source("src/bug_report_page.cpp");
   const size_t details = page.find("void MyReports::DrawDetails(");
   CHECK(details != std::string::npos);
-  const std::string body = page.substr(details, page.find("
-}
-", details) - details);
+  const std::string body = page.substr(details, page.find("\n}\n", details) - details);
   const size_t first_end = body.find("ui.EndRows();");
   const size_t push = body.find("ImGui::PushID(");
   const size_t pop = body.rfind("ImGui::PopID();");
@@ -754,9 +801,7 @@ void TestIdScopesNeverCrossATableBoundary() {
   CHECK(Count(body, "ImGui::PushID(") == 1 && Count(body, "ImGui::PopID();") == 1 && body.find("return") == std::string::npos);
 
   const size_t draw = page.find("void MyReports::Draw(");
-  const std::string loop = page.substr(draw, page.find("
-}
-", draw) - draw);
+  const std::string loop = page.substr(draw, page.find("\n}\n", draw) - draw);
   CHECK(loop.find("PushID") == std::string::npos && loop.find("PopID") == std::string::npos);
 
   CHECK(Count(page, "ImGui::PushID(") == Count(page, "ImGui::PopID();"));
@@ -767,8 +812,8 @@ void TestIdScopesNeverCrossATableBoundary() {
 
 void TestLauncherListsThePageAndKeepsReceiptsOutOfLogs() {
   const std::string launcher = Source("src/launcher.cpp");
-  const size_t bug = launcher.find("{\"Bug Report\"");
-  const size_t about = launcher.find("{\"About\"");
+  const size_t bug = launcher.find("MakePage(LauncherPage::kBugReport, ");
+  const size_t about = launcher.find("MakePage(LauncherPage::kAbout, ");
   CHECK(bug != std::string::npos && about != std::string::npos && bug < about);
   CHECK(Has(launcher, "bug_report_page_->HasReportUpdates()"));
   CHECK(Has(launcher, "void PageBugReport(trg::Ui& ui)"));
@@ -785,7 +830,105 @@ void TestLauncherListsThePageAndKeepsReceiptsOutOfLogs() {
 
 }  // namespace
 
+// The page keeps the shared Bug Report layout: section order, sizes, the selected-log facts and the report actions.
+void TestPageFollowsTheSharedLayout() {
+  const std::string page = Source("src/bug_report_page.cpp");
+  size_t at = 0;
+  for (const char* part : {"ui.Heading(\"1. Report the problem\")", "ui.Heading(\"2. Choose one game log\")",
+                           "ui.Heading(\"3. Preview what will be sent\")", "ui.Heading(\"4. Send\")",
+                           "my_reports_.Draw(ui, context)"}) {
+    const size_t found = page.find(part, at);
+    CHECK(found != std::string::npos);
+    if (found == std::string::npos) break;
+    at = found + 1;
+  }
+  for (const char* constant :
+       {"constexpr float kDescriptionHeight = 112.0f;", "constexpr float kPreviewHeight = 300.0f;",
+        "constexpr float kSentReportHeight = 300.0f;", "constexpr float kCardPadding = 12.0f;",
+        "constexpr float kCardRounding = 12.0f;", "constexpr float kDetailGap = 8.0f;",
+        "constexpr float kActionShare = 0.4f;", "constexpr float kRefreshPadding = 16.0f;",
+        "kFactLabelShare = 0.28f, kFactLabelMin = 130.0f, kFactLabelMax = 220.0f;"}) {
+    CHECK(Has(page, constant));
+  }
+  CHECK(kFewestDescriptionCharacters == 10 && kMostDescriptionCharacters == 500);
+  for (const char* text :
+       {"\"Selected log\"", "\"Last written\"", "\"Size\"", "\"View selected log\"", "\"My reports\"", "\"Refresh\"",
+        "\"Checking...\"", "\"View details\"", "\"Hide details\"", "\"What was sent\"", "\"Hide report\"",
+        "\"Remove from this PC\"", "\"Remove this report from this PC?\"", "\"Remove\"", "\"Cancel\"",
+        "\"Fixed in version\"", "\"Message from developer\"", "\"Status updated\"", "\"Send this log\"",
+        "\"No reports sent from this PC\"", "\"A report has an update\"",
+        "\"What were you doing, what went wrong, and does it happen every time?\"",
+        "\"This report is no longer available online.\""}) {
+    CHECK(Has(page, text));
+  }
+  CHECK(Has(page, "KeepClearOfScrollbar(std::floor(trg::layout::kContentPadding * ui.scale()))"));
+  CHECK(Has(page, "if (DrawLogFacts(ui, log)) trg::OpenUrl(Utf8(log.path));"));
+  CHECK(Has(page, "bool MyReports::ConfirmRemoval(trg::Ui& ui) {"));
+  CHECK(Has(page, "ImGui::BeginPopupModal(\"##remove\""));
+  for (const char* file : {"src/bug_report_page.cpp", "src/bug_report_page.h", "src/launcher.cpp", "src/online_page.cpp"}) {
+    const std::string text = Source(file);
+    CHECK(!Has(text, "GetCurrentWindow(") && !Has(text, "GImGui"));
+  }
+  CHECK(!Has(page, "<imgui_internal.h>") && Has(page, "#include \"page_margin.h\""));
+  const std::string margin = Source("src/page_margin.h");
+  CHECK(Has(margin, "ImGui::GetCurrentContext()->CurrentWindow"));
+  CHECK(!Has(margin, "ImGui::GetCurrentWindow()->"));
+}
+
+// The developer's reply has its own panel above the facts; unread replies mark the row, the page banner and the sidebar.
+void TestDeveloperReplyIsProminent() {
+  const std::string page = Source("src/bug_report_page.cpp");
+  CHECK(Has(page, "void DrawDeveloperMessage(trg::Ui& ui, const std::string& message, bool fresh) {"));
+  CHECK(Has(page, "void NewReplyMarker(trg::Ui& ui) {"));
+  CHECK(Has(page, "Tr(\"Message from developer\")") && Has(page, "Tr(\"New reply\")"));
+  CHECK(!Has(page, "Fact(ui, \"Message from developer\""));
+
+  const size_t details = page.find("void MyReports::DrawDetails(");
+  const std::string body = page.substr(details, page.find("\n}\n", details) - details);
+  const size_t summary = body.find("DrawCardSummary(ui, report, toggled);");
+  const size_t message = body.find("DrawDeveloperMessage(ui, report.player_message, fresh_reply_ == report.ticket);");
+  const size_t facts = body.find("DrawFacts(ui, report);");
+  CHECK(summary != std::string::npos && message != std::string::npos && facts != std::string::npos);
+  CHECK(summary < message && message < facts);
+  CHECK(Has(body, "if (!report.player_message.empty()) {"));
+  const size_t remember = body.find("if (report.message_unseen) fresh_reply_ = report.ticket;");
+  const size_t mark = body.find("history_.MarkSeen(report.ticket)");
+  CHECK(remember != std::string::npos && mark != std::string::npos && remember < mark);
+
+  const size_t panel = page.find("void DrawDeveloperMessage(");
+  const std::string panel_body = page.substr(panel, page.find("\n}\n", panel) - panel);
+  CHECK(Has(panel_body, "AddRectFilled(outer, outer_end, Tint(theme.accent, kMessageTint)"));
+  CHECK(Has(panel_body, "AddRect(outer, outer_end"));
+  CHECK(Has(panel_body, "ImDrawFlags_RoundCornersLeft"));
+  CHECK(Has(panel_body, "if (fresh) {") && Has(panel_body, "theme.on_accent"));
+  CHECK(!Has(panel_body, "InputText"));
+
+  const size_t row = page.find("void MyReports::DrawRow(");
+  const std::string row_body = page.substr(row, page.find("\n}\n", row) - row);
+  CHECK(Has(row_body, "if (report.message_unseen) NewReplyMarker(ui);"));
+
+  CHECK(Has(page, "return history_.HasUnseen() || history_.HasUnseenMessage();"));
+  CHECK(Has(page, "bool MyReports::HasNewReply() {"));
+  CHECK(Has(page, "ui.ButtonRow(reply ? \"A report has a new reply\" : \"A report has an update\""));
+  CHECK(Has(page, "void MyReports::Collapse() {\n  open_ticket_.clear();\n  fresh_reply_.clear();"));
+  CHECK(Has(Source("src/bug_report_page.h"), "bool HasReportUpdates() { return my_reports_.HasUpdates(); }"));
+  CHECK(Has(Source("src/launcher.cpp"), "[this] { return bug_report_page_->HasReportUpdates(); }"));
+
+  const std::string history = Source("src/report_history.cpp");
+  CHECK(Has(history, "if (found->player_message != status.player_message) found->message_unseen = !status.player_message.empty();"));
+  CHECK(Has(history, "\"message_unseen\""));
+
+  const std::string text = Source("src/localization/pt_br_ui_text.cpp");
+  for (const char* row : {"Message from developer\tMensagem do desenvolvedor\n", "New reply\tNova resposta\n",
+                          "A report has a new reply\t", "The developer replied to one of your reports.\t"}) {
+    CHECK(Has(text, row));
+  }
+}
+
 int main() {
+  TestPageFollowsTheSharedLayout();
+  TestDeveloperReplyIsProminent();
+  TestDeveloperReplyReadState();
   TestLogNames();
   TestLogDiscovery();
   TestDraftRules();

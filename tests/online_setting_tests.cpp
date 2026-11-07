@@ -328,7 +328,7 @@ void TestLobbyAddFriendUsesTheExistingFriendRequests() {
   CHECK(!row.empty());
   CHECK(Has(row, "online::DescribeLobbyPlayer(state, player)"));
   CHECK(Has(row, "ImGui::BeginDisabled(!view.can_add);"));
-  CHECK(Has(row, "if (ImGui::Button(Tr(\"Add friend\"))) Online().AddFriend(player.player);"));
+  CHECK(Has(row, "if (ImGui::Button(Tr(\"Add friend\"), ImVec2(-FLT_MIN, 0))) Online().AddFriend(player.player);"));
   CHECK(Has(row, "case online::LobbyRelation::kFriend:") && Has(row, "case online::LobbyRelation::kOutgoing:") &&
         Has(row, "case online::LobbyRelation::kIncoming:"));
   CHECK(Has(row, "Online().AcceptFriend(player.player)") && Has(row, "Online().DeclineFriend(player.player)"));
@@ -430,7 +430,7 @@ void TestOnlinePageHasNoForeignIdentifiers() {
 
 void TestLauncherHasAnOnlinePageWithoutTechnicalControls() {
   const std::string launcher = ReadSource("launcher.cpp");
-  CHECK(Has(launcher, "{\"Online\", "));
+  CHECK(Has(launcher, "MakePage(LauncherPage::kOnline, "));
   CHECK(Has(launcher, "online_page_.Draw(ui)"));
   CHECK(Has(launcher, "online_page_.Tick(settings_)"));
   CHECK(Has(launcher, "online_page_.NeedsAttention()"));
@@ -860,11 +860,12 @@ void TestLauncherWiresPlayRefusalToTheOnlinePage() {
                       "kConnectionTestRequired, online_page};"));
   CHECK(Has(launcher, "ImGui::TextWrapped(\"%s\", Tr(kConnectionTestRequired));"));  // the Play page keeps its line
   const std::string page = ReadSource("online_page.cpp");
-  CHECK(Has(page, "ui.ButtonRow(\"Connection test\", kTestHelp, state.testing ? \"Testing...\" : \"Run test\", "
-                  "view.primary_button)"));
+  CHECK(Has(page, "const char* button = state.testing ? \"Testing...\" : \"Run test\";"));
+  CHECK(Has(page, "ui.ButtonRow(\"Connection test\", kTestHelp, button, view.primary_button)"));
+  CHECK(Has(page, "ui.RowLeft(\"Connection test\", kTestHelp);"));
   CHECK(Has(page, "if (focus_run_test) ImGui::SetKeyboardFocusHere();"));
   CHECK(Has(page, "ImGuiChildFlags_NavFlattened"));
-  CHECK(Has(page, "DrawConnectionTestBody(ui, state, view, step.focus_run_test);\n  ui.EndRows();\n  ImGui::EndChild();"));
+  CHECK(Has(page, "DrawConnectionTestBody(ui, state, view, step.focus_run_test);\n  ui.EndRows();\n  EndCard();"));
   CHECK(Has(page, "ImGui::SetScrollY("));
   CHECK(Has(page, "t.accent.x") && !Has(page, "IM_COL32"));  // the theme's accent, no hardcoded colour
 }

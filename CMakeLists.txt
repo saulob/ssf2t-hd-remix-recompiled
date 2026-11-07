@@ -304,6 +304,18 @@ foreach(_online_source IN LISTS SSF2T_ONLINE_SOURCES)
         list(APPEND SSF2T_SOURCES ${_online_source})
     endif()
 endforeach()
+# The sidebar's page icons (assets/launcher/icons/*.svg) as a table of byte arrays, launcher_page_icons.cpp.
+file(GLOB SSF2T_PAGE_ICONS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/launcher/icons/*.svg")
+list(SORT SSF2T_PAGE_ICONS)
+set(SSF2T_PAGE_ICON_LIST "${CMAKE_BINARY_DIR}/generated/page_icons.txt")
+file(CONFIGURE OUTPUT "${SSF2T_PAGE_ICON_LIST}" CONTENT "${SSF2T_PAGE_ICONS}")
+set(SSF2T_PAGE_ICON_SOURCE "${CMAKE_BINARY_DIR}/generated/page_icon_data.cpp")
+add_custom_command(OUTPUT "${SSF2T_PAGE_ICON_SOURCE}"
+    COMMAND "${CMAKE_COMMAND}" -DINPUT_LIST=${SSF2T_PAGE_ICON_LIST} -DOUTPUT=${SSF2T_PAGE_ICON_SOURCE} -DSYMBOL=kPageIconFiles
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_files.cmake"
+    DEPENDS "${SSF2T_PAGE_ICON_LIST}" ${SSF2T_PAGE_ICONS} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_files.cmake"
+    COMMENT "Embedding the page icons")
+list(APPEND SSF2T_SOURCES src/launcher_page_icons.cpp "${SSF2T_PAGE_ICON_SOURCE}")
 set_source_files_properties(src/updater/third_party/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "-w")
 set_property(SOURCE src/update_config.cpp src/updater/github_release.cpp src/updater/json.cpp src/updater/sha256.cpp
     src/updater/update_controller.cpp src/updater/update_job.cpp src/updater/update_paths.cpp
@@ -625,6 +637,14 @@ add_dependencies(ssf2t_runtime_tests ssf2t_localization_tests)
 add_executable(ssf2t_launcher_settings_tests EXCLUDE_FROM_ALL tests/launcher_settings_tests.cpp)
 target_include_directories(ssf2t_launcher_settings_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_launcher_settings_tests)
+
+# Launcher visual contracts: page order and icons, sidebar fit, layout constants of the patched TRG Launcher. Headless.
+add_executable(ssf2t_launcher_visual_tests EXCLUDE_FROM_ALL tests/launcher_visual_tests.cpp
+    src/launcher_page_icons.cpp "${SSF2T_PAGE_ICON_SOURCE}")
+target_include_directories(ssf2t_launcher_visual_tests PRIVATE src "${CMAKE_CURRENT_SOURCE_DIR}" "${_trg_patched_dir}/include")
+target_compile_definitions(ssf2t_launcher_visual_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    SSF2T_TRG_PATCHED_DIR="${_trg_patched_dir}")
+add_dependencies(ssf2t_runtime_tests ssf2t_launcher_visual_tests)
 
 add_executable(ssf2t_fight_area_tests EXCLUDE_FROM_ALL tests/fight_area_tests.cpp)
 target_include_directories(ssf2t_fight_area_tests PRIVATE src)

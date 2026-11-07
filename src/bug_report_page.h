@@ -36,6 +36,7 @@ class MyReports {
   // False when the report could not be added to the saved history; the report itself was sent.
   bool Remember(const BugReportPackage& package, const BugReportReceipt& receipt);
   bool HasUpdates();
+  bool HasNewReply();
   bool ServiceTakesNoReports() const { return no_support_; }
   void BringIntoView() { bring_into_view_ = true; }
 
@@ -53,9 +54,17 @@ class MyReports {
   void Collect();
   void SaveHistory();
   void Open(const std::string& ticket);
+  void Collapse();
   void ForgetSentReport();
-  void DrawRow(trg::Ui& ui, const TrackedReport& report, bool open, std::string& toggled);
-  void DrawDetails(trg::Ui& ui, const TrackedReport& report, const BugReportContext& context, std::string& removed);
+  void ReadSentReport(const TrackedReport& report, const BugReportContext& context);
+  void DrawHeader(trg::Ui& ui, const BugReportContext& context);
+  void DrawReports(trg::Ui& ui, const BugReportContext& context);
+  void DrawRow(trg::Ui& ui, const TrackedReport& report, size_t index, std::string& toggled);
+  void DrawDetails(trg::Ui& ui, const TrackedReport& report, size_t index, const BugReportContext& context,
+                   std::string& toggled, std::string& removed);
+  void DrawActions(trg::Ui& ui, const TrackedReport& report, const BugReportContext& context, std::string& removed);
+  void DrawSentReport(trg::Ui& ui);
+  bool ConfirmRemoval(trg::Ui& ui);
 
   ReportHistory history_;
   std::shared_ptr<Check> check_;
@@ -64,7 +73,10 @@ class MyReports {
   bool check_failed_ = false;
   bool no_support_ = false;
   bool bring_into_view_ = false;
+  bool bring_detail_into_view_ = false;
   std::string open_ticket_;
+  // The open report whose developer message was unread when it was opened; keeps its "New reply" cue until it closes.
+  std::string fresh_reply_;
   std::shared_ptr<Read> reading_;
   std::string sent_ticket_;
   std::string sent_text_;
@@ -118,6 +130,7 @@ class BugReportPage {
   size_t selected_ = 0;
   DraftProblem problem_ = DraftProblem::kNone;
   bool bring_problem_into_view_ = false;
+  double problem_time_ = 0.0;
   std::shared_ptr<const BugReportPackage> previewed_;
   std::string preview_text_;
   BuildFailure build_failure_ = BuildFailure::kNone;
