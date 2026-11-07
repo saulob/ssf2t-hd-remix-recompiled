@@ -27,7 +27,8 @@ std::string PastedFriendCode(std::string_view clipboard);
 class FriendCodeField {
  public:
   explicit FriendCodeField(ClipboardReader read) : read_(std::move(read)) {}
-  void Draw(char* buffer, size_t size, const FieldLog& log);
+  // A width of 0 takes 60% of the room that is left.
+  void Draw(char* buffer, size_t size, const FieldLog& log, float width = 0.0f);
 
  private:
   static int ApplyPaste(ImGuiInputTextCallbackData* data);

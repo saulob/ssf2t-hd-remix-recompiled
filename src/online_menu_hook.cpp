@@ -1,14 +1,22 @@
 #include <algorithm>
 #include <cstring>
+#include <string>
 #include <string_view>
 
 #include <rex/hook.h>
 #include <rex/logging.h>
 #include <rex/system/kernel_state.h>
 
+#include "character/character_moves.h"
+#include "character/evil_ryu_results.h"
+#include "character/ultra_ending.h"
+#include "character/ultra_fighters.h"
+#include "character/versus_cpu.h"
 #include "guest_memory.h"
 #include "online_menu.h"
 #include "player_match_guest.h"
+#include "settings.h"
+#include "skip_intro.h"
 #include "title_update_image.h"
 
 namespace {
@@ -34,6 +42,17 @@ bool StartsLikeScripts(const char* text) {
   return std::string_view(text, size).find("<scripts>") != std::string_view::npos;
 }
 
+bool StartsLikeGameflowFsm(const char* text) {
+  const void* end = std::memchr(text, '\0', ssf2t::kGameflowHead);
+  const size_t size = end ? size_t(static_cast<const char*>(end) - text) : ssf2t::kGameflowHead;
+  return ssf2t::IsGameflowFsmHead(std::string_view(text, size));
+}
+
+bool StartsLikeDescriptors(const char* text) {
+  constexpr std::string_view kOpen = "<UIElementDescriptors>";
+  return std::strncmp(text, kOpen.data(), kOpen.size()) == 0;
+}
+
 void LogMultiplayerItems(const char* guest) {
   const int removed = g_multiplayer_patched ? 0 : 1;
   REXLOG_INFO("multiplayer menu items local=1 online=1 ranked={} tournament={} guest={}", removed, removed,
@@ -50,24 +69,64 @@ struct OnlineMenuHooks {
     const char* guest_text = text ? reinterpret_cast<const char*>(GuestPtr(base, text)) : nullptr;
     if (guest_text && StartsLikeScreenSet(guest_text)) {
       const auto patch = ssf2t::PatchScreenSet(guest_text);
-      if (!patch || !ParsePatched(ctx, base, original, patch->xml)) {
+      std::string moves_xml = patch ? patch->xml : std::string(guest_text);
+      const bool ultra = ssf2t::character::UltraFightersEnabled();
+      const bool moves = ultra && ssf2t::character::PatchCharacterMovesScreen(moves_xml);
+      const bool results = ultra && ssf2t::character::PatchResultsScreen(moves_xml);
+      const bool ending = ultra && ssf2t::character::PatchEndingScreen(moves_xml);
+      if (moves || results || ending) {
+        REXLOG_INFO("ultra fighter screens patched moves={} results={} ending={} guest={}", moves, results, ending,
+                    G::kName);
+      }
+      if ((!patch && !moves && !results && !ending) || !ParsePatched(ctx, base, original, moves_xml)) {
         REXLOG_INFO("multiplayer menu layout original guest={}", G::kName);
         original(ctx, base);
         return;
       }
+      if (!patch) return;
       g_multiplayer_patched = patch->multiplayer;
       LogMultiplayerItems(G::kName);
       REXLOG_INFO("online_match menu items find=1 custom={} create=1 guest={}",
                   patch->player_match ? 0 : 1, G::kName);
       REXLOG_INFO("create_player_match players control removed={} guest={}", patch->create_match,
                   G::kName);
+      REXLOG_INFO("leaderboards menu entry removed main={} pause={} training_pause={} guest={}", patch->main_menu,
+                  patch->pause_menu, patch->pause_training, G::kName);
       return;
     }
     if (guest_text && StartsLikeScripts(guest_text)) {
       const auto patch = ssf2t::PatchLobbyScripts(guest_text);
-      if (patch && ParsePatched(ctx, base, original, patch->xml)) {
-        REXLOG_INFO("game_lobby actions removed gamer_card={} players_list={} slot_help={} guest={}",
-                    patch->gamer_card, patch->players_list, patch->slot_help, G::kName);
+      std::string scripts = patch ? patch->xml : std::string(guest_text);
+      const bool ultra = ssf2t::character::UltraFightersEnabled();
+      const bool moves = ultra && ssf2t::character::PatchCharacterMovesScripts(scripts);
+      const bool results = ultra && ssf2t::character::PatchResultsScripts(scripts);
+      const bool lobby_input = ssf2t::character::PatchLobbyCpuScript(scripts);
+      const bool lobby_footer = ssf2t::character::PatchLobbyFooterScript(scripts);
+      const bool versus_cpu = lobby_input || lobby_footer;
+      if ((patch || moves || results || versus_cpu) && ParsePatched(ctx, base, original, scripts)) {
+        if (patch) {
+          REXLOG_INFO("game_lobby actions removed gamer_card={} players_list={} slot_help={} guest={}",
+                      patch->gamer_card, patch->players_list, patch->slot_help, G::kName);
+        }
+        REXLOG_INFO("scripts patched moves={} results={} versus_cpu={} guest={}", moves, results, versus_cpu,
+                    G::kName);
+        return;
+      }
+    }
+    if (guest_text && ssf2t::character::UltraFightersEnabled() && StartsLikeDescriptors(guest_text)) {
+      std::string descriptors = guest_text;
+      const bool grid = ssf2t::character::PatchResultsGrid(descriptors);
+      const bool animations = ssf2t::character::PatchResultsAnimations(descriptors);
+      const bool ending = ssf2t::character::PatchEndingAnimations(descriptors);
+      if ((grid || animations || ending) && ParsePatched(ctx, base, original, descriptors)) {
+        REXLOG_INFO("ultra fighter descriptors patched grid={} animations={} ending={} guest={}", grid, animations,
+                    ending, G::kName);
+        return;
+      }
+    }
+    if (guest_text && REXCVAR_GET(ssf2t_skip_intro) && StartsLikeGameflowFsm(guest_text)) {
+      const auto patched = ssf2t::PatchGameflowIntro(guest_text);
+      if (patched && ParsePatched(ctx, base, original, *patched)) {
         return;
       }
     }
@@ -98,6 +157,8 @@ struct OnlineMenuHooks {
     const ssf2t::HelpTextPatch patch = ssf2t::PatchHelpText(base + G::kHelpTextTable);
     REXLOG_INFO("multiplayer menu help rows multiplayer={} player_match={} create_player_match={} guest={}",
                 patch.multiplayer, patch.player_match, patch.create_match, G::kName);
+    REXLOG_INFO("leaderboards menu help rows main={} pause={} training_pause={} guest={}", patch.main_menu,
+                patch.pause_menu, patch.pause_training, G::kName);
   }
 
   // Runs on each help-bar refresh; logs only when the Multiplayer or Game Lobby screen becomes the current one.
@@ -118,6 +179,9 @@ struct OnlineMenuHooks {
     g_in_game_lobby = in_lobby;
   }
 };
+
+static_assert(ssf2t::Base013SkipIntro::kXmlDocumentParse == ssf2t::Base013PlayerMatch::kXmlDocumentParse);
+static_assert(ssf2t::TitleUpdate023SkipIntro::kXmlDocumentParse == ssf2t::TitleUpdate023PlayerMatch::kXmlDocumentParse);
 
 using Base = OnlineMenuHooks<ssf2t::Base013PlayerMatch>;
 using Update = OnlineMenuHooks<ssf2t::TitleUpdate023PlayerMatch>;

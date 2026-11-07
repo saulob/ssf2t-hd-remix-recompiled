@@ -286,9 +286,25 @@ SUITES=(
   "online protocol|ssf2t_online_protocol_tests|$A_NET"
   "online identity|ssf2t_online_identity_tests|$A_NET;$A_DATA"
   "online service (Find Match, Create Match, Invite, friends)|ssf2t_online_service_tests|$A_NET;$A_RELAY;$A_PM;$A_MULTI"
+  "secret characters (negotiation rule, select gating, rollback host state, validation)|ssf2t_secret_select_tests|$A_NET;$A_RB;$A_B13;$A_TU;$A_MULTI"
+  "violent ken (identity, navigation, negotiation, moves, gameplay package)|ssf2t_violent_ken_tests|$A_NET;$A_RB;$A_B13;$A_TU;$A_MULTI"
+  "local join select (defender keeps Ultra cell, guest join path on both images)|ssf2t_local_join_select_tests|$A_B13;$A_TU"
+  "evil ryu moves (recognizers, ground, render state)|ssf2t_evil_ryu_moves_tests|$A_B13;$A_TU"
+  "debug hotkeys removed (F1, F4-F8 dispatch gone, real inputs wired)|ssf2t_debug_hotkeys_removed_tests|$A_B13;$A_TU"
+  "console removed (Backtick bind, key reservation, logging kept)|ssf2t_console_removed_tests|$A_KEYS"
+  "skip intro (setting, launcher row, gameflow patch, hooks of both builds)|ssf2t_skip_intro_tests|$A_B13;$A_TU;$A_HOOK;$A_SET"
+  "akuma bug fixes (setting, Remix frame patches on both builds, Classic and online safety, rejection)|ssf2t_akuma_bug_fixes_tests|$A_B13;$A_TU;$A_HOOK;$A_SET"
+  "versus cpu (opponent model, lobby patches, guest AI path on both images, hooks)|ssf2t_versus_cpu_tests|$A_B13;$A_TU;$A_HOOK"
+  "character moves page, winner quotes and legacy text lines|ssf2t_character_moves_tests|$A_B13;$A_TU"
+  "roster cells (Akuma and Ultra cells inside the native roster pass: lifetime, fade order, geometry, plan)|ssf2t_roster_cells_tests|$A_B13;$A_TU;$A_HOOK"
+  "ultra endings (Evil Ryu and Violent Ken: package, text, routing, patches, guest switch)|ssf2t_ultra_ending_tests|$A_B13;$A_TU;$A_HOOK"
+  "character packages (table, consumers, required sets, fixture validation)|ssf2t_character_packages_tests|$A_PKG;$A_B13;$A_TU"
+  "violent ken audio (package, Ken event map, side routing, announcer)|ssf2t_violent_ken_audio_tests|$A_B13;$A_TU"
   "online rendezvous (STUN, UDP punch, relay selection)|ssf2t_online_rendezvous_tests|$A_RELAY;$A_NET"
   "online connection test|ssf2t_online_connection_tests|$A_NET;$A_RELAY"
   "friend code field|ssf2t_friend_field_tests|$A_NET"
+  "bug report: log privacy scrubber|ssf2t_log_scrubber_tests|$A_NET;$A_DATA"
+  "bug report: logs, preview, tickets, My reports, service calls|ssf2t_bug_report_tests|$A_NET;$A_DATA;$A_SET"
   "online setting|ssf2t_online_setting_tests|$A_SET"
   "player match|ssf2t_player_match_tests|$A_PM;$A_B13;$A_TU"
   "guest ui|ssf2t_guest_ui_tests|$A_PM"
@@ -299,6 +315,7 @@ SUITES=(
   "keyboard remapping and hotkeys|ssf2t_keyboard_tests|$A_KEYS;$A_CTRL"
   "player names|ssf2t_player_name_tests|$A_SET"
   "launcher quit|ssf2t_launcher_quit_tests|$A_CTRL"
+  "launcher visuals (pages, icons, sidebar fit, layout constants)|ssf2t_launcher_visual_tests|$A_CTRL;$A_DISP"
   "launcher controller (issue #9: XInput on Windows, SDL on Linux)|ssf2t_launcher_gamepad_tests|$A_CTRL;$A_PLAT"
   "window placement|ssf2t_window_placement_tests|$A_DISP"
   "display scaling|ssf2t_dpi_tests|$A_DISP"
@@ -310,6 +327,7 @@ SUITES=(
   "GPU draw state memo|ssf2t_gpu_draw_state_memo_tests|$A_DISP"
   "D3D12 async submission|ssf2t_d3d12_async_submission_tests|$A_DISP"
   "GPU register wake|ssf2t_gpu_register_wake_tests|$A_DISP"
+  "GPU fence wait|ssf2t_gpu_fence_wait_tests|$A_DISP"
   "achievements|ssf2t_achievement_tests|$A_ACH"
   "achievement metadata (real game files)|ssf2t_achievement_metadata_tests|$A_ACH"
   "updater (release JSON, ZIP, staging, rollback, AppImage target)|ssf2t_update_tests|$A_UPD;$A_DATA"
@@ -448,7 +466,7 @@ else record FAIL "unexpected dynamic dependencies or local paths in a Linux bina
 # ---- Packaging: a fixture AppDir staged and scanned by the release policy, then run as an AppImage ---------------------
 
 package_fixture() {
-  local fix="$TMP/package" bin="$TMP/package/bin" appdir="$TMP/package/AppDir" id
+  local fix="$TMP/package" bin="$TMP/package/bin" appdir="$TMP/package/AppDir" id package
   rm -rf "$fix"
   mkdir -p "$bin/assets/launcher"
   policy_init "$SRC"
@@ -488,6 +506,8 @@ STUB
   cp "$SRC/config/ssf2t_hd_remix.toml" "$bin/$BIN_NAME.toml"
   cp "$SRC/assets/launcher/header-art.png" "$bin/assets/launcher/header-art.png"
   cp "$SRC/assets/launcher/sponsor-heart.png" "$bin/assets/launcher/sponsor-heart.png"
+  mkdir -p "$bin/assets/characters"
+  for package in $CHARACTER_PACKAGES; do printf 'placeholder' >"$bin/assets/characters/$package"; done
   stage_appdir "$appdir" "$bin" "$fix/symbols" "$SRC"
 }
 
@@ -545,7 +565,10 @@ forbidden_policy() {
   forbidden_case "an Xbox 360 package" "Xbox 360 package or executable" "printf 'LIVE0000' > usr/bin/package.bin" || failed=1
   forbidden_case "an Xbox 360 executable" "Xbox 360 package or executable" "printf 'XEX20000' > usr/bin/image.bin" || failed=1
   forbidden_case "a Windows binary" "Windows binary" "printf 'MZ000000' > usr/bin/tool.bin" || failed=1
-  forbidden_case "DEBUG_SAULO diagnostics" "DEBUG_SAULO in file" "echo DEBUG_SAULO >> usr/share/doc/$BIN_NAME/LICENSE" || failed=1
+  forbidden_case "a missing character package" "unexpected AppDir contents" "rm usr/bin/assets/characters/ultra_portraits.bin" || failed=1
+forbidden_case "an unknown character package" "unexpected AppDir contents" "touch usr/bin/assets/characters/other.bin" || failed=1
+forbidden_case "a package outside its folder" "unexpected AppDir contents" "cp usr/bin/assets/characters/ultra_portraits.bin usr/bin/" || failed=1
+forbidden_case "DEBUG_SAULO diagnostics" "DEBUG_SAULO in file" "echo DEBUG_SAULO >> usr/share/doc/$BIN_NAME/LICENSE" || failed=1
   forbidden_case "a local path inside a file" "local path in file" "echo '$ROOT' >> usr/share/doc/$BIN_NAME/LICENSE" || failed=1
   forbidden_case "a symbolic link" "symbolic link" "ln -s usr/bin/$BIN_NAME link" || failed=1
   forbidden_case "an unlisted file" "unexpected AppDir contents" "touch usr/bin/extra.bin" || failed=1

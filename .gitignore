@@ -1,5 +1,6 @@
 # Local game files and generated output
 /game/
+/assets/characters/
 /generated/
 /build/
 /build-release/

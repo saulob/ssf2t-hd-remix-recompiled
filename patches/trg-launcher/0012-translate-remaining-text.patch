@@ -1,0 +1,46 @@
+diff --git a/src/launcher.cpp b/src/launcher.cpp
+index e2d86d0..a5b9c69 100644
+--- a/src/launcher.cpp
++++ b/src/launcher.cpp
+@@ -551,7 +551,7 @@ bool Ui::InputText(const char* label, const char* help, const char* key, const c
+   std::snprintf(buf, sizeof buf, "%s", settings().Get(key).c_str());
+   ImGui::PushID(key);
+   ImGui::SetNextItemWidth(-FLT_MIN);
+-  const bool changed = ImGui::InputTextWithHint("##text", hint, buf, sizeof buf);
++  const bool changed = ImGui::InputTextWithHint("##text", T(hint), buf, sizeof buf);
+   if (changed) settings().Set(key, buf);
+   ImGui::PopID();
+   return changed;
+@@ -741,11 +741,12 @@ void Ui::StatusCard(Status status, const char* title, const char* detail, float
+ bool Ui::TaskProgress(Task& task) {
+   if (!task.running()) return false;
+   const float f = task.fraction();
++  const char* task_label = T(task.label().c_str());
+   char label[160];
+   if (f >= 0.0f)
+-    std::snprintf(label, sizeof label, "%s %.0f%%", task.label().c_str(), double(f) * 100.0);
++    std::snprintf(label, sizeof label, "%s %.0f%%", task_label, double(f) * 100.0);
+   else
+-    std::snprintf(label, sizeof label, "%s", task.label().c_str());
++    std::snprintf(label, sizeof label, "%s", task_label);
+   const float cancel_w = 90 * scale_;
+   ImGui::ProgressBar(f >= 0.0f ? f : -1.0f * float(ImGui::GetTime()),
+                      ImVec2(ImGui::GetContentRegionAvail().x - cancel_w - ImGui::GetStyle().ItemSpacing.x, 0), label);
+@@ -866,7 +867,7 @@ bool Ui::Section(const char* title, bool open_by_default) {
+   LeaveRows();
+   ImGui::Dummy(ImVec2(0, layout::kSectionGap * scale_));
+   ImGui::PushFont(fonts().semibold, layout::kTextSection);
+-  const bool open = ImGui::CollapsingHeader(title, open_by_default ? ImGuiTreeNodeFlags_DefaultOpen : 0);
++  const bool open = ImGui::CollapsingHeader(T(title), open_by_default ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+   ImGui::PopFont();
+   return open;
+ }
+@@ -1212,7 +1213,7 @@ void Launcher::DrawHeader(ImVec2 origin, float w, float h) {
+     ImGui::PopID();
+   } else if (!b.subtitle.empty()) {
+     dl->AddText(config_.fonts.semibold, subtitle_size, ImVec2(subtitle_x, subtitle_y), subtitle_color,
+-                b.subtitle.c_str());
++                T(b.subtitle.c_str()));
+   }
+   dl->PopClipRect();
+ }

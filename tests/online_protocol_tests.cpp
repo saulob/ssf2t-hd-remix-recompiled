@@ -3,6 +3,7 @@
 // Run: ssf2t_online_protocol_tests
 
 #include <cstdio>
+#include <optional>
 #include <string>
 
 #include "online/protocol.h"
@@ -258,8 +259,153 @@ void TestRelaySignalling() {
   CHECK(DescribeServiceError("relay_unavailable") == "The connection through the online service is not available.");
 }
 
+void TestSecretCharactersOnTheWire() {
+  SecretCapabilities caps;
+  caps.supports = {true, true};
+  caps.enabled = {true, false};
+  HelloFields fields;
+  fields.guest = "base013";
+  fields.player = "ABCD-2345";
+  fields.secret = caps;
+  const std::string hello = EncodeHello(1, fields);
+  CHECK(Contains(hello, "\"secret\":{\"supports\":{\"akuma\":true,\"evil_ryu\":true,\"violent_ken\":false},\"enabled\":{\"akuma\":true,"
+                        "\"evil_ryu\":false,\"violent_ken\":false}}"));
+  // A client that supports nothing says so, and cannot enable what it does not support.
+  CHECK(Contains(EncodeHello(1, HelloFields{}), "\"secret\":{\"supports\":{\"akuma\":false,\"evil_ryu\":false,\"violent_ken\":false},"
+                                                "\"enabled\":{\"akuma\":false,\"evil_ryu\":false,\"violent_ken\":false}}"));
+  SecretCapabilities lying;
+  lying.enabled = {true, true};
+  CHECK(Contains(EncodeHello(1, [&] { HelloFields f; f.secret = lying; return f; }()), "\"enabled\":{\"akuma\":false,"
+                                                                                       "\"evil_ryu\":false,\"violent_ken\":false}"));
+  CHECK(EncodeSecretUpdate(4, caps) == "{\"op\":\"secret.update\",\"seq\":4,\"secret\":{\"supports\":{\"akuma\":true,"
+                                       "\"evil_ryu\":true,\"violent_ken\":false},\"enabled\":{\"akuma\":true,\"evil_ryu\":false,\"violent_ken\":false}}}");
+
+  const auto greeting = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"capabilities\":{\"protocol_version\":3,"
+                                            "\"secret_characters\":true}}");
+  CHECK(greeting && greeting->capabilities && greeting->capabilities->secret_characters);
+  const auto older = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"capabilities\":{\"protocol_version\":3}}");
+  CHECK(older && older->capabilities && !older->capabilities->secret_characters);
+
+  const auto created = DecodeServerMessage(
+      "{\"ev\":\"match.created\",\"match\":\"m1\",\"role\":\"host\",\"guest\":\"base013\",\"secret\":{\"peer\":"
+      "{\"supports\":{\"akuma\":true,\"evil_ryu\":true},\"enabled\":{\"akuma\":true,\"evil_ryu\":false}},"
+      "\"effective\":{\"akuma\":true,\"evil_ryu\":false}}}");
+  CHECK(created && created->match && created->match->secret);
+  CHECK(created->match->secret->peer.supports.akuma && created->match->secret->peer.supports.evil_ryu);
+  CHECK(created->match->secret->peer.enabled.akuma && !created->match->secret->peer.enabled.evil_ryu);
+  CHECK(created->match->secret->effective.akuma && !created->match->secret->effective.evil_ryu);
+
+  const auto joined = DecodeServerMessage(
+      "{\"re\":2,\"code\":\"ok\",\"session\":\"s\",\"match\":\"m1\",\"role\":\"join\",\"guest\":\"base013\",\"secret\":"
+      "{\"peer\":{\"supports\":{},\"enabled\":{}},\"effective\":{}}}");
+  CHECK(joined && joined->match && joined->match->secret && !joined->match->secret->effective.Any());
+
+  // An older service sends none: the match has no secret answer, which reads as nothing available.
+  const auto none = DecodeServerMessage("{\"ev\":\"match.created\",\"match\":\"m1\",\"role\":\"host\",\"guest\":\"base013\"}");
+  CHECK(none && none->match && !none->match->secret);
+
+  // Anything that is not exactly true is false, and a peer cannot enable what it does not support.
+  const auto odd = DecodeServerMessage(
+      "{\"ev\":\"match.created\",\"match\":\"m1\",\"role\":\"host\",\"guest\":\"base013\",\"secret\":{\"peer\":"
+      "{\"supports\":{\"akuma\":\"true\",\"evil_ryu\":1},\"enabled\":{\"akuma\":true,\"evil_ryu\":true}},"
+      "\"effective\":{\"akuma\":\"yes\",\"evil_ryu\":null}}}");
+  CHECK(odd && odd->match && odd->match->secret);
+  CHECK(!odd->match->secret->peer.supports.Any() && !odd->match->secret->peer.enabled.Any());
+  CHECK(!odd->match->secret->effective.Any());
+  const auto wrong = DecodeServerMessage(
+      "{\"ev\":\"match.created\",\"match\":\"m1\",\"role\":\"host\",\"guest\":\"base013\",\"secret\":[1,2]}");
+  CHECK(wrong && wrong->match && !wrong->match->secret);
+
+  const auto event = DecodeServerMessage(
+      "{\"ev\":\"match.secret\",\"match\":\"m1\",\"secret\":{\"peer\":{\"supports\":{\"akuma\":true},\"enabled\":"
+      "{\"akuma\":true}},\"effective\":{\"akuma\":true}}}");
+  CHECK(event && event->kind == ServerMessage::Kind::kMatchSecret && event->match_id == "m1" && event->secret);
+  CHECK(event->secret->effective.akuma && !event->secret->effective.evil_ryu);
+  CHECK(!DecodeServerMessage("{\"ev\":\"match.secret\",\"secret\":{}}"));
+  CHECK(!DecodeServerMessage("{\"ev\":\"match.secret\",\"match\":\"m1\"}"));
+
+  const auto update = DecodeServerMessage("{\"re\":5,\"code\":\"ok\",\"secret\":{\"peer\":{\"supports\":{\"akuma\":true},"
+                                          "\"enabled\":{\"akuma\":true}},\"effective\":{\"akuma\":true}}}");
+  CHECK(update && update->secret && update->secret->effective.akuma);
+  const auto bare = DecodeServerMessage("{\"re\":5,\"code\":\"ok\"}");
+  CHECK(bare && !bare->secret);
+}
+
+void TestPublicLobbyOnTheWire() {
+  CHECK(EncodeLobbyPublish(3, true) == "{\"op\":\"lobby.publish\",\"seq\":3,\"visible\":true}");
+  CHECK(EncodeLobbyPublish(4, false) == "{\"op\":\"lobby.publish\",\"seq\":4,\"visible\":false}");
+  CHECK(EncodeLobbyList(5) == "{\"op\":\"lobby.list\",\"seq\":5}");
+  CHECK(EncodeLobbyList(5, std::nullopt) == "{\"op\":\"lobby.list\",\"seq\":5}");
+  CHECK(EncodeLobbyList(6, 1700000000123) == "{\"op\":\"lobby.list\",\"seq\":6,\"rev\":1700000000123}");
+  CHECK(EncodeLobbyList(7, -1) == "{\"op\":\"lobby.list\",\"seq\":7}");
+
+  const auto list = DecodeServerMessage(
+      "{\"re\":5,\"code\":\"ok\",\"players\":[{\"player\":\"ABCD-2345\",\"name\":\"Alice\",\"state\":\"player_match\","
+      "\"platform\":\"Linux\",\"version\":\"0.4.0\",\"guest\":\"tu023\",\"compatible\":false},"
+      "{\"player\":\"EFGH-6789\",\"name\":\"Bob\",\"state\":\"online\",\"platform\":\"Windows\",\"version\":\"0.4.0\","
+      "\"guest\":\"base013\",\"compatible\":true}],\"rev\":1700000000123,\"visible\":true}");
+  CHECK(list && list->lobby_players && list->lobby_players->size() == 2);
+  CHECK(list->lobby_rev == 1700000000123 && list->lobby_visible && *list->lobby_visible && !list->lobby_unchanged);
+  const LobbyPlayer& alice = (*list->lobby_players)[0];
+  CHECK(alice.player == "ABCD-2345" && alice.name == "Alice" && alice.state == FriendState::kPlayerMatch &&
+        alice.platform == "Linux" && alice.version == "0.4.0" && alice.guest == "tu023" && !alice.compatible);
+  CHECK((*list->lobby_players)[1].compatible && (*list->lobby_players)[1].state == FriendState::kOnline);
+
+  const auto unchanged = DecodeServerMessage("{\"re\":6,\"code\":\"ok\",\"unchanged\":true,\"rev\":1700000000123,\"visible\":false}");
+  CHECK(unchanged && unchanged->lobby_unchanged && !unchanged->lobby_players && unchanged->lobby_rev == 1700000000123);
+  CHECK(unchanged->lobby_visible && !*unchanged->lobby_visible);
+
+  const auto empty = DecodeServerMessage("{\"re\":7,\"code\":\"ok\",\"players\":[],\"rev\":5,\"visible\":false}");
+  CHECK(empty && empty->lobby_players && empty->lobby_players->empty());
+
+  const auto published = DecodeServerMessage("{\"re\":8,\"code\":\"ok\",\"visible\":true}");
+  CHECK(published && published->lobby_visible && *published->lobby_visible && !published->lobby_players);
+
+  // A row without a player or a name, or one that is not an object, makes the whole answer a failed read.
+  for (const char* bad : {"{\"name\":\"Alice\"}", "{\"player\":\"ABCD-2345\"}", "{\"player\":\"\",\"name\":\"A\"}", "7", "null",
+                          "\"text\""}) {
+    const auto message = DecodeServerMessage(std::string("{\"re\":9,\"code\":\"ok\",\"players\":[") + bad + "],\"rev\":1}");
+    CHECK(message && !message->lobby_players);
+  }
+  CHECK(!DecodeServerMessage("{\"re\":9,\"code\":\"ok\",\"players\":{\"player\":\"ABCD-2345\"}}")->lobby_players);
+  CHECK(!DecodeServerMessage("{\"re\":9,\"code\":\"ok\",\"players\":\"none\"}")->lobby_players);
+
+  // An offline state cannot be listed, and an answer that does not say it is compatible is not trusted to be.
+  const auto odd = DecodeServerMessage("{\"re\":9,\"code\":\"ok\",\"players\":[{\"player\":\"ABCD-2345\",\"name\":\"A\","
+                                       "\"state\":\"offline\"}],\"rev\":1}");
+  CHECK(odd && odd->lobby_players && (*odd->lobby_players)[0].state == FriendState::kOnline && !(*odd->lobby_players)[0].compatible);
+
+  // Extra fields from another service version are ignored, and no other answer reads as a Lobby answer.
+  const auto extra = DecodeServerMessage("{\"re\":9,\"code\":\"ok\",\"players\":[{\"player\":\"ABCD-2345\",\"name\":\"A\","
+                                         "\"compatible\":true,\"relation\":\"friend\",\"ip\":\"203.0.113.9\"}],\"rev\":1}");
+  CHECK(extra && extra->lobby_players && extra->lobby_players->size() == 1);
+  const auto friends = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"friends\":[]}");
+  CHECK(friends && !friends->lobby_players && !friends->lobby_unchanged && friends->lobby_rev == -1 && !friends->lobby_visible);
+  const auto refused = DecodeServerMessage("{\"re\":1,\"code\":\"limit\"}");
+  CHECK(refused && refused->code == "limit" && !refused->lobby_players);
+
+  const auto announced = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"capabilities\":{\"protocol_version\":3,\"public_lobby\":true}}");
+  CHECK(announced && announced->capabilities && announced->capabilities->public_lobby);
+  const auto older = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"capabilities\":{\"protocol_version\":3,\"secret_characters\":true}}");
+  CHECK(older && older->capabilities && !older->capabilities->public_lobby && older->capabilities->secret_characters);
+  const auto legacy = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"friend_code\":\"ABCD-2345\"}");
+  CHECK(legacy && !legacy->capabilities);
+  CHECK(kLobbyProtocol == 3);
+  CHECK(!ServiceCapabilities{}.public_lobby);
+  CHECK(!ServiceCapabilities{}.bug_reports);
+  CHECK(older && older->capabilities && !older->capabilities->bug_reports);
+  const auto reports = DecodeServerMessage("{\"re\":1,\"code\":\"ok\",\"capabilities\":{\"protocol_version\":3,\"bug_reports\":true}}");
+  CHECK(reports && reports->capabilities && reports->capabilities->bug_reports && !reports->capabilities->public_lobby);
+  CHECK(EncodeIncidentStatus(2, {}) == "{\"op\":\"incident.status\",\"seq\":2,\"reports\":[]}");
+  CHECK(EncodeIncidentRead(3, {"SSF2-ABCDEF", "ab"}) == "{\"op\":\"incident.read\",\"seq\":3,\"ticket\":\"SSF2-ABCDEF\",\"receipt\":\"ab\"}");
+  CHECK(EncodeIncidentFile(4, {{"description", "a \"b\""}, {"log_text", "x\ny"}}) ==
+        "{\"op\":\"incident.file\",\"seq\":4,\"description\":\"a \\\"b\\\"\",\"log_text\":\"x\\ny\"}");
+}
+
 int main() {
   std::printf("online protocol tests\n");
+  TestPublicLobbyOnTheWire();
+  TestSecretCharactersOnTheWire();
   TestRelaySignalling();
   TestRequestsAreWellFormed();
   TestAnswersDecode();

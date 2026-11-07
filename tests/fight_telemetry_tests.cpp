@@ -331,7 +331,7 @@ void TestAnInvalidCharacterPairCreatesNoStart() {
   Collected out;
   FightReporter reporter(out.Sink());
   uint32_t fight = 0;
-  for (const int bad : {-1, 17, 255, 1000}) {
+  for (const int bad : {-1, 19, 255, 1000}) {
     reporter.Begin(1, fight++);
     reporter.Observe(Fight(bad, 4), true, 10, 10);
     reporter.End(Fight(bad, 4), true);
@@ -438,13 +438,16 @@ std::string Letters(const std::string& text) {
   return out;
 }
 
-void TestTheRosterIsTheSeventeenFighters() {
-  CHECK(kCharacterCount == 17 && kAkumaCharacter == 16);
+constexpr int kGuestRoster = 17;
+
+void TestTheRosterIsTheSeventeenFightersAndEvilRyu() {
+  CHECK(kCharacterCount == kGuestRoster + 2 && kAkumaCharacter == 16 && kEvilRyuCharacter == 17 &&
+        kViolentKenCharacter == 18);
   const char* expected[] = {"Ryu",     "E. Honda", "Blanka", "Guile",   "Ken",     "Chun-Li", "Zangief", "Dhalsim", "M. Bison",
-                            "Sagat",   "Balrog",   "Vega",   "Cammy",   "T. Hawk", "Fei Long", "Dee Jay", "Akuma"};
+                            "Sagat",   "Balrog",   "Vega",   "Cammy",   "T. Hawk", "Fei Long", "Dee Jay", "Akuma", "Evil Ryu", "Violent Ken"};
   for (int id = 0; id < kCharacterCount; ++id) CHECK(std::strcmp(CharacterName(id), expected[id]) == 0);
-  CHECK(std::strcmp(CharacterName(-1), "") == 0 && std::strcmp(CharacterName(17), "") == 0);
-  CHECK(IsCharacterId(0) && IsCharacterId(16) && !IsCharacterId(17) && !IsCharacterId(-1));
+  CHECK(std::strcmp(CharacterName(-1), "") == 0 && std::strcmp(CharacterName(kCharacterCount), "") == 0);
+  CHECK(IsCharacterId(0) && IsCharacterId(16) && IsCharacterId(18) && !IsCharacterId(19) && !IsCharacterId(-1));
 }
 
 void TestTheRosterMatchesTheWorker() {
@@ -465,7 +468,7 @@ void TestTheRosterMatchesTheWorker() {
     names.push_back(text.substr(open + 1, close - open - 1));
     at = close + 1;
   }
-  CHECK(int(names.size()) == kCharacterCount);
+  CHECK(int(names.size()) >= kCharacterCount);
   for (int id = 0; id < kCharacterCount && id < int(names.size()); ++id) CHECK(names[id] == CharacterName(id));
 }
 
@@ -493,7 +496,7 @@ struct Image {
 constexpr uint32_t kGameNameTable = 0x83A21280;
 
 void CheckNameTable(const Image& image, const char* label) {
-  for (int id = 0; id < kCharacterCount; ++id) {
+  for (int id = 0; id < kGuestRoster; ++id) {
     const std::string game = Letters(image.Text(image.U32(kGameNameTable + 4 * id)));
     const std::string ours = Letters(CharacterName(id));
     CHECK(!game.empty() && ours.size() >= game.size() && ours.compare(ours.size() - game.size(), game.size(), game) == 0);
@@ -501,7 +504,7 @@ void CheckNameTable(const Image& image, const char* label) {
       std::printf("    %s id %d: game \"%s\" roster \"%s\"\n", label, id, game.c_str(), ours.c_str());
     }
   }
-  CHECK(image.Text(image.U32(kGameNameTable + 4 * kCharacterCount)) == "NUM_CHARACTERS");
+  CHECK(image.Text(image.U32(kGameNameTable + 4 * kGuestRoster)) == "NUM_CHARACTERS");
 }
 
 void TestTheRosterIsTheGamesOwnIdTableInBothImages() {
@@ -545,7 +548,7 @@ void FillFight(MapMemory& m, int c1, int c2, int w1, int w2, int to_beat, bool h
 
 template <typename G>
 void CheckGuestReads() {
-  for (int id = 0; id < kCharacterCount - 1; ++id) {  // every id but Akuma comes from the stored id
+  for (int id = 0; id < kGuestRoster - 1; ++id) {  // every id but Akuma comes from the stored id
     MapMemory m;
     FillFight<G>(m, id, (id + 5) % 16, 0, 0, 1);
     const FightSnapshot s = np::ReadFightSnapshot<G>(m);
@@ -920,8 +923,31 @@ void TestTheWireMessageIsExactly() {
 
 }  // namespace
 
+// Evil Ryu plays on Ryu's guest id but is reported as his own character, so the dashboard never counts him as Ryu.
+void TestEvilRyuIsReportedApartFromRyu() {
+  Collected out;
+  FightReporter reporter(out.Sink());
+  PlayFight(reporter, 1, 0, kEvilRyuCharacter, 0, 2, 0);
+  PlayFight(reporter, 1, 1, kEvilRyuCharacter, kEvilRyuCharacter, 0, 2);
+  PlayFight(reporter, 1, 2, kAkumaCharacter, kEvilRyuCharacter, 2, 1);
+  CHECK(out.Count(FightEventKind::kStart) == 3 && out.Count(FightEventKind::kComplete) == 3);
+  CHECK(out.reports[0].p1 == 17 && out.reports[0].p2 == 0);
+  CHECK(out.reports[2].p1 == 17 && out.reports[2].p2 == 17);
+  CHECK(out.reports[4].p1 == 16 && out.reports[4].p2 == 17);
+  CHECK(std::strcmp(CharacterName(out.reports[0].p1), "Evil Ryu") == 0 && std::strcmp(CharacterName(out.reports[0].p2), "Ryu") == 0);
+  FightEventFields e;
+  e.kind = "start";
+  e.p1 = 17;
+  e.p2 = 16;
+  e.build = "base013";
+  e.transport = "direct";
+  const std::string text = EncodeTelemetryFight(1, "m-1", e);
+  CHECK(Contains(text, "\"p1\":17") && Contains(text, "\"p2\":16"));
+}
+
 int main() {
   std::printf("fight telemetry tests\n");
+  TestEvilRyuIsReportedApartFromRyu();
   TestResultOfTheFight();
   TestAnOnlineFightStartsAndCompletesOnce();
   TestCharactersAreTheOnesHeldWhenTheyBecomeAuthoritative();
@@ -949,7 +975,7 @@ int main() {
   TestAFailingSinkNeverDisturbsTheFight();
   TestOnlyAnOnlineFightIsReportable();
   TestTheQueueIsBoundedAndDropsTheNewest();
-  TestTheRosterIsTheSeventeenFighters();
+  TestTheRosterIsTheSeventeenFightersAndEvilRyu();
   TestTheRosterMatchesTheWorker();
   TestTheRosterIsTheGamesOwnIdTableInBothImages();
   TestBothGuestsReadTheirOwnAddresses();

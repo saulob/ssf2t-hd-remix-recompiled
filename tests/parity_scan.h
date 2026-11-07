@@ -51,11 +51,21 @@ std::vector<uint8_t> ReadBytes(const fs::path& path) {
   return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 }
 
+// feature_parity.h kDormantSources: on disk, built by nothing, so their hooks and tables run in no program.
+bool DormantSource(const fs::path& path) {
+  static const std::string registry = ReadText(Root() / "src/feature_parity.h");
+  const size_t list = registry.find("kDormantSources[]");
+  if (list == std::string::npos) return false;
+  const size_t at = registry.find("{\"" + fs::relative(path, Root()).generic_string() + "\", ", list);
+  return at < registry.find("};", list);
+}
+
 std::vector<fs::path> SourceFiles() {
   std::vector<fs::path> files;
   for (const auto& entry : fs::recursive_directory_iterator(Root() / "src")) {
     const std::string ext = entry.path().extension().string();
-    if (entry.is_regular_file() && (ext == ".h" || ext == ".cpp")) files.push_back(entry.path());
+    if (!entry.is_regular_file() || (ext != ".h" && ext != ".cpp")) continue;
+    if (!DormantSource(entry.path())) files.push_back(entry.path());
   }
   std::sort(files.begin(), files.end());
   return files;

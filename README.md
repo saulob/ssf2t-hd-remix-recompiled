@@ -16,9 +16,9 @@
 
 ## Features
 
-- **Online play**: Online Match with friends over the internet, with rollback netplay, direct UDP connections and an automatic relay fallback. Friend codes, presence, Find Match, Create Match, Invite Player, a Connection test and a Ping display. See [Online play](#online-play).
+- **Online play**: Online Match with friends over the internet, with rollback netplay, direct UDP connections and an automatic relay fallback. Friend codes and friend requests, presence, an optional public Lobby to find other players, Find Match, Create Match, Invite Player, a Connection test and a Ping display. See [Online play](#online-play).
 - **Native static recompilation**: the game's own code, not an emulator. Windows, plus an experimental Linux AppImage.
-- **TRG launcher** with a game package installer, an optional Title Update installer, an Online page, display and graphics options, and an Achievements page.
+- **TRG launcher** with a game package installer, an optional Title Update installer, an Online page (Settings, Friends and Lobby), display and graphics options, an Achievements page and a Bug Report page.
 - **Base game or Title Update**: both game versions (`0.0.1.3` and `0.0.2.3`) are built into the program with the same features, and the Title Update can be added or removed at any time.
 - **Launcher updates**: the launcher checks GitHub releases once per start and installs a newer release only when you choose UPDATE NOW. Game files, saves, settings and logs are kept.
 - **Display**: Windowed or Borderless Fullscreen (**F11**), window size, monitor and VSync. Per-monitor high-DPI support, and the game window opens where and how large you chose.
@@ -33,6 +33,11 @@
 - **Xbox controller support** with no setup, and keyboard play as an Xbox 360 controller.
 - **In-game frame counter** (**F2**), online **Ping display** (**F3**), and optional frame rate or render resolution in
   the window title.
+- **CPU opponent in Local Match**: in the Local Match lobby, **X** adds a CPU opponent to the empty side and cycles its difficulty from 1 to 8, **Y** removes it.
+- **Enable Akuma** (optional, off by default): Akuma is selectable on Character Select without the secret input.
+- **Evil Ryu and Violent Ken** (optional, off by default): two extra fighters with their own Character Select cells, moves, palettes, presentation and online compatibility. Turn them on in the launcher's Gameplay page; see [docs/ultra-fighters.md](docs/ultra-fighters.md).
+- **Akuma bug fixes** (optional, off by default, experimental): corrects HD Remix Akuma bugs documented by designer David Sirlin. See [Akuma bug fixes](#akuma-bug-fixes).
+- **Bug Report**: send a problem report with one of the newest logs from the launcher. The log is shown first with names, folders, network addresses and online identifiers removed; **My reports** shows each report's status and replies from the developer.
 - **Portable user data**: saves, settings and achievements are in a `user_data` folder beside the program.
 
 The game runs at its original speed of 60 updates per second.
@@ -59,7 +64,7 @@ The launcher tells the two packages apart by their content type, checks the Titl
 
 ## Installing
 
-1. Download **SSF2THDRemix-v0.3.1-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
+1. Download **SSF2THDRemix-v0.4.0-windows-x64.zip** from the [latest release](https://github.com/saulob/ssf2t-hd-remix-recompiled/releases/latest) and extract it anywhere you can write to.
 2. Run **ssf2t_hd_remix.exe**. The launcher opens.
 3. On the **Play** page click **Install Game** and pick your game package. It is one file with a long hexadecimal name and no extension. On an Xbox 360 drive it is in `Content\0000000000000000\584108A4\000D0000\`.
 4. Optional: click **Install Title Update** and pick the Title Update #1 package (`Content\0000000000000000\584108A4\000B0000\` on an Xbox 360 drive). The two packages are installed separately and either can go first. Installing one does not install the other, and each button refuses the other kind of package.
@@ -70,7 +75,7 @@ The launcher tells the two packages apart by their content type, checks the Titl
 
 ### Linux AppImage (experimental)
 
-Download **SSF2THDRemix-v0.3.1-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
+Download **SSF2THDRemix-v0.4.0-x86_64.AppImage**, make it executable (`chmod +x`) and run it from a folder you can write to. The launcher works as on Windows; `game`, `logs` and `user_data` are created next to the AppImage file. It has not yet been validated on real Linux or Steam Deck hardware. Details, requirements and the FUSE fallback are in [docs/linux.md](docs/linux.md).
 
 ### Windows SmartScreen
 
@@ -81,15 +86,36 @@ Windows may warn the first time you run the program, because the release is not 
 Your choices are saved to `settings.toml` in the `user_data` folder next to the program. To turn the launcher off, set **Show this launcher** to **Off** on the Play page. Hold **Shift** while starting to bring it back.
 
 - **Play**: status, Install Game or Reinstall Game, Install Title Update or Remove Title Update
-- **Online**: Online play, Online name, Friend code, friends, Connection test
+- **Online**: Online play, then three tabs: **Settings** (Online name, Friend code, Connection test, Ping display, secret characters), **Friends** (friend requests and friends) and **Lobby** (Show me in Lobby and the players who chose to be listed)
 - **Display**: Display mode, Window size, Monitor, Aspect Ratio, VSync, Presentation (Letterbox or Stretch) and Fight Area (Original or Fill 16:9)
 - **Graphics**: Graphics card, Render resolution, Internal render resolution, Anti-aliasing, Multisampling, Texture filtering
-- **Gameplay**: Language, frame rate and render resolution in the title, frame counter
+- **Gameplay**: Language, Skip intro (starts directly at the title screen, Press Start), frame rate and render resolution in the title, frame counter, Enable Akuma, Akuma bug fixes, Enable Evil Ryu and Violent Ken, Infinite Time and the Local Match player names
 - **Achievements**: unlocked achievements and gamerscore
 - **Controls**: keyboard on or off, every key remappable, and **Keyboard defaults** to restore the standard layout
+- **Bug Report**: describe a problem, preview the scrubbed log, send it, and follow **My reports**
 - **About**: GitHub Sponsors link, versions, folders (game, saves and settings, logs), **Show settings file**, **Detailed logging**, **Open logs folder** and **Reset all settings**
 
 During gameplay the mouse cursor follows the last input device: mouse activity shows it, keyboard or controller activity hides it, and mouse-driven overlays always show it.
+
+### Akuma bug fixes
+
+**Akuma bug fixes** is an optional Gameplay setting, **Off by default**. It is separate from **Enable Akuma**: Enable Akuma makes him selectable, this setting decides how he plays. It changes HD Remix Akuma only, including a CPU-controlled one. Classic mode stays original, and so do online matches and the developer Netplay Test, because the two players' games must run the same way and the option is not negotiated between them.
+
+Designer David Sirlin documented four unintended bugs in HD Remix Akuma ([Akuma, August 18, 2014](https://www.sirlin.net/sf-hdr/akuma), under "Bugs That Ruined Akuma"). This option follows [Issue #13](https://github.com/saulob/ssf2t-hd-remix-recompiled/issues/13). It is experimental: nothing here has been validated by experienced HD Remix players yet.
+
+| Sirlin's bug | Status | What the option does |
+| --- | --- | --- |
+| Raging Demon: about 25% chance to jump out after air-fireball blockstun | Corrected, needs community validation | While the opponent holds up in the tick between blockstun and pre-jump, the dash waits, so the jump always starts. |
+| Red fireball: invulnerable, unthrowable startup | Corrected, needs community validation | The first two startup frames get the standing hurt boxes the rest of the startup already uses. Timing and recovery are unchanged. |
+| Dragon Punch: zero-frame startup | Corrected, needs community validation | The extra hit on the move's first frames is removed. The article gives no target value: the first hit now comes from the attack data Ryu's Dragon Punch starts with, on the same pose, about 4 frames in (5 for fierce). Total length is unchanged. |
+| Air fireball: oversized hit box behind the projectile | Not corrected yet | The box is identified, but neither the article nor the game data gives the intended size, and it is shared with Classic. |
+
+Please compare Off and On in Training and report differences on Issue #13:
+
+- **Raging Demon:** block an air fireball, land, and start Raging Demon during the blockstun while the opponent holds up. With the option On the jump should always come out. Without holding up, or after a move the opponent is committed to, Demon should still catch as before.
+- **Red fireball:** hit or throw Akuma on the first frames of his red fireball. With the option On this should work. Speed, projectile and recovery should match Off.
+- **Dragon Punch:** try safe jumps against each strength. With the option On, Akuma should no longer hit on the first frame. Invulnerability, height and recovery should match Off.
+- **Air fireball** (unchanged, for reference): Honda's torpedo passing under the back of the fireball is the case the article names. Reports of where the collision feels wrong help finish this fix.
 
 ## Online play
 
@@ -101,6 +127,8 @@ Online Match plays one friend at a time. The online service handles sign-in, fri
 4. Both press **PLAY**, then choose **Multiplayer > Online Match** in the game.
 5. One player picks **Create Match** (and may use **Invite Player**), the other picks **Find Match** or accepts the invite.
 
+The **Lobby** tab lists the players who turned on **Show me in Lobby** (Off by default), with their Online name, status, platform and whether their version is compatible, so you can send them a friend request. Nothing else about you is shown, and matches are still played between friends.
+
 Friends and compatible versions are what matches are found through: you and your friend must run the same game build (Base013 with Base013, TU023 with TU023). Online play is off by default, and with it off the program never connects to the service. **F3** shows the Ping display; Infinite Time is disabled while Online play is on.
 
 Direct UDP is always tried first (STUN and UDP hole punching). If it cannot be established, the match uses the relay automatically. Direct play between two PCs on different internet connections has been tested; the relay fallback is implemented and tested by script, and was not yet tried between real players. If your network behaves unusually, run the Connection test and send the log.
@@ -111,6 +139,7 @@ Direct UDP is always tried first (STUN and UDP hole punching). If it cannot be e
 
 ## Reporting problems
 
+The launcher's **Bug Report** page sends a report with a log you choose; the log is previewed with personal details removed before anything is sent, and **My reports** shows the ticket, its status and any reply. You can also open an [issue](https://github.com/saulob/ssf2t-hd-remix-recompiled/issues).
 If the game does not start or crashes, please open an [issue](https://github.com/saulob/ssf2t-hd-remix-recompiled/issues). Attach the newest `ssf2t_hd_remix_*.log` file from the `logs` folder next to the program, and say what you were doing when the problem happened. The launcher and the game write to the same log for one application session. For an online problem, also say whether you were using Direct or Relay (the log lists `transport selected=`), and run the Connection test first. After a crash on Windows the log ends with a `CRASH REPORT` section; no separate crash file or minidump is written. For a non-crash problem, turn Detailed logging on in the launcher's About page, reproduce it, and send the newest log.
 
 ## Building it yourself

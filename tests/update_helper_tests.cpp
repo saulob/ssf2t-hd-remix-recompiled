@@ -19,6 +19,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <shellapi.h>
 
 namespace {
 
@@ -207,10 +208,41 @@ bool SameFile(const std::filesystem::path& left, const std::filesystem::path& ri
   return ReadFile(left) == ReadFile(right);
 }
 
+std::filesystem::path SelfPath() {
+  wchar_t path[MAX_PATH];
+  const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
+  return length > 0 && length < MAX_PATH ? std::filesystem::path(path) : std::filesystem::path();
+}
+
+std::vector<std::wstring> RecordedArguments(const std::string& marker_text) {
+  const std::string key = "command_line=";
+  const size_t start = marker_text.find(key);
+  if (start == std::string::npos) {
+    return {};
+  }
+  const size_t end = marker_text.find('\n', start);
+  const std::string line = marker_text.substr(start + key.size(), end - start - key.size());
+  const int length = MultiByteToWideChar(CP_UTF8, 0, line.c_str(), int(line.size()), nullptr, 0);
+  std::wstring wide(size_t(length), L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, line.c_str(), int(line.size()), wide.data(), length);
+  int count = 0;
+  wchar_t** parsed = CommandLineToArgvW(wide.c_str(), &count);
+  std::vector<std::wstring> arguments;
+  for (int i = 0; parsed && i < count; ++i) {
+    arguments.emplace_back(parsed[i]);
+  }
+  LocalFree(parsed);
+  return arguments;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   std::setvbuf(stdout, nullptr, _IONBF, 0);
+  if (argc == 3 && std::string(argv[1]) == "--hold") {
+    Sleep(DWORD(std::stoul(argv[2])));
+    return 0;
+  }
   const std::filesystem::path updater =
       argc > 1 ? std::filesystem::path(argv[1]) : std::filesystem::path(SSF2T_UPDATER_EXE);
   ScopedEnvironment environment;
@@ -225,9 +257,11 @@ int main(int argc, char** argv) {
   const std::filesystem::path manifest = workspace / "manifest.txt";
   const std::filesystem::path job = workspace / "job.txt";
   const std::filesystem::path log = workspace / "trg-updater.log";
-  const std::filesystem::path marker_output = temp.path / "marker output.txt";
-  const std::filesystem::path parent_output = temp.path / "parent output.txt";
+  const std::filesystem::path marker_output = install / "app.exe.marker";
+  const std::string spaced_argument = (temp.path / "argument with space.txt").string();
   const std::filesystem::path marker = SSF2T_RESTART_MARKER_EXE;
+  const std::filesystem::path self = SelfPath();
+  CHECK(!self.empty());
 
   std::error_code ec;
   std::filesystem::create_directories(helper_dir, ec);
@@ -257,11 +291,11 @@ int main(int argc, char** argv) {
   CHECK(standalone_log.find("job read failed") != std::string::npos);
   CHECK(standalone_log.find("exit code: 2") != std::string::npos);
 
-  std::wstring parent_command = Quote(marker.wstring()) + L" --hold 750 " + Quote(parent_output.wstring());
+  std::wstring parent_command = Quote(self.wstring()) + L" --hold 750";
   STARTUPINFOW parent_startup{};
   parent_startup.cb = sizeof(parent_startup);
   PROCESS_INFORMATION parent{};
-  CHECK(CreateProcessW(marker.c_str(), parent_command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr,
+  CHECK(CreateProcessW(self.c_str(), parent_command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr,
                        temp.path.c_str(), &parent_startup, &parent));
   CHECK(parent.dwProcessId != 0);
 
@@ -287,7 +321,7 @@ int main(int argc, char** argv) {
   job_text += "manifest=" + manifest.string() + "\n";
   job_text += "restart=" + (install / "app.exe").string() + "\n";
   job_text += "log=" + log.string() + "\n";
-  job_text += "arg=" + marker_output.string() + "\n";
+  job_text += "arg=" + spaced_argument + "\n";
   job_text += "arg=--flag=with space\n";
   job_text += "arg=--ssf2t_launcher=true\n";
   WriteFile(job, job_text);
@@ -306,9 +340,14 @@ int main(int argc, char** argv) {
   CHECK(SameFile(install / "app.exe", marker));
 
   const std::string marker_text = ReadFile(marker_output);
-  CHECK(marker_text.find("arg1=" + marker_output.string()) != std::string::npos);
-  CHECK(marker_text.find("arg2=--flag=with space") != std::string::npos);
-  CHECK(marker_text.find("arg3=--ssf2t_launcher=true") != std::string::npos);
+  const std::vector<std::wstring> arguments = RecordedArguments(marker_text);
+  CHECK(arguments.size() == 4);
+  if (arguments.size() == 4) {
+    CHECK(std::filesystem::path(arguments[0]) == install / "app.exe");
+    CHECK(arguments[1] == std::filesystem::path(spaced_argument).wstring());
+    CHECK(arguments[2] == L"--flag=with space");
+    CHECK(arguments[3] == L"--ssf2t_launcher=true");
+  }
   CHECK(marker_text.find("env_SSF2T_UPDATE_TEST=absent") != std::string::npos);
   CHECK(marker_text.find("env_SSF2T_UPDATE_TEST_CURRENT_VERSION=absent") != std::string::npos);
   CHECK(marker_text.find("env_SSF2T_UPDATE_TEST_RELEASE_JSON=absent") != std::string::npos);

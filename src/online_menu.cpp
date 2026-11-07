@@ -146,6 +146,61 @@ bool PatchCreateMatch(std::string& s) {
          ReplaceOnce(s, "<anim>Highlight_CreateMatch_L9</anim>", "<anim>Highlight_CreateMatch_L7</anim>");
 }
 
+// Rows: Single Player, Multiplayer, Leaderboards, Achievements, Help & Options, Exit Game. Each row after Leaderboards
+// takes the previous row's slot (text and highlight) and keeps its own accept signal.
+bool PatchMainMenu(std::string& s) {
+  bool ok = Erase(s, "row", "mainmenuItem3") && Erase(s, "UIGraphic", "mainmenuItem3");
+  for (const char* name : {"leaderboards_hilight", "leaderboards", "leaderboards_OpenBeta"}) {
+    ok = ok && Erase(s, "UIText", name);
+  }
+  for (const char* name : {"achievements_hilight", "achievements", "achievements_OpenBeta"}) {
+    ok = ok && Move(s, "UIText", name, "<pos>1260 503 ", "<pos>1290 443 ");
+  }
+  for (const char* name : {"helpandoptions_hilight", "helpAndOptions"}) {
+    ok = ok && Move(s, "UIText", name, "<pos>1230 563 ", "<pos>1260 503 ");
+  }
+  for (const char* name : {"returntoarcade_hilight", "returnToArcade"}) {
+    ok = ok && Move(s, "UIText", name, "<pos>1200 623 ", "<pos>1230 563 ");
+  }
+  return ok && EraseAnimEvent(s, "Highlight_PositionAnim_R3") &&
+         ReplaceOnce(s, "<anim>Highlight_PositionAnim_R4</anim>", "<anim>Highlight_PositionAnim_R3</anim>") &&
+         ReplaceOnce(s, "<anim>Highlight_PositionAnim_R5</anim>", "<anim>Highlight_PositionAnim_R4</anim>") &&
+         ReplaceOnce(s, "<anim>Highlight_PositionAnim_R6</anim>", "<anim>Highlight_PositionAnim_R5</anim>");
+}
+
+// Rows: Resume Game, Character Move List, Help & Options, Leaderboards, Achievements, Exit Game.
+bool PatchPauseMenu(std::string& s) {
+  bool ok = Erase(s, "row", "pauseItem4") && Erase(s, "UIGraphic", "pauseItem4");
+  for (const char* name : {"leaderboard_hilight", "leaderboard", "leaderboard_OpenBeta"}) {
+    ok = ok && Erase(s, "UIText", name);
+  }
+  for (const char* name : {"achievements__hilight", "achievements_", "achievements__OpenBeta"}) {
+    ok = ok && Move(s, "UIText", name, "<pos>1300 516 ", "<pos>1300 456 ");
+  }
+  for (const char* name : {"exitgame_hilight", "exitgame"}) {
+    ok = ok && Move(s, "UIText", name, "<pos>1300 576 ", "<pos>1300 516 ");
+  }
+  return ok && EraseAnimEvent(s, "Highlight_PositionAnim_4") &&
+         ReplaceOnce(s, "<anim>Highlight_PositionAnim_5</anim>", "<anim>Highlight_PositionAnim_4</anim>") &&
+         ReplaceOnce(s, "<anim>Highlight_PositionAnim_6</anim>", "<anim>Highlight_PositionAnim_5</anim>");
+}
+
+// Rows: Resume Game, Change Character, Character Move List, Training Mode Options, Help & Options, Leaderboards,
+// Achievements, Exit Game.
+bool PatchPauseTraining(std::string& s) {
+  bool ok = Erase(s, "row", "pauseItem6") && Erase(s, "UIGraphic", "pauseItem6");
+  for (const char* name : {"leaderboard_hilight", "leaderboards"}) ok = ok && Erase(s, "UIText", name);
+  for (const char* name : {"achievements_hilight", "achievements"}) {
+    ok = ok && Move(s, "UIText", name, "<pos>1300 616 ", "<pos>1300 561 ");
+  }
+  for (const char* name : {"exitgame_hilight", "exitgame"}) {
+    ok = ok && Move(s, "UIText", name, "<pos>1300 671 ", "<pos>1300 616 ");
+  }
+  return ok && EraseAnimEvent(s, "highlight_pausetrain_6") &&
+         ReplaceOnce(s, "<anim>highlight_pausetrain_7</anim>", "<anim>highlight_pausetrain_6</anim>") &&
+         ReplaceOnce(s, "<anim>highlight_pausetrain_8</anim>", "<anim>highlight_pausetrain_7</anim>");
+}
+
 std::optional<Span> Screen(std::string_view xml, std::string_view screen) {
   constexpr std::string_view kOpen = "<UIScreen>";
   const std::string name_tag = NameTag(screen);
@@ -243,7 +298,13 @@ std::optional<ScreenSetPatch> PatchScreenSet(std::string_view xml) {
   patch.multiplayer = PatchScreen(patch.xml, kMultiplayerScreen, PatchMultiplayer);
   patch.player_match = PatchScreen(patch.xml, kPlayerMatchScreen, PatchPlayerMatch);
   patch.create_match = PatchScreen(patch.xml, kCreatePlayerMatchScreen, PatchCreateMatch);
-  if (!patch.multiplayer && !patch.player_match && !patch.create_match) return std::nullopt;
+  patch.main_menu = PatchScreen(patch.xml, kMainMenuScreen, PatchMainMenu);
+  patch.pause_menu = PatchScreen(patch.xml, kPauseMenuScreen, PatchPauseMenu);
+  patch.pause_training = PatchScreen(patch.xml, kPauseTrainingScreen, PatchPauseTraining);
+  if (!patch.multiplayer && !patch.player_match && !patch.create_match && !patch.main_menu && !patch.pause_menu &&
+      !patch.pause_training) {
+    return std::nullopt;
+  }
   return patch;
 }
 
@@ -280,6 +341,15 @@ HelpTextPatch PatchHelpText(uint8_t* table) {
   }
   if (uint8_t* entry = HelpEntry(table, kCreatePlayerMatchScreen); entry && LoadBE32(entry, 4) == 9) {
     patch.create_match = RemoveHelpRow(entry, 7) && RemoveHelpRow(entry, 6);
+  }
+  if (uint8_t* entry = HelpEntry(table, kMainMenuScreen); entry && LoadBE32(entry, 4) == 6) {
+    patch.main_menu = RemoveHelpRow(entry, 2);
+  }
+  if (uint8_t* entry = HelpEntry(table, kPauseMenuScreen); entry && LoadBE32(entry, 4) == 6) {
+    patch.pause_menu = RemoveHelpRow(entry, 3);
+  }
+  if (uint8_t* entry = HelpEntry(table, kPauseTrainingScreen); entry && LoadBE32(entry, 4) == 8) {
+    patch.pause_training = RemoveHelpRow(entry, 5);
   }
   return patch;
 }

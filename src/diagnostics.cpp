@@ -76,6 +76,7 @@ std::vector<std::string> FormatStartupDiagnostics(const StartupDiagnostics& diag
                   " | Presentation=" + diagnostics.launcher_display.presentation +
                   " | VSync=" + diagnostics.launcher_display.vsync);
   lines.push_back("Launcher Gameplay: Language=" + diagnostics.launcher_gameplay.language +
+                  " | Skip intro=" + diagnostics.launcher_gameplay.skip_intro +
                   " | Frame rate in title=" + diagnostics.launcher_gameplay.frame_rate_in_title +
                   " | Render resolution in title=" + diagnostics.launcher_gameplay.render_resolution_in_title +
                   " | Frame counter=" + diagnostics.launcher_gameplay.frame_counter);

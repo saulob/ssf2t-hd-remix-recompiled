@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { ADMIN_CSS, ADMIN_HTML, ADMIN_JS } from '../src/admin_page.js';
 import { makeHub } from './harness.js';
 import { openDashboard } from './dom.js';
-import { playFight, startFightMatch } from './fight_support.js';
+import { SECRET_ON, playFight, startFightMatch } from './fight_support.js';
 
 const ip = (n) => `203.0.113.${n}`;
 const MINUTE = 60 * 1000;
@@ -20,7 +20,7 @@ function scenario() {
   playFight(one, 3, { p1: 0, p2: 4, complete: false });
   env.advance(7 * MINUTE);
   one.a.call('match.leave', { match: one.match });
-  const two = startFightMatch(env, { nA: 3, nB: 4, guest: 'base013', ipA: ip(3), ipB: ip(4) });
+  const two = startFightMatch(env, { nA: 3, nB: 4, guest: 'base013', ipA: ip(3), ipB: ip(4), secret: SECRET_ON });
   two.a.call('match.transport', { match: two.match, transport: 'relay' });
   playFight(two, 0, { p1: 16, p2: 0, result: 'p1', transport: 'relay' });
   playFight(two, 1, { p1: 16, p2: 0, result: 'p1', transport: 'relay' });

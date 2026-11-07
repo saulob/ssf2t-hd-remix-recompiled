@@ -40,7 +40,30 @@ usr/share/icons/hicolor/512x512/apps/$BIN_NAME.png
 usr/share/icons/hicolor/64x64/apps/$BIN_NAME.png
 usr/share/icons/hicolor/scalable/apps/$BIN_NAME.svg"
 
+CHARACTER_TABLE="$root/src/character/character_packages.h"
+CHARACTER_PACKAGES="$(character_package_lines "$CHARACTER_TABLE" | cut -d' ' -f1)"
+[ "$(printf '%s\n' "$CHARACTER_PACKAGES" | sort -u | wc -l)" -gt 1 ] || fail "no character packages found in $CHARACTER_TABLE"
+EXPECTED="$EXPECTED
+$(printf 'usr/bin/assets/characters/%s\n' $CHARACTER_PACKAGES)"
 EXPECTED="$(printf '%s\n' "$EXPECTED" | LC_ALL=C sort)"
+}
+
+# "<file> <size> <sha256>" per entry of src/character/character_packages.h.
+character_package_lines() {  # table
+  tr -d '\r' <"$1" | sed -nE 's/^[[:space:]]*\{"([a-z0-9_]+\.bin)", ([0-9]+), "([0-9a-f]{64})", PackageOwner::.*/\1 \2 \3/p'
+}
+
+# Fails when a folder does not hold exactly the file the table names for every package.
+check_character_packages() {  # folder table
+  local folder="$1" file size sha256 bad=0
+  while read -r file size sha256; do
+    if [ ! -f "$folder/$file" ]; then
+      echo "  missing character package: $file" >&2; bad=1
+    elif [ "$(wc -c <"$folder/$file")" != "$size" ] || [ "$(sha256sum "$folder/$file" | cut -d' ' -f1)" != "$sha256" ]; then
+      echo "  character package differs from character_packages.h: $file" >&2; bad=1
+    fi
+  done < <(character_package_lines "$2")
+  return $bad
 }
 
 # Checks a staged or extracted AppDir; extra_paths are build or home folders that must not appear in any file.
@@ -101,15 +124,18 @@ scan_appdir() {  # appdir label [extra_paths...]
 
 # Copies the files the AppImage holds from a build folder (the program, runtime and GPU plugin) and the repository.
 stage_appdir() {  # appdir bin_dir symbols_dir source_tree
-  local appdir="$1" bin="$2" symbols="$3" tree="$4" doc lib src size icons theme component
+  local appdir="$1" bin="$2" symbols="$3" tree="$4" doc lib src size icons theme component package
   doc="$appdir/usr/share/doc/$BIN_NAME"
   theme="$appdir/usr/share/icons/hicolor"
   icons="$tree/packaging/icons"
   rm -rf "$appdir" "$symbols"
-  mkdir -p "$appdir/usr/bin/assets/launcher" "$appdir/usr/lib" "$doc" "$symbols"
+  mkdir -p "$appdir/usr/bin/assets/launcher" "$appdir/usr/bin/assets/characters" "$appdir/usr/lib" "$doc" "$symbols"
   cp "$bin/librexruntime.so" "$bin/librexgpu-xenos.so" "$bin/$BIN_NAME.toml" "$appdir/usr/bin/"
   strip --strip-unneeded "$appdir/usr/bin/librexruntime.so" "$appdir/usr/bin/librexgpu-xenos.so"
   cp "$bin/assets/launcher/header-art.png" "$bin/assets/launcher/sponsor-heart.png" "$appdir/usr/bin/assets/launcher/"
+  for package in $CHARACTER_PACKAGES; do
+    cp "$bin/assets/characters/$package" "$appdir/usr/bin/assets/characters/"
+  done
   # The debug sections carry the build machine's folders, so they stay in $symbols.
   objcopy --only-keep-debug "$bin/$BIN_NAME" "$symbols/$BIN_NAME.debug"
   objcopy --strip-debug --add-gnu-debuglink="$symbols/$BIN_NAME.debug" "$bin/$BIN_NAME" "$appdir/usr/bin/$BIN_NAME"
@@ -140,7 +166,8 @@ stage_appdir() {  # appdir bin_dir symbols_dir source_tree
   cp "$icons/app-icon-256.png" "$appdir/.DirIcon"
   chmod 755 "$appdir/AppRun" "$appdir/usr/bin/$BIN_NAME"
   chmod 644 "$appdir/"*.desktop "$appdir/"*.png "$appdir/.DirIcon" "$appdir/usr/bin/"*.so \
-    "$appdir/usr/bin/$BIN_NAME.toml" "$appdir/usr/bin/assets/launcher/header-art.png" "$appdir/usr/bin/assets/launcher/sponsor-heart.png" "$appdir/usr/lib/"* "$doc/"*
+    "$appdir/usr/bin/$BIN_NAME.toml" "$appdir/usr/bin/assets/launcher/header-art.png" "$appdir/usr/bin/assets/launcher/sponsor-heart.png" \
+    "$appdir/usr/bin/assets/characters/"* "$appdir/usr/lib/"* "$doc/"*
   find "$theme" -type f -exec chmod 644 {} +
 }
 
@@ -242,6 +269,16 @@ policy_self_test() {
     { echo "policy self-test FAILED: readelf NEEDED parsing"; failed=$((failed + 1)); }
   [ "$(printf '%s\n' "$text" | elf_rpath_text)" = '$ORIGIN' ] ||
     { echo "policy self-test FAILED: readelf RUNPATH parsing"; failed=$((failed + 1)); }
+  local fixture
+  fixture="$(mktemp -d)"
+  printf 'package' >"$fixture/a.bin"
+  printf '    {"a.bin", 7, "%s", PackageOwner::kBoth, PackageNeed::kRequired},\r\n' "$(sha256sum "$fixture/a.bin" | cut -d' ' -f1)" >"$fixture/table.h"
+  expect "a character package that matches its table entry is accepted" ok check_character_packages "$fixture" "$fixture/table.h"
+  printf 'packagf' >"$fixture/a.bin"
+  expect "a stale character package is refused" bad check_character_packages "$fixture" "$fixture/table.h"
+  rm "$fixture/a.bin"
+  expect "a missing character package is refused" bad check_character_packages "$fixture" "$fixture/table.h"
+  rm -rf "$fixture"
   [ "$failed" = 0 ]
 }
 

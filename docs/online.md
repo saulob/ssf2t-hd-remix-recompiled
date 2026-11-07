@@ -8,7 +8,7 @@ The launcher only handles friends and presence. A match starts from the game its
 The Multiplayer menu lists only Local Match and Online Match. Online Match is the game's own Player Match, one against
 one with an online friend; Ranked Match, Tournament Match and the larger lobbies (Quarter Match) are not offered.
 
-Status (v0.3.1): the friend and Player Match flow, the XNet / QoS / VDP bridge and rollback netplay work on the original
+Status (v0.4.0): the friend and Player Match flow, the XNet / QoS / VDP bridge and rollback netplay work on the original
 Base013 and Title Update 1 (TU023) game images. Direct UDP between two PCs on different internet connections has been
 tested with real players: Online Match, Invite, several fights in one session and agreeing frame-zero state, with no
 gameplay desync observed. The relay fallback is implemented, tested by script (Node and C++ wire tests) and selected
@@ -16,12 +16,15 @@ automatically; it has not been tried between real players over the internet.
 
 ## Playing
 
-1. Launcher > **Online** > **Online play** On. The rest of the page appears only then. **Online name** is what other
-   players see (up to 16 letters, digits, `-` or `_`; the field takes nothing else).
+1. Launcher > **Online** > **Online play** On. The **Settings**, **Friends** and **Lobby** tabs appear only then, and
+   turning it on always opens **Settings**. **Online name** is what other players see (up to 16 letters, digits, `-` or
+   `_`; the field takes nothing else). **Settings** also holds Your friend code, the Connection test, the Ping display
+   and the Secret characters status. A Play refused for the missing Connection test returns to it.
 2. Share **Your friend code** (`XXXX-XXXX`, **Copy** puts exactly that on the clipboard). Paste or type a friend's code
-   under **Friends**; the field shows it as `XXXX-XXXX` whatever case, spacing or hyphen it came with. **Send request**
-   is enabled once it is a valid code (letters except I and O, digits 2 to 9). They **Accept** or **Decline** the card
-   that appears on their page.
+   in the **Friends** tab; the field shows it as `XXXX-XXXX` whatever case, spacing or hyphen it came with. **Send
+   request** is enabled once it is a valid code (letters except I and O, digits 2 to 9). They **Accept** or **Decline**
+   the card in their **Friends** tab, which shows the number of waiting requests; the sidebar's dot marks them too.
+   The **Lobby** tab lists players who chose to be seen; see [Public Lobby](#public-lobby).
 3. A friend row shows `Online · Windows · v0.3.0`, `Online Match · ...` while they host one, or `In game · ...`.
    There are no match buttons in the launcher.
 4. Both press **Play**. The game signs in to the online service again by itself; nothing has to stay open.
@@ -89,7 +92,8 @@ line; the saved value is ignored at runtime. Visual settings (aspect ratio, reso
 graphics adapter, frame counter, title text, fight area fill) and input settings stay available.
 
 Netplay Test (Off / Host / Join, Peer Address) and the Netplay Determinism Test are developer controls: they only
-show, and the determinism checks only run, with the environment variable `SSF2T_DEVELOPER=1`.
+show, and only take effect, with the environment variable `SSF2T_DEVELOPER=1`. Values saved in an earlier developer
+session are ignored without it.
 
 ## Identity
 
@@ -104,7 +108,8 @@ temporary identity.
   search and join, the match, reconnect.
   `friend_view.*`: what a friend row shows. `connection_test.*`, `stun.*`, `upnp.*`, `net_addr.*`: the Connection test.
   `lobby_link.*`, `websocket_*`: transport.
-  `src/online_page.*`, `src/online_runtime.*`, `src/ping_display.*`: launcher page, process-wide service, overlay.
+  `src/online_page.*`, `src/online_tabs.h`, `src/online_runtime.*`, `src/ping_display.*`: launcher page and its tabs,
+  process-wide service, overlay.
 - `src/player_match*`: the game side. The title's own wrappers for XamUserGetSigninState, XUserCheckPrivilege,
   XamUserGetSigninInfo, XUserGetXUID and XNetGetTitleXnAddr report the title-local LIVE profile; the
   `RequestOnlineSignIn` script function (the Online Match gate) runs as the game wrote it, or shows
@@ -194,6 +199,8 @@ Each instance has its own user folder (`build\online-instances\<name>\user_data`
 logs (`build\online-instances\<name>\logs`), on the production service (`SSF2T_LOBBY` selects another one, such as
 the local server). Display and graphics settings are copied once
 from `build\user_data`; the identity is not. `-PrepareOnly` sets the folders up without starting the game.
+`-Akuma On|Off` and `-EvilRyu On|Off` set the instance's Enable Akuma and Enable Evil Ryu and Violent Ken options (new
+instances start Off), for the secret-character matrix: `tools\online-instance.ps1 -Name a -Akuma On -EvilRyu On`.
 
 The script prints the instance's folders, identity file and the exact log file. Every start writes a new log named after
 the instance, `ssf2t_hd_remix_a_001.log`, `_002`, ... (never a shared `ssf2t_hd_remix.log`), and keeps detailed logging
@@ -205,6 +212,109 @@ Manual two-instance check: Online play On in both, **Copy** the friend code in `
 (Ctrl+V; lower case, a missing hyphen, spaces and a trailing newline are all fine), **Send request**, **Accept** in `a`,
 then Play in both and Multiplayer > Online Match in the game. Log lines: `online friend request sent
 code=...`, `player_match ...`, `XSession...`.
+
+## Public Lobby
+
+The **Lobby** tab is for finding people to add as friends. It does not create matches and does not change how Online
+Match finds opponents: matches still start from Multiplayer > Online Match between friends.
+
+- **Show me in Lobby** is Off by default. While it is Off you are not listed, but you can still read the Lobby, and
+  friends, presence and Online play work as usual. Turning it On lists your **Online name** to other players of this game;
+  they can send you a friend request. Nothing else about you is listed: no address, connection details or Player
+  Match. Your friend code travels with the listing only so that Add friend can send the request; no screen shows it. The
+  setting is `ssf2t_online_lobby_visible`, and the game keeps you listed while it runs.
+- Each row shows the name, what the player is doing (`Online`, `Online Match`, `Connecting`, `In game`), the platform,
+  the port version and the game image (`Base013` or `TU023`). A player who cannot play with you (another game image or
+  netplay build) stays in the list marked **Game versions do not match**.
+- **Add friend** sends the same friend request as the Friends tab, so the other player answers it there. It is offered
+  only to players who are not friends and have no request pending either way; a request they already sent you shows
+  **Accept** and **Decline**. You never see anyone's friend code in the Lobby.
+- The list refreshes by itself every 30 seconds while the Lobby tab is open, and is read again when you open it. Nothing
+  is read while another tab is shown. There is no Refresh button.
+- A player disappears from the Lobby when they turn the setting Off, turn Online play Off or close the game; the service
+  keeps no record of who was listed. The list shows the first 50 players, compatible ones first.
+- An older service without the Lobby makes the tab say so; the other tabs and Online play are not affected. If the Lobby
+  cannot be read for a moment, the tab says so and keeps the last list; the rest of the page stays online.
+
+## Bug reports
+
+The launcher's **Bug Report** page sends a problem report to the developer: your description and one game log. Nothing is
+sent until you press **Send report**, and nothing about the log leaves your PC before you can read it.
+
+- **What is sent.** Only these fields: your description (10 to 500 characters), the port version, the game image
+  (`base013` or `tu023`), the platform, the operating system, the ReXGlue runtime version, the log's file name, whether
+  the log was shortened, and the log text after the privacy filter. No game files, saves, screenshots, settings or
+  account details are attached.
+- **When it is sent.** Only when you press **Send report**, over its own short connection to the online service. Online
+  play does not have to be On. Opening the page, writing a description and choosing a log send nothing. When the launcher
+  opens, when you open the page (at most every 30 seconds) and when you press **Refresh**, it asks the service about the
+  reports already listed in **My reports**, sending only their receipts (see below), never a new log.
+- **Choosing the log.** The page lists the newest five `ssf2t_hd_remix_<number>.log` files of the logs folder (the one
+  **Open logs folder** on About opens): this launcher's own session first, then newest first. Sessions that only opened and
+  closed the launcher are left out. The newest earlier session that reached the game is chosen for you; pick another if the
+  problem was in a different run. With **Detailed logging** off, only sessions that crashed keep a log.
+- **Preview.** **Open preview** shows exactly what will be sent: the report is built once, and the preview and the request
+  both read that same text. Change the description or the log and the preview closes, so it can never be out of date.
+- **Privacy filtering.** Before the preview is built the launcher takes out of the log and the description: your Windows
+  user name and computer name, your profile and home folders, the install and data folders, other folders on your disks
+  (only the file name is kept), network share paths, IPv4 and IPv6 addresses (version numbers such as `0.0.2.3` stay),
+  the online token and the hash the service keeps of it, receipts and authorization or bearer values, any password, secret or
+  token written as `name=value`, match, session and invite identifiers, your Online name and every Friend Code (yours
+  becomes `<own-code>`, anyone else's `<friend-code>`). Control characters are removed and line ends become LF. Automatic
+  filtering cannot promise to find everything, so read the preview if you want to be certain.
+- **Size.** A report holds at most 64 KiB of log. When the log is longer, the end of it is sent (it is where a problem
+  usually is), starting at a whole line, and the report says that the log was shortened. A description cannot pass 500
+  characters; the service refuses anything larger than these limits.
+- **Ticket.** A sent report returns a ticket such as `SSF2-7KQ4WX` (the page can copy it). The service also returns a private
+  receipt that proves the report is yours; it is stored only in the file `bug_reports.json` in your user folder, never in
+  a log, and the service keeps just a salted hash of it.
+- **My reports.** Lists the reports sent from this PC (the latest 30), with their last known status and date. **View
+  details** shows the facts of a report and **What was sent** reads the stored report back from the service with its receipt.
+  **Remove from this PC** only forgets it here. Reports sent from another PC or another user folder do not appear.
+- **Status.** The developer can mark a report **Open**, **Investigating**, **Fixed** (optionally with the version that fixes it),
+  **Cannot reproduce**, **Duplicate**, **Not a bug** or **Closed**, and leave a short message. The launcher checks when it opens, when
+  you open the page and when you press **Refresh**, marks a changed report **Updated** and puts a dot on the sidebar entry.
+- **Limits.** Two reports per hour and ten per day from one install, and fewer than that from one address and from everyone
+  together; the page says which limit was reached.
+- **An older online service** answers a report with an error the page explains ("The online service cannot take reports
+  yet"); your description is kept, and Play, Friends, Lobby, Player Match and every Online Match work as before.
+
+Files: the receipts and the list are `bug_reports.json` in the user folder, written next to `online_identity.ini`. The
+service side is described in [server/ssf2t-lobby/README.md](../server/ssf2t-lobby/README.md).
+
+## Secret characters
+
+How the two Ultra fighters work inside the game is described in [ultra-fighters.md](ultra-fighters.md). Akuma, Evil Ryu and Violent Ken each appear in an Online Match only when both players have them on and both builds
+understand them.
+
+- Each client sends `secret: {supports: {akuma, evil_ryu, violent_ken}, enabled: {akuma, evil_ryu, violent_ken}}` in its
+  hello (`supports` is what the build understands, `enabled` is Enable Akuma / Enable Evil Ryu and Violent Ken, and for those two fighters their required packages being valid here) and `secret.update` when an option
+  changes while signed in. Anything missing or not exactly `true` is false, so an older client supports nothing.
+- The Worker keeps both players' capabilities with the match and tells each seat `secret: {peer, effective}` (in the
+  join answer, `match.created`, the resume answer and `match.secret` events). `effective.<character>` is supports and
+  enabled on both sides; it is identical for both seats. The client checks that answer against its own options and can
+  only shrink it. The lobby protocol stays 3 and `kNetplayBuild` is unchanged, so older clients and an older Worker keep
+  working and simply never get a secret character.
+- The Online page shows the options as `Enabled locally` / `Off` outside a match and, inside one, `Available`,
+  `Disabled locally`, `Disabled by opponent`, `Unsupported by opponent`, `Unsupported by the service` or `Waiting for
+  opponent`.
+- A peer that is lost, a match that ends or is left, and a new match each recompute the result from the peer in front of
+  the client; nothing carries over. A rematch against the same peer keeps it.
+- The result is locked when an online Character Select starts (the game's NetSync start, where the rollback begins) and
+  stays fixed until the fight is left, so changing an option mid-match applies from the next Character Select. The locked
+  set is added to the frame-0 setup words only when something is on, so two clients that disagree on it refuse the fight
+  instead of drifting, and clients with nothing on send exactly the words they always did.
+- Character Select online uses the locked set instead of the local option for the hidden Akuma path, the Akuma
+  portrait overlay and the Evil Ryu cell. Local, Arcade and Training keep following the local options.
+- The selection itself is never sent: both consoles replay the same inputs through the game's own Character Select. The
+  Ultra cells and the Evil Ryu and Violent Ken move trackers live outside the guest, so they are saved with every rollback snapshot
+  and restored on a rollback; a mispredicted move cannot leave the cell selected. When the fighters are known, each
+  console checks them against the locked set (`online fighter side=2 base=Ryu variant=EvilRyu`); an Akuma or Evil Ryu the
+  match did not negotiate logs `online fighter reject ...` and leaves the match on both consoles.
+- The host reports Evil Ryu as character 17 (Ryu stays 0), Violent Ken as 18 (Ken stays 4) and Akuma as 16; the Worker
+  refuses a report of a secret character the match did not negotiate, and counts availability, option mismatches and usage in aggregate (see
+  `server/ssf2t-lobby/README.md`).
+- Logs: `online secret-cap local|peer|effective ...`, `online secret-cap locked ...`, `online fighter ...`.
 
 ## What is not covered
 

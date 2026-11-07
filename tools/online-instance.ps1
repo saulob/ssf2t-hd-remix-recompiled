@@ -13,9 +13,14 @@
   online service and need no addresses, ports or codes.
   Runs the launcher; Online play is switched on from the instance's own Online page. -PrepareOnly sets the folders up
   and prints the same summary without starting the game.
+  -Akuma and -EvilRyu (On or Off) set the instance's Enable Akuma and Enable Evil Ryu and Violent Ken options for the
+  secret-character matrix; left out, an instance keeps what it has (new instances start Off).
 .EXAMPLE
   tools\online-instance.ps1 -Name a            # terminal 1
   tools\online-instance.ps1 -Name b            # terminal 2
+.EXAMPLE
+  tools\online-instance.ps1 -Name a -Akuma On -EvilRyu On
+  tools\online-instance.ps1 -Name b -Akuma On -EvilRyu Off
 #>
 [CmdletBinding()]
 param(
@@ -25,6 +30,8 @@ param(
     [string]$Executable = '',
     [string]$GameData = '',
     [string]$InstanceRoot = '',
+    [ValidateSet('', 'On', 'Off')][string]$Akuma = '',
+    [ValidateSet('', 'On', 'Off')][string]$EvilRyu = '',
     [switch]$PrepareOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -46,7 +53,7 @@ $logs = Join-Path (Join-Path $InstanceRoot $label) 'logs'
 $settingsFile = Join-Path $user 'settings.toml'
 
 # Window placement, the online choice, the cheat and the logging choice are the instance's own; everything else is copied once.
-$OwnKeys = '^\s*(ssf2t|hcu)_(launcher_(x|y|width|height|maximized|fullscreen)|online_(enabled|name|ping_display)|infinite_time)\s*=|^\s*detailed_logging\s*='
+$OwnKeys = '^\s*(ssf2t|hcu)_(launcher_(x|y|width|height|maximized|fullscreen)|online_(enabled|name|ping_display)|infinite_time|enable_akuma|enable_ultra_fighters)\s*=|^\s*detailed_logging\s*='
 $NameKey = 'ssf2t_online_name'
 
 function Set-SettingLine([string[]]$Lines, [string]$Key, [string]$Value) {
@@ -75,6 +82,13 @@ if ($fresh) {
 } elseif (-not (Select-String -LiteralPath $settingsFile -Pattern ('^\s*' + $NameKey + '\s*=') -Quiet)) {
     Add-Content -LiteralPath $settingsFile -Value "$NameKey = `"$OnlineName`"" -Encoding utf8
 }
+foreach ($choice in @(@('ssf2t_enable_akuma', $Akuma), @('ssf2t_enable_ultra_fighters', $EvilRyu))) {
+    if ($choice[1]) {
+        $lines = @(Get-Content -LiteralPath $settingsFile)
+        $lines = Set-SettingLine $lines $choice[0] $(if ($choice[1] -eq 'On') { 'true' } else { 'false' })
+        Set-Content -LiteralPath $settingsFile -Value $lines -Encoding utf8
+    }
+}
 New-Item -ItemType Directory -Force $logs | Out-Null
 $logFile = Next-LogFile $logs $label
 
@@ -83,6 +97,11 @@ Write-Host "  instance:       $label"
 Write-Host "  user folder:    $user"
 Write-Host "  settings:       $settingsFile"
 Write-Host "  identity:       $(Join-Path $user 'online_identity.ini') (made on first use; this instance has its own friend code)"
+$secretLine = foreach ($key in 'ssf2t_enable_akuma', 'ssf2t_enable_ultra_fighters') {
+    $found = Select-String -LiteralPath $settingsFile -Pattern ('^\s*' + $key + '\s*=\s*(\w+)') | Select-Object -Last 1
+    "$key=$(if ($found) { $found.Matches[0].Groups[1].Value } else { 'false' })"
+}
+Write-Host "  secret options: $($secretLine -join ' ')"
 Write-Host "  logs folder:    $logs"
 Write-Host "  log file:       $logFile"
 Write-Host "  online service: $(if ($env:SSF2T_LOBBY) { "SSF2T_LOBBY override $env:SSF2T_LOBBY" } else { 'production' })"

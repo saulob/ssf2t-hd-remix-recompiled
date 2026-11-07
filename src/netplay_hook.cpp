@@ -16,6 +16,9 @@
 #include <rex/runtime.h>
 #include <rex/system/kernel_state.h>
 
+#include "character/fighter_identity.h"
+#include "character/host_rollback.h"
+#include "character/secret_select.h"
 #include "guest_memory.h"
 #include "match_input.h"
 #include "netplay/determinism.h"
@@ -312,7 +315,9 @@ class FightRuntime {
   // The game's own NetSync start: the point both consoles started their rollback from (in a Player Match, the
   // character select's init, so the remote player's selections reach this console).
   void FightInitReached() {
-    if (phase_ == FightPhase::kIdle) EnterPhase(FightPhase::kBarrier);
+    if (phase_ != FightPhase::kIdle) return;
+    EnterPhase(FightPhase::kBarrier);
+    LockSecrets();
   }
 
   // From NetSync start on the rollback core runs every simulated frame through the game's step command, which already
@@ -366,6 +371,7 @@ class FightRuntime {
       }
     }
     ObserveFight(base);
+    if (RejectInvalidSelection(base, now_ms)) return false;
     LogTransitions();
     if (status == np::TickStatus::kFault) {
       REXLOG_INFO("netplay fault frame={}", session_->core() ? session_->core()->current_frame() : 0);
@@ -427,7 +433,7 @@ class FightRuntime {
       return true;
     }
     const std::string role = REXCVAR_GET(ssf2t_netplay_role);
-    if (role != ssf2t::kNetplayRoleHost && role != ssf2t::kNetplayRoleJoin) return false;
+    if (!ssf2t::NetplayTestRole(role)) return false;
     plan = {};
     plan.host = role == ssf2t::kNetplayRoleHost;
     if (!plan.host) {
@@ -542,9 +548,23 @@ class FightRuntime {
     return std::make_unique<np::GuestSimulation<G>>(ctx, base, calls, np::FrameKind::kRollbackFrame);
   }
 
+  // From the select's init on, both peers hold the same secret characters and the same empty host selection, so the
+  // rollback replays every move of the select identically.
+  void LockSecrets() {
+    locked_secrets_ = ssf2t::Online().SecretEffective();
+    selection_checked_ = false;
+    ssf2t::LockOnlineSecrets(locked_secrets_);
+    ssf2t::character::ResetOnlineSelectState();
+    REXLOG_INFO("online secret-cap locked akuma={} evil={} generation={} fight={} guest={}", locked_secrets_.akuma ? 1 : 0,
+                locked_secrets_.evil_ryu ? 1 : 0, generation_, session_ ? session_->fight_index() : 0, G::kName);
+  }
+
   void ResetFight() {
     live_sim_.reset();
     EnterPhase(FightPhase::kIdle);
+    locked_secrets_ = {};
+    selection_checked_ = false;
+    ssf2t::UnlockOnlineSecrets();
     FinishFightReport();
     logged_tail_override_ = false;
     logged_pump_tail_ = false;
@@ -596,6 +616,42 @@ class FightRuntime {
     return true;
   }
 
+  // The selection is replayed from the peers' inputs, never sent, so an unnegotiated secret character can only appear
+  // through a modified peer; both peers see the same fighters and both stop.
+  bool RejectInvalidSelection(const uint8_t* base, uint64_t now_ms) {
+    if (!online_driven_ || phase_ != FightPhase::kRollback || selection_checked_ ||
+        !IdentityReady(ReadModes(base))) {
+      return false;
+    }
+    selection_checked_ = true;
+    const np::GuestMemory memory{base};
+    const ssf2t::online::FightSnapshot snapshot = np::ReadFightSnapshot<G>(memory);
+    bool rejected = false;
+    for (int side = 0; side < 2; ++side) {
+      const ssf2t::character::FighterIdentity requested = ssf2t::character::RequestedIdentity(side);
+      const ssf2t::character::SelectionVerdict verdict = ssf2t::character::ValidateSecretSelection(
+          snapshot.character[side], requested, locked_secrets_);
+      const bool evil = ssf2t::character::ReportsEvilRyu(snapshot.character[side], requested, locked_secrets_.evil_ryu);
+      const bool violent =
+          ssf2t::character::ReportsViolentKen(snapshot.character[side], requested, locked_secrets_.violent_ken);
+      REXLOG_INFO("online fighter side={} base={} variant={}", side + 1,
+                  ssf2t::online::CharacterName(snapshot.character[side]),
+                  evil      ? "EvilRyu"
+                  : violent ? "ViolentKen"
+                  : snapshot.character[side] == ssf2t::online::kAkumaCharacter ? "Akuma"
+                                                                               : "none");
+      if (verdict == ssf2t::character::SelectionVerdict::kAccepted) continue;
+      rejected = true;
+      REXLOG_INFO("online fighter reject side={} variant={} reason=capability-disabled", side + 1,
+                  ssf2t::character::SelectionVerdictName(verdict));
+    }
+    if (!rejected) return false;
+    ssf2t::Online().LeaveMatch();
+    ssf2t::EndMatchInput("invalid_selection");
+    Shutdown(now_ms, "invalid_selection");
+    return true;
+  }
+
   bool FightTelemetryReady(const uint8_t* base) {
     if (telemetry_code_ == TelemetryCode::kUnchecked) {
       const bool matches = np::FightTelemetryCodeMatches<G>(np::GuestMemory{base});
@@ -617,6 +673,16 @@ class FightRuntime {
   void ObserveFight(const uint8_t* base) {
     if (!fight_reporter_.active() || telemetry_code_ != TelemetryCode::kMatches) return;
     last_snapshot_ = np::ReadFightSnapshot<G>(np::GuestMemory{base});
+    for (int side = 0; side < 2; ++side) {
+      if (ssf2t::character::ReportsEvilRyu(last_snapshot_.character[side], ssf2t::character::RequestedIdentity(side),
+                                           locked_secrets_.evil_ryu)) {
+        last_snapshot_.character[side] = ssf2t::online::kEvilRyuCharacter;
+      } else if (ssf2t::character::ReportsViolentKen(last_snapshot_.character[side],
+                                                     ssf2t::character::RequestedIdentity(side),
+                                                     locked_secrets_.violent_ken)) {
+        last_snapshot_.character[side] = ssf2t::online::kViolentKenCharacter;
+      }
+    }
     identity_ready_ = identity_ready_ || IdentityReady(ReadModes(base));
     const auto* core = session_->core();
     fight_reporter_.Observe(last_snapshot_, identity_ready_, core ? core->current_frame() : 0,
@@ -662,12 +728,13 @@ class FightRuntime {
     session_->ReofferFrameZero(std::move(view));
   }
 
-  static std::vector<uint32_t> ReadSetupWords(const uint8_t* base) {
+  std::vector<uint32_t> ReadSetupWords(const uint8_t* base) const {
     np::SetupFields fields;
     fields.mode = base[G::kGameMode];
     const ModeWords modes = ReadModes(base);
     std::copy(std::begin(modes.mode), std::end(modes.mode), fields.phase);
     fields.stage = ssf2t::LoadBE32(base, G::kOnlineStage);
+    fields.secrets = locked_secrets_.Bits();
     const bool flag = base[G::kButtonConfigFlag] != 0;
     for (uint32_t slot = 0; slot < 2; ++slot) {
       std::memcpy(fields.buttons[slot], base + np::ButtonConfigAddress<G>(flag, slot), np::kButtonConfigBytes);
@@ -680,6 +747,10 @@ class FightRuntime {
     char word[48];
     for (size_t i = 0; i < setup.size() && i < np::kSetupWordCount; ++i) {
       std::snprintf(word, sizeof word, " %s=%08X", np::kSetupWordNames[i], setup[i]);
+      words += word;
+    }
+    if (setup.size() > np::kSetupWordCount) {
+      std::snprintf(word, sizeof word, " %s=%08X", np::kSecretSetupWordName, setup[np::kSetupWordCount]);
       words += word;
     }
     REXLOG_INFO("netplay setup local fight={} generation={} guest={}{}", session_->fight_index(),
@@ -921,6 +992,8 @@ class FightRuntime {
   TelemetryCode telemetry_code_ = TelemetryCode::kUnchecked;
   ssf2t::online::FightSnapshot last_snapshot_;
   bool identity_ready_ = false;
+  ssf2t::online::SecretSet locked_secrets_;
+  bool selection_checked_ = false;
   ssf2t::online::FightReporter fight_reporter_{
       [](const ssf2t::online::FightReport& report) { return ssf2t::Online().ReportFight(report); }};
   uint32_t generation_ = 0;

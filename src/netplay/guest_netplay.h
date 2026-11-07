@@ -35,7 +35,7 @@ inline constexpr uint32_t kInputTableStateBytes = kPlayersInTable * kInputEntryS
 inline constexpr uint32_t kInputRingBytes = 64;
 
 // The step's random generator (a seed word and 31 state words with their index) and the fighter order a coin flip
-// sets once per fight.
+// sets each frame.
 inline constexpr uint32_t kRngStateBytes = 0x84;
 inline constexpr uint32_t kSideOrderBytes = 16;
 
@@ -249,11 +249,17 @@ inline constexpr const char* kSetupWordNames[] = {"mode",       "phase01",      
                                                   "buttons_p1", "buttons_p1_ext", "buttons_p2", "buttons_p2_ext"};
 inline constexpr size_t kSetupWordCount = std::size(kSetupWordNames);
 
+// The secret characters a match negotiated (SecretSet bits). It adds a word only while any is on, so a peer without
+// secret characters sends the words it always did and still agrees with a client that has none on.
+inline constexpr uint32_t kSecretSetupTag = 0x53430000;
+inline constexpr const char* kSecretSetupWordName = "secrets";
+
 struct SetupFields {
   uint8_t mode = 0;
   uint16_t phase[4] = {};
   uint32_t stage = 0;
   uint8_t buttons[2][kButtonConfigBytes] = {};
+  uint8_t secrets = 0;
 };
 
 inline std::vector<uint32_t> SetupWords(const SetupFields& f) {
@@ -263,6 +269,7 @@ inline std::vector<uint32_t> SetupWords(const SetupFields& f) {
     words.push_back(uint32_t(slot[0]) << 24 | uint32_t(slot[1]) << 16 | uint32_t(slot[2]) << 8 | slot[3]);
     words.push_back(uint32_t(slot[4]) << 8 | slot[5]);
   }
+  if (f.secrets) words.push_back(kSecretSetupTag | f.secrets);
   return words;
 }
 

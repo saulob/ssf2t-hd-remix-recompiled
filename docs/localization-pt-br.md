@@ -9,6 +9,7 @@ Portuguese slot, so pt-BR runs on the English slot (`XC_LANGUAGE` 1) and the por
 | --- | --- | --- |
 | Game string table (menus, options, move lists, how to play, endings, win quotes, help text, error boxes) | `TEXT/STR_<lang>.TXT` inside `flog_x360.fpg`, 1989 line-aligned entries per language | `src/localization/game_text_hook.cpp` replaces the English table when `ssf2t_language` is `pt-BR`; Base013 and TU023 each hook their own file reader |
 | Launcher, online page, overlays, dialogs | string literals in `src/` | `ssf2t::Tr()` (`src/localization/ui_text.h`) looks the English text up in the pt-BR table; a missing entry returns the English text |
+| Text a launcher page hands to the TRG Launcher (`ui.Row`, `Toggle`, `Help`, button labels...) | string literals and `k...Label`/`k...Help` constants | the launcher translates it itself; `ssf2t_localization_tests` fails when such a literal has no row |
 | Achievement names and descriptions | XDBF in the XEX, one set per `XC_LANGUAGE` | pt-BR rows in the UI table, applied where the launcher and overlay draw them |
 | Text drawn into textures | `SG28XT03` textures in `flog_x360.fpg` | `src/localization/baked_texture.*`: the texture parse (Base `0x823FFDC8`, TU `0x82400478`) swaps in a redrawn texture when it is the stock one (name and CRC); the table is empty for now |
 
@@ -25,6 +26,7 @@ Markup (`[break]`, `[color=...]`, `$gamertag`, `%d`) is copied unchanged.
 * Brazilian Portuguese vocabulary, natural game-UI register, no literal word order.
 * The game fonts hold every accented Latin-1 letter (`À Á Â Ã` included) but no em dash (U+2014): use a hyphen or a comma. `localization_tests game` checks every character of the table against the six text fonts.
 * Keep a title or label about as long as the English one (at most +30% for labels, +40% for sentences).
+* A sidebar page name: at most 13 characters (the sidebar is about 170 logical pixels wide).
 * Error title: at most 127 bytes; error message: at most 511 bytes (guest buffers).
 * Placeholders, markup and glyph codes: the same multiset as the English line.
 

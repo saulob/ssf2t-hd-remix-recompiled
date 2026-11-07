@@ -100,6 +100,32 @@ std::optional<std::vector<Request>> ReadRequests(const json::Value* v) {
   return out;
 }
 
+std::optional<LobbyPlayer> ReadLobbyPlayer(const json::Value& row) {
+  if (!row.IsObject()) return std::nullopt;
+  LobbyPlayer p;
+  p.player = StringOf(row.Find("player"));
+  p.name = StringOf(row.Find("name"));
+  if (p.player.empty() || p.name.empty()) return std::nullopt;
+  p.state = StateOf(StringOf(row.Find("state")));
+  if (p.state == FriendState::kOffline) p.state = FriendState::kOnline;
+  p.platform = StringOf(row.Find("platform"));
+  p.version = StringOf(row.Find("version"));
+  p.guest = StringOf(row.Find("guest"));
+  p.compatible = BoolOf(row.Find("compatible"), false);
+  return p;
+}
+
+std::optional<std::vector<LobbyPlayer>> ReadLobbyPlayers(const json::Value* v) {
+  if (!v || !v->IsArray()) return std::nullopt;
+  std::vector<LobbyPlayer> out;
+  for (const json::Value& row : v->AsArray()) {
+    std::optional<LobbyPlayer> player = ReadLobbyPlayer(row);
+    if (!player) return std::nullopt;
+    out.push_back(std::move(*player));
+  }
+  return out;
+}
+
 std::optional<PlayerMatchAd> ReadPlayerMatch(const json::Value& row) {
   if (!row.IsObject()) return std::nullopt;
   PlayerMatchAd ad;
@@ -137,6 +163,38 @@ uint32_t RelayTokenOf(const json::Value* v) {
   return n && *n > 0 && *n <= 0xFFFFFFFFll ? uint32_t(*n) : 0;
 }
 
+SecretSet ReadSecretSet(const json::Value* v) {
+  SecretSet set;
+  if (!v || !v->IsObject()) return set;
+  set.akuma = BoolOf(v->Find(SecretKey(SecretCharacter::kAkuma)), false);
+  set.evil_ryu = BoolOf(v->Find(SecretKey(SecretCharacter::kEvilRyu)), false);
+  set.violent_ken = BoolOf(v->Find(SecretKey(SecretCharacter::kViolentKen)), false);
+  return set;
+}
+
+std::optional<MatchSecrets> ReadMatchSecrets(const json::Value* v) {
+  if (!v || !v->IsObject()) return std::nullopt;
+  const json::Value* peer = v->Find("peer");
+  MatchSecrets secrets;
+  if (peer && peer->IsObject()) {
+    secrets.peer.supports = ReadSecretSet(peer->Find("supports"));
+    secrets.peer.enabled = ReadSecretSet(peer->Find("enabled"));
+    secrets.peer = secrets.peer.Normalized();
+  }
+  secrets.effective = ReadSecretSet(v->Find("effective"));
+  return secrets;
+}
+
+std::string SecretSetJson(const SecretSet& set) {
+  return std::string("{\"") + SecretKey(SecretCharacter::kAkuma) + "\":" + (set.akuma ? "true" : "false") + ",\"" +
+         SecretKey(SecretCharacter::kEvilRyu) + "\":" + (set.evil_ryu ? "true" : "false") + ",\"" +
+         SecretKey(SecretCharacter::kViolentKen) + "\":" + (set.violent_ken ? "true" : "false") + "}";
+}
+
+std::string SecretJson(const SecretCapabilities& secret) {
+  return "{\"supports\":" + SecretSetJson(secret.supports) + ",\"enabled\":" + SecretSetJson(secret.enabled) + "}";
+}
+
 ServiceCapabilities ReadCapabilities(const json::Value& v) {
   ServiceCapabilities caps;
   caps.announced = true;
@@ -146,6 +204,9 @@ ServiceCapabilities ReadCapabilities(const json::Value& v) {
   caps.relay_supported = BoolOf(v.Find("relay_supported"), false);
   caps.relay_max_payload = IntOf(v.Find("relay_max_payload"));
   caps.fight_telemetry = BoolOf(v.Find("fight_telemetry"), false);
+  caps.secret_characters = BoolOf(v.Find("secret_characters"), false);
+  caps.public_lobby = BoolOf(v.Find("public_lobby"), false);
+  caps.bug_reports = BoolOf(v.Find("bug_reports"), false);
   return caps;
 }
 
@@ -160,7 +221,32 @@ bool ReadMatch(const json::Value& v, MatchInfo& out) {
     out.peer_player = StringOf(peer->Find("player"));
     out.peer_name = StringOf(peer->Find("name"));
   }
+  out.secret = ReadMatchSecrets(v.Find("secret"));
   return !out.match.empty() && (out.role == "host" || out.role == "join") && !out.guest.empty();
+}
+
+std::optional<std::vector<IncidentStatus>> ReadIncidentStatuses(const json::Value* v) {
+  if (!v || !v->IsArray()) return std::nullopt;
+  std::vector<IncidentStatus> out;
+  for (const json::Value& row : v->AsArray()) {
+    if (!row.IsObject()) return std::nullopt;
+    const auto updated = row.Find("status_updated_at") && row.Find("status_updated_at")->IsNumber()
+                             ? row.Find("status_updated_at")->AsInt64()
+                             : std::nullopt;
+    out.push_back({StringOf(row.Find("ticket")), StringOf(row.Find("status")), updated.value_or(0),
+                   StringOf(row.Find("fixed_version")), StringOf(row.Find("player_message"))});
+    if (out.back().ticket.empty()) return std::nullopt;
+  }
+  return out;
+}
+
+std::optional<std::map<std::string, std::string>> ReadIncidentReport(const json::Value* v) {
+  if (!v || !v->IsObject()) return std::nullopt;
+  std::map<std::string, std::string> out;
+  for (const auto& [key, value] : v->AsObject()) {
+    if (value.IsString()) out[key] = value.AsString();
+  }
+  return out;
 }
 
 bool IsLoopback(const std::string& ip) { return ip.rfind("127.", 0) == 0; }
@@ -184,6 +270,19 @@ std::optional<ServerMessage> DecodeServerMessage(std::string_view text) {
     message.friends = ReadFriends(root->Find("friends"));
     message.incoming = ReadRequests(root->Find("incoming"));
     message.outgoing = ReadRequests(root->Find("outgoing"));
+    message.lobby_players = ReadLobbyPlayers(root->Find("players"));
+    message.lobby_unchanged = BoolOf(root->Find("unchanged"), false);
+    message.incident_ticket = StringOf(root->Find("ticket"));
+    message.incident_receipt = StringOf(root->Find("receipt"));
+    if (const json::Value* at = root->Find("submitted_at"); at && at->IsNumber()) message.incident_submitted_at = at->AsInt64().value_or(0);
+    message.incident_statuses = ReadIncidentStatuses(root->Find("reports"));
+    message.incident_report = ReadIncidentReport(root->Find("report"));
+    if (const json::Value* rev = root->Find("rev"); rev && rev->IsNumber()) {
+      if (const auto n = rev->AsInt64()) message.lobby_rev = *n;
+    }
+    if (const json::Value* visible = root->Find("visible"); visible && visible->IsBool()) {
+      message.lobby_visible = visible->AsBool();
+    }
     if (const json::Value* caps = root->Find("capabilities"); caps && caps->IsObject()) {
       message.capabilities = ReadCapabilities(*caps);
     }
@@ -191,6 +290,8 @@ std::optional<ServerMessage> DecodeServerMessage(std::string_view text) {
       MatchInfo info;
       if (!ReadMatch(*root, info)) return std::nullopt;
       message.match = info;
+    } else {
+      message.secret = ReadMatchSecrets(root->Find("secret"));
     }
     return message;
   }
@@ -246,6 +347,12 @@ std::optional<ServerMessage> DecodeServerMessage(std::string_view text) {
     message.reason = StringOf(root->Find("reason"));
     return message.invite_id.empty() ? std::nullopt : std::optional<ServerMessage>(message);
   }
+  if (event == "match.secret") {
+    message.kind = Kind::kMatchSecret;
+    message.match_id = StringOf(root->Find("match"));
+    message.secret = ReadMatchSecrets(root->Find("secret"));
+    return message.match_id.empty() || !message.secret ? std::nullopt : std::optional<ServerMessage>(message);
+  }
   if (event == "match.transport" || event == "relay.closed") {
     message.kind = event == "match.transport" ? Kind::kMatchTransport : Kind::kRelayClosed;
     message.match_id = StringOf(root->Find("match"));
@@ -293,10 +400,47 @@ std::string EncodeHello(int seq, const HelloFields& hello) {
                      ",\"player\":" + Quote(hello.player) + ",\"token\":" + Quote(hello.token) +
                      ",\"name\":" + Quote(hello.name) + ",\"version\":" + Quote(hello.version) +
                      ",\"platform\":" + Quote(hello.platform) + ",\"presence\":" + (hello.presence ? "true" : "false") +
-                     (hello.relay ? ",\"relay\":true" : "") + (hello.telemetry ? ",\"telemetry\":true" : ""));
+                     (hello.relay ? ",\"relay\":true" : "") + (hello.telemetry ? ",\"telemetry\":true" : "") +
+                     ",\"secret\":" + SecretJson(hello.secret.Normalized()));
+}
+
+std::string EncodeSecretUpdate(int seq, const SecretCapabilities& secret) {
+  return Envelope("secret.update", seq, ",\"secret\":" + SecretJson(secret.Normalized()));
 }
 
 std::string EncodePing(int seq) { return Envelope("ping", seq); }
+std::string EncodeLobbyPublish(int seq, bool visible) {
+  return Envelope("lobby.publish", seq, std::string(",\"visible\":") + (visible ? "true" : "false"));
+}
+
+std::string JsonQuote(std::string_view text) { return Quote(text); }
+
+std::string EncodeIncidentFile(int seq, const IncidentFields& fields) {
+  std::string body;
+  for (const auto& [key, value] : fields) body += "," + Quote(key) + ":" + Quote(value);
+  return Envelope("incident.file", seq, body);
+}
+
+namespace {
+std::string ClaimJson(const IncidentClaim& claim) {
+  return "{\"ticket\":" + Quote(claim.ticket) + ",\"receipt\":" + Quote(claim.receipt) + "}";
+}
+}  // namespace
+
+std::string EncodeIncidentStatus(int seq, const std::vector<IncidentClaim>& claims) {
+  std::string list;
+  for (const IncidentClaim& claim : claims) list += (list.empty() ? "" : ",") + ClaimJson(claim);
+  return Envelope("incident.status", seq, ",\"reports\":[" + list + "]");
+}
+
+std::string EncodeIncidentRead(int seq, const IncidentClaim& claim) {
+  return Envelope("incident.read", seq, ",\"ticket\":" + Quote(claim.ticket) + ",\"receipt\":" + Quote(claim.receipt));
+}
+
+std::string EncodeLobbyList(int seq, std::optional<int64_t> held_rev) {
+  return Envelope("lobby.list", seq, held_rev && *held_rev >= 0 ? ",\"rev\":" + std::to_string(*held_rev) : std::string());
+}
+
 std::string EncodeFriendsList(int seq) { return Envelope("friends.list", seq); }
 std::string EncodeFriendsRequests(int seq) { return Envelope("friends.requests", seq); }
 std::string EncodeFriendsAdd(int seq, const std::string& code) { return Envelope("friends.add", seq, ",\"code\":" + Quote(code)); }

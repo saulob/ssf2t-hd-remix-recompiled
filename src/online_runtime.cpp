@@ -1,5 +1,6 @@
 #include "online_runtime.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <memory>
@@ -11,6 +12,10 @@
 #include <rex/cvar.h>
 #include <rex/logging.h>
 
+#include "character/akuma.h"
+#include "character/character_packages.h"
+#include "character/ultra_fighters.h"
+#include "character/violent_ken_data.h"
 #include "netplay/online_game_socket.h"
 #include "netplay/packet.h"
 #include "netplay_setting.h"
@@ -23,6 +28,8 @@ REXCVAR_DEFINE_BOOL(ssf2t_online_enabled, ssf2t::kDefaultOnlineEnabled, "SSF2T",
                     "Online play: friends, and Online Match fights against them over the internet");
 REXCVAR_DEFINE_STRING(ssf2t_online_name, ssf2t::kDefaultOnlineNameValue, "SSF2T",
                       "Name other players see during online play");
+REXCVAR_DEFINE_BOOL(ssf2t_online_lobby_visible, ssf2t::kDefaultOnlineLobby, "SSF2T",
+                    "Lists this player in the public Lobby so other players can send a friend request");
 REXCVAR_DEFINE_BOOL(ssf2t_online_ping_display, ssf2t::kDefaultOnlinePing, "SSF2T",
                     "Shows the round trip to the other player during an online fight");
 REXCVAR_DEFINE_STRING(ssf2t_online_connection_test, "", "SSF2T",
@@ -36,6 +43,9 @@ namespace {
 netplay::OnlineGameSocket g_game_socket;
 double g_next_bind_try = 0;
 bool g_bind_failure_logged = false;
+
+std::atomic<bool> g_secrets_locked{false};
+std::atomic<uint8_t> g_locked_secrets{0};
 
 std::mutex g_mutex;
 std::filesystem::path g_user_dir;
@@ -75,6 +85,17 @@ const char* PlatformName() {
 #endif
 }
 
+// This build understands all three; the player's options say which are on. A fighter whose required packages are not
+// valid here is not offered.
+online::SecretCapabilities LocalSecretCapabilities() {
+  online::SecretCapabilities secret;
+  secret.supports = {true, true, true};
+  secret.enabled = {character::AkumaEnabled(), character::UltraFightersEnabled() && character::EvilRyuPackagesReady(),
+                    character::UltraFightersEnabled() && character::ViolentKenPackagesReady() &&
+                        character::ViolentKenGameplayReady()};
+  return secret;
+}
+
 online::ServiceConfig MakeConfig() {
   online::ServiceConfig config;
   if (const char* url = std::getenv(kOnlineServiceEnv); url && *url) config.url = url;
@@ -89,6 +110,7 @@ online::ServiceConfig MakeConfig() {
   config.lan = online::LocalCandidates();
   config.game_socket = &g_game_socket;
   config.identity = ResolveIdentity;
+  config.secret = LocalSecretCapabilities;
   config.log = [](const std::string& line) { REXLOG_INFO("{}", line); };
   return config;
 }
@@ -97,10 +119,13 @@ online::UserSettings SavedSettings() {
   online::UserSettings settings;
   settings.enabled = REXCVAR_GET(ssf2t_online_enabled);
   settings.name = REXCVAR_GET(ssf2t_online_name);
+  settings.lobby_visible = REXCVAR_GET(ssf2t_online_lobby_visible);
   return settings;
 }
 
 }  // namespace
+
+const char* OnlinePlatformName() { return PlatformName(); }
 
 void ConfigureOnline(const std::filesystem::path& user_dir, GuestVersion guest) {
   std::lock_guard<std::mutex> lock(g_mutex);
@@ -141,6 +166,20 @@ void PumpOnlineService() {
     REXLOG_INFO("online runtime signed in={}", signed_in);
   }
 }
+
+online::SecretSet ActiveOnlineSecrets() {
+  if (g_secrets_locked.load(std::memory_order_acquire)) {
+    return online::SecretSet::FromBits(g_locked_secrets.load(std::memory_order_relaxed));
+  }
+  return Online().SecretEffective();
+}
+
+void LockOnlineSecrets(online::SecretSet secrets) {
+  g_locked_secrets.store(secrets.Bits(), std::memory_order_relaxed);
+  g_secrets_locked.store(true, std::memory_order_release);
+}
+
+void UnlockOnlineSecrets() { g_secrets_locked.store(false, std::memory_order_release); }
 
 double OnlineNowSeconds() {
   static const auto start = std::chrono::steady_clock::now();

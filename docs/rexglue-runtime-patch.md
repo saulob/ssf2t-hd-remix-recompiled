@@ -28,6 +28,17 @@ falls back to the synchronous path if the thread cannot be created.
 The shared memory patch does not shrink the invalidation granularity (`gpu_invalidation_expand_pages`): 0004 keeps GPU
 page validity across frames, so the trade-off needs measurements on this game first.
 
+## GPU waits
+
+Patches 0009 and 0049 wake host threads waiting on a word the command processor wrote; `src/gpu_fence_wait.cpp` is the
+waiter. Direct3D polls the GPU fence in a loop with no host wait in it, and `Swap` waits there for the flip of the frame
+before, which holds until the next vblank, so the guest render thread otherwise spins through every frame on one
+logical processor, with VSync on or off. The hook on the poll sleeps on the polled word instead (`WaitOnAddress`, or a
+futex on Linux), for 2 ms at most before the guest re-checks. It covers the three waits on words the command processor
+writes: fence, ring space and ring progress. The guest's conditions, memory and frame count do not change. The waits
+on words the guest's own CPU code writes keep polling. Blocking turns itself off, with a warning in the log, if a word
+proves not to be woken.
+
 ## Frame timing
 
 Hard Corps Uprising's low-FPS catch-up (`game_delta_clock`) is not part of this port. That game advances its stage

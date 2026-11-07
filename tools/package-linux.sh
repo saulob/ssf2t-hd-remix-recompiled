@@ -19,7 +19,8 @@
 # source with the project's patch (tools/build-appimage-runtime.sh): that needs root or sudo, network access the first time,
 # and is skipped while the pins and patches are unchanged.
 # Needs generated/base and generated/tu from tools/codegen.ps1 (Windows); the freshness check (tools/check-guest-code.sh)
-# reads only config/guest, and no game file is needed or packaged.
+# reads only config/guest, and no game file is needed or packaged. assets/characters must hold the packages
+# src/character/character_packages.h names.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -63,6 +64,7 @@ if [ -n "$VERIFY_ONLY" ]; then
   chmod +x "$TMP/verify.AppImage"
   (cd "$TMP" && ./verify.AppImage --appimage-extract >/dev/null)
   scan_appdir "$TMP/squashfs-root" "extracted AppImage" "$ROOT" "$WORK" "$HOME"
+  check_character_packages "$TMP/squashfs-root/usr/bin/assets/characters" "$CHARACTER_TABLE" || fail "the AppImage does not hold the character packages"
   echo "Verified $VERIFY_ONLY"
   exit 0
 fi
@@ -91,6 +93,8 @@ echo "glibc $HOST_GLIBC"
 
 echo "== Inputs"
 [ -f "$ROOT/third_party/trg-launcher/CMakeLists.txt" ] || fail "third_party/trg-launcher is empty"
+check_character_packages "$ROOT/assets/characters" "$CHARACTER_TABLE" ||
+  fail "assets/characters does not hold the packages src/character/character_packages.h names"
 bash "$ROOT/tools/check-guest-code.sh" "$ROOT" --all || fail "generated/base and generated/tu are not current (run tools/codegen.ps1 on Windows first)"
 
 echo "== Source -> $WORK"
@@ -98,7 +102,7 @@ mkdir -p "$WORK/third_party" "$WORK/tools"
 for f in CMakeLists.txt CMakePresets.json LICENSE tools/build-patched-rexruntime.sh tools/check-guest-code.sh; do
   rsync -a "$ROOT/$f" "$WORK/$f"
 done
-for d in assets cmake config src tests generated packaging patches/rexglue-sdk patches/trg-launcher third_party/trg-launcher; do
+for d in assets cmake config src tests generated packaging patches/rexglue-sdk patches/trg-launcher third_party/trg-launcher third_party/nanosvg; do
   mkdir -p "$WORK/$d"
   rsync -a --delete --exclude .git "$ROOT/$d/" "$WORK/$d/"
 done
@@ -161,6 +165,7 @@ holds_built_libraries "$APPDIR/usr/bin" || fail "the AppDir does not hold the pa
 
 echo "== Release check"
 scan_appdir "$APPDIR" AppDir "$ROOT" "$WORK" "$HOME"
+check_character_packages "$APPDIR/usr/bin/assets/characters" "$CHARACTER_TABLE" || fail "the AppDir does not hold the character packages"
 
 echo "== AppImage"
 ensure_appimage_tools "$ROOT" "$WORK"
@@ -180,6 +185,7 @@ trap 'rm -rf "$VERIFY"' EXIT
 cp "$OUT" "$VERIFY/verify.AppImage"
 (cd "$VERIFY" && ./verify.AppImage --appimage-extract >/dev/null)
 scan_appdir "$VERIFY/squashfs-root" "extracted AppImage" "$ROOT" "$WORK" "$HOME"
+check_character_packages "$VERIFY/squashfs-root/usr/bin/assets/characters" "$CHARACTER_TABLE" || fail "the AppImage does not hold the character packages"
 holds_built_libraries "$VERIFY/squashfs-root/usr/bin" || fail "the AppImage does not hold the built runtime"
 (cd "$OUT_DIR" && sha256sum "$NAME.AppImage" > "$NAME.sha256")
 

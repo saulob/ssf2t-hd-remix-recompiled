@@ -30,6 +30,7 @@ $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'rexruntime-patch.ps1')
+. (Join-Path $PSScriptRoot 'character-packages.ps1')
 $SdkRoot = Join-Path $Root 'tools\rexglue\win-amd64'
 $BuildDir = if (-not $BuildDir) { Join-Path $Root 'build' } elseif ([IO.Path]::IsPathRooted($BuildDir)) { $BuildDir } else { Join-Path $Root $BuildDir }
 $GameData = Join-Path $Root 'game\extracted'
@@ -152,6 +153,9 @@ foreach ($file in $required) {
     if (-not (Test-Path $path)) { throw "Build output is missing $path" }
 }
 Assert-RuntimeReady
+$CharacterPackages = Get-CharacterPackages (Join-Path $Root 'src\character\character_packages.h')
+$CharacterProblems = @(Test-CharacterPackages (Join-Path $BuildDir 'assets\characters') $CharacterPackages)
+foreach ($problem in $CharacterProblems) { Write-Warning "$problem (assets\characters); the fighter it belongs to may be disabled" }
 
 Write-Host ''
 Write-Host '===================================================='
@@ -159,6 +163,7 @@ Write-Host ' BUILD SUCCESSFUL'
 Write-Host '===================================================='
 Write-Host "  $Exe"
 Write-Host "  runtime: $((Get-RuntimeDllNames $Config) -join ', ') match tools\rexglue"
+Write-Host "  character packages: $($CharacterPackages.Count - $CharacterProblems.Count) of $($CharacterPackages.Count) staged"
 Write-Host ''
 
 if (-not $Run -or $NoRun) { return }

@@ -12,6 +12,9 @@ struct ScreenSetPatch {
   bool multiplayer = false;   // Multiplayer lists only Local Match and Online Match
   bool player_match = false;  // Online Match lists only Quick Match and Create Match
   bool create_match = false;  // Create Player Match has no Private Slots or Number of Players row
+  bool main_menu = false;     // Main Menu has no Leaderboards row
+  bool pause_menu = false;    // Pause Menu has no Leaderboards row
+  bool pause_training = false;  // Training Pause Menu has no Leaderboards row
 };
 
 // Edits the UIScreenSet document before the guest parses it. A screen whose layout differs from the one these edits
@@ -42,6 +45,9 @@ struct HelpTextPatch {
   bool multiplayer = false;
   bool player_match = false;
   bool create_match = false;
+  bool main_menu = false;
+  bool pause_menu = false;
+  bool pause_training = false;
 };
 
 // Drops the help lines of the rows PatchScreenSet removes, so each remaining row keeps its own line.
@@ -54,5 +60,8 @@ inline constexpr char kMultiplayerScreen[] = "MultiplayerGame";
 inline constexpr char kPlayerMatchScreen[] = "PlayerMatch";
 inline constexpr char kCreatePlayerMatchScreen[] = "CreatePlayerMatch";
 inline constexpr char kGameLobbyScreen[] = "gameLobby";
+inline constexpr char kMainMenuScreen[] = "MainMenu";
+inline constexpr char kPauseMenuScreen[] = "PauseMenu_Regular";
+inline constexpr char kPauseTrainingScreen[] = "PauseMenu_Training";
 
 }  // namespace ssf2t

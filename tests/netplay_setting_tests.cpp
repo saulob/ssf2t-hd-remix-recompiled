@@ -158,6 +158,20 @@ void TestOneSettingServesBothGuests() {
   CHECK(gate != std::string::npos && gate < hook.find("RunDeterminismSample<G>(ctx, base, calls, frame);"));
 }
 
+// A role saved in an earlier developer session must not start a hidden Netplay Test.
+void TestNetplayRoleNeedsDeveloperControls() {
+  if (!DeveloperControlsEnabled()) {
+    CHECK(!NetplayTestRole(kNetplayRoleHost) && !NetplayTestRole(kNetplayRoleJoin));
+  }
+  CHECK(!NetplayTestRole(kNetplayRoleOff) && !NetplayTestRole("") && !NetplayTestRole("other"));
+  CHECK(ReadSource("netplay_hook.cpp").find("if (!ssf2t::NetplayTestRole(role)) return false;") != std::string::npos);
+  for (const char* source : {"character/akuma_bug_fixes.cpp", "character/ultra_fighters.cpp", "character/versus_cpu_hook.cpp"}) {
+    const std::string text = ReadSource(source);
+    CHECK(text.find("NetplayTestRole(rex::cvar::GetFlagByName(kNetplayRoleSetting))") != std::string::npos);
+    CHECK(text.find("!= kNetplayRoleOff") == std::string::npos);
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -169,6 +183,7 @@ int main() {
   TestNetplayRoleDefaultsToOff();
   TestNetplayRoleLauncherWiring();
   TestNetplaySettingsReachTheRuntimeCvar();
+  TestNetplayRoleNeedsDeveloperControls();
   std::printf("%d checks, %d failures\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;
 }

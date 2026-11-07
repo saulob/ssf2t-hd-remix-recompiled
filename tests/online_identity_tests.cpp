@@ -54,6 +54,20 @@ void TestIdentityIsCreatedOnceAndKept() {
   fs::remove_all(dir);
 }
 
+void TestExistingIdentityIsReadWithoutCreatingOne() {
+  const fs::path dir = FreshDir("ssf2t_online_identity_existing");
+  const Identity none = LoadExistingIdentity(dir);
+  CHECK(!none.ok() && !none.error.empty());
+  CHECK(!fs::exists(dir / kIdentityFileName));
+  const Identity made = LoadOrCreateIdentity(dir);
+  const Identity read = LoadExistingIdentity(dir);
+  CHECK(read.ok() && read.token == made.token && read.player_id == made.player_id);
+  std::ofstream(dir / kIdentityFileName, std::ios::binary | std::ios::trunc) << "token=nothex\n";
+  CHECK(!LoadExistingIdentity(dir).ok());
+  CHECK(ReadFile(dir / kIdentityFileName) == "token=nothex\n");
+  fs::remove_all(dir);
+}
+
 void TestDamagedIdentityIsReportedNotReplaced() {
   const fs::path dir = FreshDir("ssf2t_online_identity_b");
   std::ofstream(dir / kIdentityFileName, std::ios::binary) << "token=nothex\n";
@@ -126,6 +140,7 @@ void TestOnlineNameCleaning() {
 
 int main() {
   TestIdentityIsCreatedOnceAndKept();
+  TestExistingIdentityIsReadWithoutCreatingOne();
   TestDamagedIdentityIsReportedNotReplaced();
   TestEphemeralIdentityIsNeverWritten();
   TestSecondInstanceCannotTakeTheLock();

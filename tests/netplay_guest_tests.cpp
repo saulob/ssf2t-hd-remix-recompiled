@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "netplay/determinism.h"
+#include "netplay/frame_zero.h"
 #include "netplay/guest_netplay.h"
 #include "netplay_test_support.h"
 
@@ -336,6 +337,43 @@ void TestTraitsAndImages() {
   CHECK(kCmdStep == 5);
 }
 
+// A match with no secret character sends the words it always did, so it still agrees with a client that has none; one
+// that negotiated some adds a word, so peers that disagree on them are refused at frame 0.
+void TestSecretCharactersAddOneSetupWordOnlyWhenNegotiated() {
+  std::printf("  secret setup word\n");
+  SetupFields f;
+  f.mode = 3;
+  f.stage = 7;
+  const std::vector<uint32_t> legacy = SetupWords(f);
+  CHECK(legacy.size() == kSetupWordCount);
+  f.secrets = 1;
+  const std::vector<uint32_t> akuma = SetupWords(f);
+  CHECK(akuma.size() == kSetupWordCount + 1 && akuma.back() == (kSecretSetupTag | 1) && akuma.size() <= kMaxSetupWords);
+  CHECK(std::equal(legacy.begin(), legacy.end(), akuma.begin()));
+  f.secrets = 2;
+  CHECK(SetupWords(f) != akuma && SetupWords(f).size() == akuma.size());
+  f.secrets = 3;
+  CHECK(SetupWords(f).back() == (kSecretSetupTag | 3));
+  f.secrets = 0;
+  CHECK(SetupWords(f) == legacy);
+}
+
+// The host state a rollback saves rides after the guest state and is never part of what the peers compare.
+void TestHostStateRidesBehindTheFrameZeroView() {
+  std::printf("  host state beyond the frame-0 view\n");
+  std::vector<uint8_t> blob(kSimBlobSize);
+  for (size_t i = 0; i < blob.size(); ++i) blob[i] = uint8_t(i * 31 + 7);
+  std::vector<uint8_t> with_host = blob;
+  with_host.resize(blob.size() + 61, 0xEE);
+  CHECK(FrameZeroView(with_host).size() == kSimBlobSize);
+  CHECK(FrameZeroView(with_host) == FrameZeroView(blob));
+  with_host.back() = 0x11;
+  CHECK(FrameZeroView(with_host) == FrameZeroView(blob));
+  CHECK(StateRegionHashes(with_host) == StateRegionHashes(blob));
+  CHECK(DescribeStateHashes(with_host) == DescribeStateHashes(blob));
+  CHECK(FrameZeroView(std::vector<uint8_t>(10)).size() == 10);
+}
+
 void TestSetupWordsPacking() {
   std::printf("  setup words\n");
   SetupFields f;
@@ -560,6 +598,8 @@ int main() {
   TestHookRunsWholeGameFrames();
   TestFrameTailAnswerScope();
   TestSetupWordsPacking();
+  TestSecretCharactersAddOneSetupWordOnlyWhenNegotiated();
+  TestHostStateRidesBehindTheFrameZeroView();
   TestWordsMatchOnAFakeGuest();
   TestBlobComparison();
   TestOffsetNamesAndLogLines();

@@ -131,6 +131,7 @@ if ($python) {
 }
 Invoke-Check 'guest symbol prefix (base013_/tu023_)' @('Base013', 'TU023', 'Hooks and patches') { & (Join-Path $PSScriptRoot 'test-guest-code.ps1') }
 Invoke-Check 'release folder check cases' @('Packaging structure', 'Windows platform paths') { & (Join-Path $PSScriptRoot 'test-release-check.ps1') }
+Invoke-Check 'character packages (list, staging, consumers, release scripts, documents)' @('Packaging structure') { & (Join-Path $PSScriptRoot 'test-character-packages.ps1') }
 Invoke-Check 'online instance script' @('Online protocol') { & (Join-Path $PSScriptRoot 'test-online-instance.ps1') }
 
 $node = Get-Command node -ErrorAction SilentlyContinue
@@ -213,9 +214,25 @@ $Suites = @(
     @('online identity', 'online_identity', 'Online protocol', 'Saves / user data'),
     @('online service', 'online_service', 'Online protocol', 'Direct / Relay', 'Player Match', 'Multiple fights / matches', 'Online parity'),
     @('fight telemetry (reporter, guest reads on both images, queue, wire)', 'fight_telemetry', 'Fight telemetry', 'Base013', 'TU023', 'Online protocol', 'Direct / Relay', 'Multiple fights / matches', 'Hooks and patches', 'Online parity'),
+    @('secret characters (negotiation rule, select gating, rollback host state, validation)', 'secret_select', 'Online protocol', 'Rollback', 'Base013', 'TU023', 'Multiple fights / matches'),
+    @('violent ken (identity, navigation, negotiation, moves, gameplay package)', 'violent_ken', 'Online protocol', 'Rollback', 'Base013', 'TU023', 'Multiple fights / matches'),
+    @('local join select (defender keeps Ultra cell, guest join path on both images)', 'local_join_select', 'Local multiplayer', 'Base013', 'TU023'),
+    @('evil ryu moves (recognizers, ground, render state)', 'evil_ryu_moves', 'Base013', 'TU023'),
+    @('debug hotkeys removed (F1, F4-F8 dispatch gone, real inputs wired)', 'debug_hotkeys_removed', 'Base013', 'TU023'),
+    @('console removed (Backtick bind, key reservation, logging kept)', 'console_removed', 'Overlays / hotkeys'),
+    @('skip intro (setting, launcher row, gameflow patch, hooks of both builds)', 'skip_intro', 'Base013', 'TU023', 'Hooks and patches', 'Settings'),
+    @('akuma bug fixes (setting, Remix frame patches on both builds, Classic and online safety, rejection)', 'akuma_bug_fixes', 'Base013', 'TU023', 'Hooks and patches', 'Settings'),
+    @('versus cpu (opponent model, lobby patches, guest AI path on both images, hooks)', 'versus_cpu', 'Local multiplayer', 'Base013', 'TU023', 'Hooks and patches'),
+    @('character moves page, winner quotes and legacy text lines', 'character_moves', 'Base013', 'TU023'),
+    @('ultra endings (Evil Ryu and Violent Ken: package, text, routing, patches, guest switch)', 'ultra_ending', 'Base013', 'TU023', 'Hooks and patches'),
+    @('character packages (table, consumers, required sets, fixture validation)', 'character_packages', 'Packaging structure', 'Base013', 'TU023'),
+    @('roster cells (Akuma and Ultra cells inside the native roster pass: lifetime, fade order, geometry, plan)', 'roster_cells', 'Base013', 'TU023', 'Hooks and patches'),
+    @('violent ken audio (package, Ken event map, side routing, announcer)', 'violent_ken_audio', 'Base013', 'TU023'),
     @('online rendezvous', 'online_rendezvous', 'Direct / Relay'),
     @('online connection test', 'online_connection', 'Online protocol', 'Direct / Relay'),
     @('friend code field', 'friend_field', 'Online protocol'),
+    @('bug report: log privacy scrubber', 'log_scrubber', 'Online protocol', 'Saves / user data'),
+    @('bug report: logs, preview, tickets, My reports, service calls', 'bug_report', 'Online protocol', 'Saves / user data', 'Settings'),
     @('online setting', 'online_setting', 'Settings'),
     @('player match', 'player_match', 'Player Match', 'Base013', 'TU023'),
     @('guest ui', 'guest_ui', 'Player Match'),
@@ -227,6 +244,7 @@ $Suites = @(
     @('keyboard remapping and hotkeys', 'keyboard', 'Launcher controls', 'Local multiplayer', 'Overlays / hotkeys'),
     @('player names', 'player_name', 'Local multiplayer', 'Settings'),
     @('launcher quit', 'launcher_quit', 'Launcher controls'),
+    @('launcher visuals (pages, icons, sidebar fit, layout constants)', 'launcher_visual', 'Launcher controls', 'Display / Graphics'),
     @('launcher controller (issue #9: XInput on Windows, SDL on Linux)', 'launcher_gamepad', 'Launcher controls', 'Windows platform paths'),
     @('window placement', 'window_placement', 'Display / Graphics'),
     @('display scaling', 'dpi', 'Display / Graphics'),
@@ -238,6 +256,7 @@ $Suites = @(
     @('GPU draw state memo', 'gpu_draw_state_memo', 'Display / Graphics'),
     @('D3D12 async submission', 'd3d12_async_submission', 'Display / Graphics'),
     @('GPU register wake', 'gpu_register_wake', 'Display / Graphics'),
+    @('GPU fence wait', 'gpu_fence_wait', 'Display / Graphics'),
     # Achievements, saves, updates and the runtime
     @('achievements', 'achievement', 'Achievements'),
     @('achievement metadata (real game files)', 'achievement_metadata', 'Achievements'),

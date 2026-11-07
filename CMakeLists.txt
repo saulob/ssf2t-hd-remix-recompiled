@@ -1,7 +1,7 @@
 # The recompiled game images and the SDK lookup live in cmake/ssf2t_guest_images.cmake.
 
 cmake_minimum_required(VERSION 3.25)
-project(ssf2t_hd_remix VERSION 0.3.1 LANGUAGES C CXX)
+project(ssf2t_hd_remix VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -135,6 +135,9 @@ set(SSF2T_NETPLAY_SOURCES
 
 # Online play: the lobby client, identity and signalling. No game runtime needed; the tests build it as it is.
 set(SSF2T_ONLINE_SOURCES
+    src/bug_report.cpp
+    src/log_scrubber.cpp
+    src/report_history.cpp
     src/netplay/online_game_socket.cpp
     src/netplay/relay_frame.cpp
     src/netplay/udp_transport.cpp
@@ -142,6 +145,7 @@ set(SSF2T_ONLINE_SOURCES
     src/online/fight_telemetry.cpp
     src/online/friend_view.cpp
     src/online/identity.cpp
+    src/online/incident_client.cpp
     src/online/instance.cpp
     src/online/lobby_link.cpp
     src/online/local_addresses.cpp
@@ -150,6 +154,8 @@ set(SSF2T_ONLINE_SOURCES
     src/online/protocol.cpp
     src/online/random.cpp
     src/online/rendezvous.cpp
+    src/online/secret_characters.cpp
+    src/online/secret_view.cpp
     src/online/stun.cpp
     src/online/upnp.cpp
     src/online/websocket.cpp
@@ -180,12 +186,54 @@ set(SSF2T_SOURCES
     src/achievements_overlay.cpp
     src/active_log.cpp
     src/aspect_render.cpp
+    src/character/akuma.cpp
+    src/character/akuma_bug_fixes.cpp
+    src/character/akuma_select.cpp
+    src/character/akuma_navigation.cpp
+    src/character/select_activity.cpp
+    src/character/akuma_portrait.cpp
+    src/character/character_moves.cpp
+    src/character/character_moves_hook.cpp
+    src/character/fighter_identity.cpp
+    src/character/host_rollback.cpp
+    src/character/character_packages.cpp
+    src/character/ultra_fighters.cpp
+    src/character/ultra_gameplay_hook.cpp
+    src/character/ultra_hd_palette_hook.cpp
+    src/character/ultra_hud_hook.cpp
+    src/character/ultra_moves_hook.cpp
+    src/character/ultra_confirm_hook.cpp
+    src/character/ultra_cursor_hook.cpp
+    src/character/ultra_navigation.cpp
+    src/character/versus_cpu_hook.cpp
+    src/character/cpu_marker.cpp
+    src/character/evil_ryu_actions.cpp
+    src/character/evil_ryu_assets.cpp
+    src/character/evil_ryu_moves.cpp
+    src/character/evil_ryu_sprites.cpp
+    src/character/evil_ryu_audio.cpp
+    src/character/violent_ken_audio.cpp
+    src/character/evil_ryu_results.cpp
+    src/character/ultra_audio_hook.cpp
+    src/character/ultra_results_hook.cpp
+    src/character/ultra_winner_hook.cpp
+    src/character/ultra_ending.cpp
+    src/character/ultra_ending_hook.cpp
+    src/character/evil_ryu_palette.cpp
+    src/character/violent_ken_actions.cpp
+    src/character/violent_ken_data.cpp
+    src/character/violent_ken_moves.cpp
+    src/character/ultra_palette_hook.cpp
+    src/character/roster_cells_hook.cpp
+    src/character/ultra_portraits.cpp
     src/crash_report.cpp
     src/diagnostics.cpp
     src/fight_area_hook.cpp
     src/frame_counter.cpp
     src/game_files.cpp
+    src/gpu_fence_wait.cpp
     src/graphics_adapters.cpp
+    src/bug_report_page.cpp
     src/friend_code_field.cpp
     src/imgui_gamepad.cpp
     src/guest_functions.cpp
@@ -227,6 +275,7 @@ set(SSF2T_SOURCES
     src/port_folder.cpp
     src/session_log.cpp
     src/settings.cpp
+    src/skip_intro_hook.cpp
     src/stfs.cpp
     src/system_info.cpp
     src/update_config.cpp
@@ -255,6 +304,18 @@ foreach(_online_source IN LISTS SSF2T_ONLINE_SOURCES)
         list(APPEND SSF2T_SOURCES ${_online_source})
     endif()
 endforeach()
+# The sidebar's page icons (assets/launcher/icons/*.svg) as a table of byte arrays, launcher_page_icons.cpp.
+file(GLOB SSF2T_PAGE_ICONS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/launcher/icons/*.svg")
+list(SORT SSF2T_PAGE_ICONS)
+set(SSF2T_PAGE_ICON_LIST "${CMAKE_BINARY_DIR}/generated/page_icons.txt")
+file(CONFIGURE OUTPUT "${SSF2T_PAGE_ICON_LIST}" CONTENT "${SSF2T_PAGE_ICONS}")
+set(SSF2T_PAGE_ICON_SOURCE "${CMAKE_BINARY_DIR}/generated/page_icon_data.cpp")
+add_custom_command(OUTPUT "${SSF2T_PAGE_ICON_SOURCE}"
+    COMMAND "${CMAKE_COMMAND}" -DINPUT_LIST=${SSF2T_PAGE_ICON_LIST} -DOUTPUT=${SSF2T_PAGE_ICON_SOURCE} -DSYMBOL=kPageIconFiles
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_files.cmake"
+    DEPENDS "${SSF2T_PAGE_ICON_LIST}" ${SSF2T_PAGE_ICONS} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_files.cmake"
+    COMMENT "Embedding the page icons")
+list(APPEND SSF2T_SOURCES src/launcher_page_icons.cpp "${SSF2T_PAGE_ICON_SOURCE}")
 set_source_files_properties(src/updater/third_party/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "-w")
 set_property(SOURCE src/update_config.cpp src/updater/github_release.cpp src/updater/json.cpp src/updater/sha256.cpp
     src/updater/update_controller.cpp src/updater/update_job.cpp src/updater/update_paths.cpp
@@ -404,6 +465,146 @@ add_executable(ssf2t_window_placement_tests EXCLUDE_FROM_ALL tests/window_placem
 target_include_directories(ssf2t_window_placement_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_window_placement_tests)
 
+add_executable(ssf2t_akuma_setting_tests EXCLUDE_FROM_ALL tests/akuma_setting_tests.cpp
+    src/character/akuma_select.cpp src/character/akuma_portrait.cpp src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_akuma_setting_tests PRIVATE src "${SSF2T_SDK_DIR}/include" "${_trg_dir}/include")
+add_dependencies(ssf2t_runtime_tests ssf2t_akuma_setting_tests)
+
+add_executable(ssf2t_akuma_bug_fixes_tests EXCLUDE_FROM_ALL tests/akuma_bug_fixes_tests.cpp)
+target_include_directories(ssf2t_akuma_bug_fixes_tests PRIVATE src)
+target_compile_definitions(ssf2t_akuma_bug_fixes_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(ssf2t_akuma_bug_fixes_tests PRIVATE -Wall -Wextra)
+add_dependencies(ssf2t_runtime_tests ssf2t_akuma_bug_fixes_tests)
+
+add_executable(ssf2t_ultra_portraits_tests EXCLUDE_FROM_ALL tests/ultra_portraits_tests.cpp
+    src/character/ultra_portraits.cpp src/character/akuma_portrait.cpp src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_ultra_portraits_tests PRIVATE src "${SSF2T_SDK_DIR}/include" "${_trg_dir}/include")
+add_dependencies(ssf2t_runtime_tests ssf2t_ultra_portraits_tests)
+
+add_executable(ssf2t_fighter_identity_tests EXCLUDE_FROM_ALL tests/fighter_identity_tests.cpp
+    src/character/fighter_identity.cpp)
+target_include_directories(ssf2t_fighter_identity_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_fighter_identity_tests)
+
+add_executable(ssf2t_ultra_navigation_tests EXCLUDE_FROM_ALL tests/ultra_navigation_tests.cpp
+    src/character/ultra_navigation.cpp src/character/fighter_identity.cpp)
+target_include_directories(ssf2t_ultra_navigation_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_ultra_navigation_tests)
+
+add_executable(ssf2t_local_join_select_tests EXCLUDE_FROM_ALL tests/local_join_select_tests.cpp
+    src/character/ultra_navigation.cpp src/character/fighter_identity.cpp)
+target_include_directories(ssf2t_local_join_select_tests PRIVATE src)
+target_compile_definitions(ssf2t_local_join_select_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_local_join_select_tests)
+
+add_executable(ssf2t_violent_ken_tests EXCLUDE_FROM_ALL tests/violent_ken_tests.cpp
+    src/character/ultra_navigation.cpp src/character/fighter_identity.cpp src/character/evil_ryu_moves.cpp
+    src/character/evil_ryu_actions.cpp src/character/evil_ryu_sprites.cpp src/character/evil_ryu_palette.cpp
+    src/character/violent_ken_actions.cpp src/character/violent_ken_data.cpp src/character/violent_ken_moves.cpp
+    src/online/secret_characters.cpp)
+target_include_directories(ssf2t_violent_ken_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_violent_ken_tests)
+
+# Secret characters online: the negotiation rule, the Character Select gating, the rollback-saved host selection and
+# the validation of a selection. Headless.
+add_executable(ssf2t_secret_select_tests EXCLUDE_FROM_ALL tests/secret_select_tests.cpp
+    src/character/ultra_navigation.cpp src/character/fighter_identity.cpp src/character/evil_ryu_moves.cpp
+    src/online/secret_characters.cpp)
+target_include_directories(ssf2t_secret_select_tests PRIVATE src)
+target_compile_options(ssf2t_secret_select_tests PRIVATE -Wall -Wextra)
+add_dependencies(ssf2t_runtime_tests ssf2t_secret_select_tests)
+
+add_executable(ssf2t_evil_ryu_assets_tests EXCLUDE_FROM_ALL tests/evil_ryu_assets_tests.cpp
+    src/character/evil_ryu_assets.cpp)
+target_include_directories(ssf2t_evil_ryu_assets_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_assets_tests)
+
+add_executable(ssf2t_evil_ryu_palette_tests EXCLUDE_FROM_ALL tests/evil_ryu_palette_tests.cpp
+    src/character/evil_ryu_palette.cpp)
+target_include_directories(ssf2t_evil_ryu_palette_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_palette_tests)
+
+add_executable(ssf2t_evil_ryu_actions_tests EXCLUDE_FROM_ALL tests/evil_ryu_actions_tests.cpp
+    src/character/evil_ryu_actions.cpp src/character/evil_ryu_sprites.cpp)
+target_include_directories(ssf2t_evil_ryu_actions_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_actions_tests)
+
+add_executable(ssf2t_evil_ryu_moves_tests EXCLUDE_FROM_ALL tests/evil_ryu_moves_tests.cpp
+    src/character/evil_ryu_moves.cpp)
+target_include_directories(ssf2t_evil_ryu_moves_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_moves_tests)
+
+add_executable(ssf2t_evil_ryu_hud_tests EXCLUDE_FROM_ALL tests/evil_ryu_hud_tests.cpp
+    src/character/evil_ryu_sprites.cpp src/character/fighter_identity.cpp)
+target_include_directories(ssf2t_evil_ryu_hud_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_hud_tests)
+
+add_executable(ssf2t_debug_hotkeys_removed_tests EXCLUDE_FROM_ALL tests/debug_hotkeys_removed_tests.cpp)
+target_include_directories(ssf2t_debug_hotkeys_removed_tests PRIVATE src)
+target_compile_definitions(ssf2t_debug_hotkeys_removed_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_debug_hotkeys_removed_tests)
+
+add_executable(ssf2t_console_removed_tests EXCLUDE_FROM_ALL tests/console_removed_tests.cpp)
+target_include_directories(ssf2t_console_removed_tests PRIVATE src)
+target_compile_definitions(ssf2t_console_removed_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_console_removed_tests)
+
+add_executable(ssf2t_skip_intro_tests EXCLUDE_FROM_ALL tests/skip_intro_tests.cpp
+    src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_skip_intro_tests PRIVATE src)
+target_compile_definitions(ssf2t_skip_intro_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_skip_intro_tests)
+
+add_executable(ssf2t_versus_cpu_tests EXCLUDE_FROM_ALL tests/versus_cpu_tests.cpp
+    src/character/cpu_marker.cpp src/character/akuma_portrait.cpp src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_versus_cpu_tests PRIVATE src)
+target_compile_definitions(ssf2t_versus_cpu_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_versus_cpu_tests)
+
+add_executable(ssf2t_character_moves_tests EXCLUDE_FROM_ALL tests/character_moves_tests.cpp
+    src/character/character_moves.cpp src/character/ultra_ending.cpp src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_character_moves_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_character_moves_tests)
+
+add_executable(ssf2t_character_packages_tests EXCLUDE_FROM_ALL tests/character_packages_tests.cpp
+    src/character/character_packages.cpp src/updater/sha256.cpp src/updater/update_paths.cpp)
+target_include_directories(ssf2t_character_packages_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_character_packages_tests)
+
+add_executable(ssf2t_ultra_ending_tests EXCLUDE_FROM_ALL tests/ultra_ending_tests.cpp
+    src/character/character_moves.cpp src/character/ultra_ending.cpp src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_ultra_ending_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_ultra_ending_tests)
+
+add_executable(ssf2t_roster_cells_tests EXCLUDE_FROM_ALL tests/roster_cells_tests.cpp)
+target_include_directories(ssf2t_roster_cells_tests PRIVATE src)
+target_compile_definitions(ssf2t_roster_cells_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_dependencies(ssf2t_runtime_tests ssf2t_roster_cells_tests)
+
+add_executable(ssf2t_ultra_select_presentation_tests EXCLUDE_FROM_ALL tests/ultra_select_presentation_tests.cpp
+    src/character/ultra_navigation.cpp src/character/fighter_identity.cpp)
+target_include_directories(ssf2t_ultra_select_presentation_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_ultra_select_presentation_tests)
+
+add_executable(ssf2t_evil_ryu_audio_tests EXCLUDE_FROM_ALL tests/evil_ryu_audio_tests.cpp
+    src/character/evil_ryu_audio.cpp)
+target_include_directories(ssf2t_evil_ryu_audio_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_audio_tests)
+
+add_executable(ssf2t_violent_ken_audio_tests EXCLUDE_FROM_ALL tests/violent_ken_audio_tests.cpp
+    src/character/evil_ryu_audio.cpp src/character/violent_ken_audio.cpp)
+target_include_directories(ssf2t_violent_ken_audio_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_violent_ken_audio_tests)
+
+add_executable(ssf2t_evil_ryu_results_tests EXCLUDE_FROM_ALL tests/evil_ryu_results_tests.cpp
+    src/character/evil_ryu_results.cpp src/updater/third_party/miniz/miniz.c)
+target_include_directories(ssf2t_evil_ryu_results_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_results_tests)
+
+add_executable(ssf2t_evil_ryu_fingerprint_tests EXCLUDE_FROM_ALL tests/evil_ryu_fingerprint_tests.cpp)
+target_include_directories(ssf2t_evil_ryu_fingerprint_tests PRIVATE src)
+add_dependencies(ssf2t_runtime_tests ssf2t_evil_ryu_fingerprint_tests)
+
 # Launcher and window behaviour that needs no window: keyboard remapping, Escape not quitting, per-monitor DPI
 # helpers, the input-aware cursor and the window title.
 foreach(_test keyboard launcher_quit launcher_gamepad dpi window_host player_name)
@@ -436,6 +637,14 @@ add_dependencies(ssf2t_runtime_tests ssf2t_localization_tests)
 add_executable(ssf2t_launcher_settings_tests EXCLUDE_FROM_ALL tests/launcher_settings_tests.cpp)
 target_include_directories(ssf2t_launcher_settings_tests PRIVATE src)
 add_dependencies(ssf2t_runtime_tests ssf2t_launcher_settings_tests)
+
+# Launcher visual contracts: page order and icons, sidebar fit, layout constants of the patched TRG Launcher. Headless.
+add_executable(ssf2t_launcher_visual_tests EXCLUDE_FROM_ALL tests/launcher_visual_tests.cpp
+    src/launcher_page_icons.cpp "${SSF2T_PAGE_ICON_SOURCE}")
+target_include_directories(ssf2t_launcher_visual_tests PRIVATE src "${CMAKE_CURRENT_SOURCE_DIR}" "${_trg_patched_dir}/include")
+target_compile_definitions(ssf2t_launcher_visual_tests PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    SSF2T_TRG_PATCHED_DIR="${_trg_patched_dir}")
+add_dependencies(ssf2t_runtime_tests ssf2t_launcher_visual_tests)
 
 add_executable(ssf2t_fight_area_tests EXCLUDE_FROM_ALL tests/fight_area_tests.cpp)
 target_include_directories(ssf2t_fight_area_tests PRIVATE src)
@@ -495,6 +704,18 @@ foreach(_test protocol identity service rendezvous connection integration)
     set(_name ssf2t_online_${_test}_tests)
     add_executable(${_name} EXCLUDE_FROM_ALL tests/online_${_test}_tests.cpp ${SSF2T_ONLINE_SOURCES})
     target_include_directories(${_name} PRIVATE src tests)
+    target_compile_options(${_name} PRIVATE -Wall -Wextra)
+    target_link_libraries(${_name} PRIVATE ${SSF2T_ONLINE_LIBS})
+    add_dependencies(ssf2t_runtime_tests ${_name})
+endforeach()
+
+# Bug reports: the log scrubber, the report and its preview, My reports and the service calls over a scripted channel.
+# Headless; nothing opens a window.
+foreach(_test log_scrubber bug_report)
+    set(_name ssf2t_${_test}_tests)
+    add_executable(${_name} EXCLUDE_FROM_ALL tests/${_test}_tests.cpp ${SSF2T_ONLINE_SOURCES})
+    target_include_directories(${_name} PRIVATE src tests)
+    target_compile_definitions(${_name} PRIVATE SSF2T_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     target_compile_options(${_name} PRIVATE -Wall -Wextra)
     target_link_libraries(${_name} PRIVATE ${SSF2T_ONLINE_LIBS})
     add_dependencies(ssf2t_runtime_tests ${_name})
@@ -602,7 +823,7 @@ add_dependencies(ssf2t_runtime_tests ssf2t_achievement_metadata_tests)
 # Runtime patch tests: the patched logic modeled in isolation, and the patch text checked for the changes it must make.
 find_package(Threads REQUIRED)
 foreach(_test guest_clock d3d12_transfer_short_circuit d3d12_sampler_memo shared_memory_fast_path
-        gpu_draw_state_memo d3d12_async_submission gpu_register_wake)
+        gpu_draw_state_memo d3d12_async_submission gpu_register_wake gpu_fence_wait)
     set(_name ssf2t_${_test}_tests)
     add_executable(${_name} EXCLUDE_FROM_ALL tests/${_test}_tests.cpp)
     target_include_directories(${_name} PRIVATE src)
@@ -611,6 +832,9 @@ foreach(_test guest_clock d3d12_transfer_short_circuit d3d12_sampler_memo shared
     ssf2t_enable_thinlto(${_name})
     add_dependencies(ssf2t_runtime_tests ${_name})
 endforeach()
+if(WIN32)
+    target_link_libraries(ssf2t_gpu_fence_wait_tests PRIVATE synchronization)
+endif()
 
 # Updater logic without the runtime: versions, release JSON, SHA-256, ZIP safety, staging, jobs and rollback.
 add_executable(ssf2t_update_tests EXCLUDE_FROM_ALL
@@ -634,11 +858,11 @@ if(WIN32)
     target_link_libraries(ssf2t_update_tests PRIVATE shell32)
 
     add_executable(ssf2t_update_restart_marker WIN32 EXCLUDE_FROM_ALL tests/update_restart_marker.cpp)
-    target_link_libraries(ssf2t_update_restart_marker PRIVATE shell32)
     target_link_options(ssf2t_update_restart_marker PRIVATE -static)
     target_compile_options(ssf2t_update_restart_marker PRIVATE -Wall -Wextra)
 
     add_executable(ssf2t_update_helper_tests EXCLUDE_FROM_ALL tests/update_helper_tests.cpp)
+    target_link_libraries(ssf2t_update_helper_tests PRIVATE shell32)
     target_compile_options(ssf2t_update_helper_tests PRIVATE -Wall -Wextra)
     target_compile_definitions(ssf2t_update_helper_tests PRIVATE
         SSF2T_UPDATER_EXE="$<TARGET_FILE:trg-updater>"
@@ -664,6 +888,16 @@ add_custom_command(TARGET ssf2t_hd_remix POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/launcher/sponsor-heart.png"
         "$<TARGET_FILE_DIR:ssf2t_hd_remix>/assets/launcher/sponsor-heart.png"
+    VERBATIM
+)
+
+# Runs on every build, so the runtime folder always holds exactly the packages this source names.
+add_custom_target(ssf2t_character_packages ALL
+    COMMAND ${CMAKE_COMMAND}
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/assets/characters"
+        "-DDEST=$<TARGET_FILE_DIR:ssf2t_hd_remix>/assets/characters"
+        "-DTABLE=${CMAKE_CURRENT_SOURCE_DIR}/src/character/character_packages.h"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/stage_character_packages.cmake"
     VERBATIM
 )
 

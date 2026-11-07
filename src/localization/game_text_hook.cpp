@@ -1,10 +1,16 @@
 #include <cstring>
+#include <string>
 #include <string_view>
+#include <utility>
 
 #include <rex/hook.h>
 #include <rex/logging.h>
 #include <rex/system/kernel_state.h>
 
+#include "character/character_moves.h"
+#include "character/cpu_marker.h"
+#include "character/ultra_fighters.h"
+#include "character/versus_cpu.h"
 #include "guest_memory.h"
 #include "localization/baked_texture.h"
 #include "localization/active_language.h"
@@ -21,19 +27,29 @@ constexpr uint32_t kEnglishSlot = 0;
 template <typename G>
 void ReadTextTable(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   const uint32_t size_address = ctx.r4.u32;
+  const bool text_table = ctx.lr == G::kTextTableReadReturn;
   const bool english_table =
-      ctx.lr == G::kTextTableReadReturn && ctx.r28.u32 == kEnglishSlot && ssf2t::localization::PortugueseBrazilSelected();
+      text_table && ctx.r28.u32 == kEnglishSlot && ssf2t::localization::PortugueseBrazilSelected();
+  const bool moves_text = text_table && ssf2t::character::UltraFightersEnabled();
   original(ctx, base);
   const uint32_t buffer = ctx.r3.u32;
-  if (!english_table || buffer == 0) return;
+  if (!text_table || buffer == 0) return;
 
   const uint32_t size = ssf2t::LoadBE32(base, size_address);
-  const std::string_view english(reinterpret_cast<const char*>(ssf2t::GuestHost(base, buffer)), size);
-  const ssf2t::localization::LocalizedTable table =
-      ssf2t::localization::BuildLocalizedTable(english, ssf2t::localization::PortugueseBrazilGameText().rows);
+  std::string text(reinterpret_cast<const char*>(ssf2t::GuestHost(base, buffer)), size);
+  ssf2t::localization::LocalizedTable table;
+  if (english_table) {
+    table = ssf2t::localization::BuildLocalizedTable(text, ssf2t::localization::PortugueseBrazilGameText().rows);
+  } else {
+    table.text = std::move(text);
+  }
+  // After the translation: its rows are pinned to the stock English lines, and the banners take its wording.
+  const uint32_t moves = moves_text ? ssf2t::character::PatchMoveListText(table.text) : 0;
+  const uint32_t lobby_help = ssf2t::character::PatchLobbyHelpText(table.text);
+  if (!english_table && moves == 0 && lobby_help == 0) return;
   const uint32_t copy = REX_KERNEL_MEMORY()->SystemHeapAlloc(uint32_t(table.text.size() + 1));
   if (copy == 0) {
-    REXLOG_WARN("Language: pt-BR game text not applied, out of guest memory guest={}", G::kName);
+    REXLOG_WARN("Language: game text not applied, out of guest memory guest={}", G::kName);
     return;
   }
   uint8_t* destination = const_cast<uint8_t*>(ssf2t::GuestHost(base, copy));
@@ -41,12 +57,16 @@ void ReadTextTable(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
   destination[table.text.size()] = '\0';
   ssf2t::StoreBE32(base, size_address, uint32_t(table.text.size()));
   ctx.r3.u64 = copy;
-  REXLOG_INFO("Language: pt-BR game text replaced={} kept={} stale={} guest={}", table.replaced, table.kept, table.stale,
-              G::kName);
+  if (english_table) {
+    REXLOG_INFO("Language: pt-BR game text replaced={} kept={} stale={} guest={}", table.replaced, table.kept,
+                table.stale, G::kName);
+  }
+  if (moves != 0) REXLOG_INFO("character moves text lines={} guest={}", moves, G::kName);
 }
 
 template <typename G>
 void ParseTexture(PPCContext& ctx, uint8_t* base, PPCFunc* original) {
+  if (ctx.r4.u32 != 0) ssf2t::character::CaptureCpuMarkerTexture(ssf2t::GuestHost(base, ctx.r4.u32), ctx.r5.u32);
   if (ssf2t::localization::PortugueseBrazilSelected() && ctx.r4.u32 != 0) {
     uint8_t* data = const_cast<uint8_t*>(ssf2t::GuestHost(base, ctx.r4.u32));
     if (const auto* texture = ssf2t::localization::LocalizeBakedTexture(data, ctx.r5.u32)) {

@@ -1,10 +1,13 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include "online/secret_characters.h"
 
 namespace ssf2t::online {
 
@@ -29,6 +32,17 @@ struct Friend {
 struct Request {
   std::string player;
   std::string name;
+};
+
+// A player who chose to be listed in the public Lobby. `player` is the friend code Add friend sends to; it is never shown.
+struct LobbyPlayer {
+  std::string player;
+  std::string name;
+  FriendState state = FriendState::kOnline;
+  std::string platform;
+  std::string version;
+  std::string guest;
+  bool compatible = true;
 };
 
 // The game's Player Match settings that both sides must agree on, as small named integers.
@@ -63,6 +77,7 @@ struct MatchInfo {
   std::string peer_player;
   std::string peer_name;
   uint32_t relay_token = 0;  // nonzero: the service relays this match's frames, if it ever has to
+  std::optional<MatchSecrets> secret;  // the room's secret characters; empty from a service that does not say
 };
 
 // What the service says it can do, in its hello answer; an older service says nothing, which reads as all false.
@@ -74,6 +89,18 @@ struct ServiceCapabilities {
   bool relay_supported = false;
   int relay_max_payload = 0;
   bool fight_telemetry = false;  // the service takes passive fight reports (telemetry.fight)
+  bool secret_characters = false;  // the service negotiates secret characters (hello secret, secret.update)
+  bool public_lobby = false;       // the service has the public Lobby (lobby.publish, lobby.list)
+  bool bug_reports = false;        // the service takes problem reports (incident.file, incident.status, incident.read)
+};
+
+// What the service says of one report its owner holds a receipt for.
+struct IncidentStatus {
+  std::string ticket;
+  std::string status;
+  int64_t updated_at = 0;
+  std::string fixed_version;
+  std::string player_message;
 };
 
 struct PeerInfo {
@@ -108,6 +135,7 @@ struct ServerMessage {
     kInviteEnded,
     kMatchTransport,
     kRelayClosed,
+    kMatchSecret,
   };
   Kind kind = Kind::kResponse;
 
@@ -133,6 +161,16 @@ struct ServerMessage {
   PeerInfo peer;
   std::string transport;  // match.transport: "direct" or "relay"
   std::optional<ServiceCapabilities> capabilities;  // hello
+  std::optional<MatchSecrets> secret;               // match.secret, and the answer to secret.update inside a match
+  std::optional<std::vector<LobbyPlayer>> lobby_players;  // lobby.list; absent when unchanged
+  bool lobby_unchanged = false;                           // lobby.list: the revision the client sent is still current
+  int64_t lobby_rev = -1;                                 // lobby.list: -1 when the answer carried none
+  std::optional<bool> lobby_visible;                      // lobby.publish and lobby.list: whether this connection is listed
+  std::string incident_ticket;                            // incident.file
+  std::string incident_receipt;                           // incident.file: proves ownership of the report, never logged
+  int64_t incident_submitted_at = 0;                      // incident.file
+  std::optional<std::vector<IncidentStatus>> incident_statuses;      // incident.status
+  std::optional<std::map<std::string, std::string>> incident_report;  // incident.read: the stored report's text fields
 };
 
 // Nothing for text that is not a known, well-formed server message.
@@ -149,10 +187,29 @@ struct HelloFields {
   bool presence = true;  // false: a short session that is not shown to friends (the connection test)
   bool relay = false;    // this client can play a match through the service's relay
   bool telemetry = false;  // this client reports its online fights, anonymously
+  SecretCapabilities secret;  // the secret characters this client understands and has turned on
 };
 
 std::string EncodeHello(int seq, const HelloFields& hello);
+// The same capabilities again after the player changed an option while signed in.
+std::string EncodeSecretUpdate(int seq, const SecretCapabilities& secret);
 std::string EncodePing(int seq);
+std::string EncodeLobbyPublish(int seq, bool visible);
+// `held_rev` is the revision of the list the client already shows; the service then answers "unchanged" while it stands.
+std::string EncodeLobbyList(int seq, std::optional<int64_t> held_rev = std::nullopt);
+
+// `text` as a JSON string literal.
+std::string JsonQuote(std::string_view text);
+
+// A problem report: every field is a string the player could read in the preview.
+using IncidentFields = std::vector<std::pair<std::string, std::string>>;
+struct IncidentClaim {
+  std::string ticket;
+  std::string receipt;
+};
+std::string EncodeIncidentFile(int seq, const IncidentFields& fields);
+std::string EncodeIncidentStatus(int seq, const std::vector<IncidentClaim>& claims);
+std::string EncodeIncidentRead(int seq, const IncidentClaim& claim);
 std::string EncodeFriendsList(int seq);
 std::string EncodeFriendsRequests(int seq);
 std::string EncodeFriendsAdd(int seq, const std::string& code);

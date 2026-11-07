@@ -5,19 +5,26 @@
 // hibernated Durable Object resumes as if it had never stopped; relay routes are a memory cache rebuilt from them.
 // The same class runs in the development server (local/server.js).
 import { PROTECTION, RateLimiter } from './abuse.js';
+import { SECRET_CHARACTER, SECRET_KEYS } from './characters.js';
+import { INCIDENT, INCIDENT_LIMITED, IncidentDesk, readClaims, readIncident, readReadClaim, ticketCode } from './incidents.js';
 import { Metrics, SAMPLE_MS, countryCode, platformCategory, sampleBucket, versionCategory } from './metrics.js';
 import { sha256Hex, toHex } from './sha256.js';
 import {
   BUCKETS, CAPABILITIES, LIMITS, ProtocolError, RELAY, compatibleGuests, fail, ipGroup, isLocalAddress,
-  normalizeFriendCode, parseEndpoint, parseFightEvent, parseHello, parseRelayFrame,
+  effectiveSecret, normalizeFriendCode, normalizeSecret, parseEndpoint, parseFightEvent, parseHello, parseLobbyPublish,
+  parseLobbyRevision, parseRelayFrame, secretEstablishment, secretFromMask, secretMask,
 } from './protocol.js';
 
 const DAY_MS = 24 * 3600 * 1000;
-const SOCIAL_OPS = new Set(['friends.add', 'pm.host', 'pm.join', 'invite.send', 'match.resume']);
+const SOCIAL_OPS = new Set(['friends.add', 'pm.host', 'pm.join', 'invite.send', 'match.resume', 'secret.update',
+  'lobby.publish']);
 const RULE_KEY = /^[a-z_]{1,16}$/;
 const QOS_DATA = /^(?:[0-9a-f]{2}){0,256}$/;
 const ROLES = ['host', 'join'];
 const GROWING_OPS = new Set(['hello', 'pm.host', 'pm.join', 'match.resume']);
+// A receipt is the proof of a report lookup, so these need no sign-in.
+const NO_SESSION_OPS = new Set(['hello', 'incident.status', 'incident.read']);
+const INCIDENT_FRAME_START = '{"op":"incident.file"';
 const REJECT_CODES = new Set(['proto', 'bad_game', 'bad_guest', 'version_mismatch']);
 const MATCH_LIST_MAX = 50;
 
@@ -45,11 +52,13 @@ const SCHEMA = [
      host_port INTEGER NOT NULL DEFAULT 0, join_port INTEGER NOT NULL DEFAULT 0,
      host_lan TEXT NOT NULL DEFAULT '[]', join_lan TEXT NOT NULL DEFAULT '[]',
      host_ready INTEGER NOT NULL DEFAULT 0, join_ready INTEGER NOT NULL DEFAULT 0,
-     relay_token INTEGER NOT NULL DEFAULT 0, transport TEXT NOT NULL DEFAULT '')`,
+     relay_token INTEGER NOT NULL DEFAULT 0, transport TEXT NOT NULL DEFAULT '',
+     host_secret INTEGER NOT NULL DEFAULT 0, join_secret INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS match_telemetry (match TEXT PRIMARY KEY, guest TEXT NOT NULL, host_platform TEXT NOT NULL,
      join_platform TEXT NOT NULL, reporting INTEGER NOT NULL, transport TEXT NOT NULL DEFAULT '',
      transport_counted INTEGER NOT NULL DEFAULT 0, established INTEGER, fights_started INTEGER NOT NULL DEFAULT 0,
-     fights_completed INTEGER NOT NULL DEFAULT 0)`,
+     fights_completed INTEGER NOT NULL DEFAULT 0, secret_akuma INTEGER NOT NULL DEFAULT 0,
+     secret_evil_ryu INTEGER NOT NULL DEFAULT 0, secret_violent_ken INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS match_fights (match TEXT NOT NULL, fight INTEGER NOT NULL, p1 INTEGER NOT NULL,
      p2 INTEGER NOT NULL, completed INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (match, fight))`,
 ];
@@ -59,6 +68,10 @@ const ADDED_COLUMNS = [
   ['matches', 'host_pub_ip', "TEXT NOT NULL DEFAULT ''"], ['matches', 'join_pub_ip', "TEXT NOT NULL DEFAULT ''"],
   ['matches', 'host_pub_port', 'INTEGER NOT NULL DEFAULT 0'], ['matches', 'join_pub_port', 'INTEGER NOT NULL DEFAULT 0'],
   ['matches', 'relay_token', 'INTEGER NOT NULL DEFAULT 0'], ['matches', 'transport', "TEXT NOT NULL DEFAULT ''"],
+  ['matches', 'host_secret', 'INTEGER NOT NULL DEFAULT 0'], ['matches', 'join_secret', 'INTEGER NOT NULL DEFAULT 0'],
+  ['match_telemetry', 'secret_akuma', 'INTEGER NOT NULL DEFAULT 0'],
+  ['match_telemetry', 'secret_evil_ryu', 'INTEGER NOT NULL DEFAULT 0'],
+  ['match_telemetry', 'secret_violent_ken', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -93,6 +106,12 @@ function playerOf(value) {
 const transportOf = (row) =>
   (row.transport === 'direct' ? 'direct' : row.transport === 'relay' && row.relay_token ? 'relay' : 'pending');
 
+// What one seat is told about the characters of its match: the peer's stored capabilities and what both allow.
+function secretView(row, role) {
+  const peer = secretFromMask(row[`${role === 'host' ? 'join' : 'host'}_secret`]);
+  return { peer, effective: effectiveSecret(secretFromMask(row[`${role}_secret`]), peer) };
+}
+
 // One match as the dashboard shows it: a short id, no player, address, connection or token.
 function matchReport(row, now) {
   return {
@@ -121,6 +140,8 @@ export class Hub {
     this.relayTold = new Set();
     this.relayFaults = new Map();
     this.alarmAt = options.alarmAt ?? null;
+    // Changes whenever the public list does. Time-based, so a restarted object never repeats a revision a client holds.
+    this.lobbyRev = host.now();
     this.guards = {
       hello: new RateLimiter(PROTECTION.hello),
       advertiseAccount: new RateLimiter(PROTECTION.advertiseAccount),
@@ -129,6 +150,13 @@ export class Hub {
       resumeAccount: new RateLimiter(PROTECTION.resumeAccount),
       inviteAccount: new RateLimiter(PROTECTION.inviteAccount),
       inviteAddress: new RateLimiter(PROTECTION.inviteAddress),
+      lobbyList: new RateLimiter(PROTECTION.lobbyList),
+      incidentAll: new RateLimiter(PROTECTION.incidentAll),
+      incidentAccount: new RateLimiter(PROTECTION.incidentAccount),
+      incidentAddress: new RateLimiter(PROTECTION.incidentAddress),
+      incidentLookupAll: new RateLimiter(PROTECTION.incidentLookupAll),
+      incidentStatusAddress: new RateLimiter(PROTECTION.incidentStatusAddress),
+      incidentReadAddress: new RateLimiter(PROTECTION.incidentReadAddress),
       rejects: new RateLimiter({ burst: 1, perSecond: 1000 / PROTECTION.rejectWindowMs }),
     };
     for (const statement of SCHEMA) host.sql.run(statement);
@@ -137,6 +165,7 @@ export class Hub {
       try { host.sql.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`); } catch { /* already there */ }
     }
     if (!this.meta('salt')) this.setMeta('salt', this.randomHex(16));
+    this.incidents = new IncidentDesk(host.sql, this.meta('salt'));
     this.reconcileSeats();
   }
 
@@ -198,7 +227,9 @@ export class Hub {
     this.current = att;
     try {
       if (typeof text !== 'string') fail('bad_request', 'text frames only');
-      if (text.length > LIMITS.frameBytes) fail('too_large');
+      if (text.length > LIMITS.frameBytes && (text.length > INCIDENT.frameChars || !text.startsWith(INCIDENT_FRAME_START))) {
+        fail('too_large');
+      }
       let msg;
       try {
         msg = JSON.parse(text);
@@ -207,6 +238,7 @@ export class Hub {
       }
       if (!isObject(msg) || typeof msg.op !== 'string' || !isInt(msg.seq, 0, 0x7fffffff)) fail('bad_request', 'envelope');
       seq = msg.seq;
+      if (text.length > LIMITS.frameBytes && msg.op !== 'incident.file') fail('too_large');
       const now = this.host.now();
       const any = takeToken(att.ra, BUCKETS.any, now);
       if (!any) fail('limit', 'slow down');
@@ -217,7 +249,7 @@ export class Hub {
         att.rs = social;
       }
       if (!Object.hasOwn(HANDLERS, msg.op)) fail('bad_request', 'unknown op');
-      if (msg.op !== 'hello' && !att.hello) fail('no_session');
+      if (!NO_SESSION_OPS.has(msg.op) && !att.hello) fail('no_session');
       this.index = null;
       const body = HANDLERS[msg.op].call(this, att, msg, conn) ?? {};
       conn.setAttachment(att);
@@ -268,10 +300,13 @@ export class Hub {
         this.scheduleAlarm();
       }
     }
+    const listed = att.presence && att.lobby === true;
     att.match = null;
+    att.lobby = false;
     att.hello = false;
     conn.setAttachment(att);
     this.index = null;
+    if (listed) this.touchLobby();
     if (att.presence && !this.presentSockets(att.player, att.cid).length) {
       const advertised = this.playerMatchOf(att.player);
       if (advertised) this.dropPlayerMatch(advertised, 'host_left');
@@ -414,6 +449,53 @@ export class Hub {
     return sha256Hex(`${this.meta('salt')}|${ipGroup(ip)}`).slice(0, 32);
   }
 
+  // In memory, so a flood of refused attempts costs no SQL; the quota is counted in SQL because it has to outlive the
+  // object's hibernation.
+  limitIncidentAttempt(att) {
+    const now = this.host.now();
+    const address = ipGroup(att.ip);
+    const { incidentAll, incidentAccount, incidentAddress } = this.guards;
+    if (!incidentAll.allows('all', now) || !incidentAccount.allows(att.player, now) || !incidentAddress.allows(address, now)) {
+      this.diagnose('incident_limited');
+      fail('limit', 'too many report attempts');
+    }
+    incidentAll.take('all', now);
+    incidentAccount.take(att.player, now);
+    incidentAddress.take(address, now);
+  }
+
+  // Its own budget: a lookup is no report, and no report's quota pays for it.
+  limitIncidentLookup(att, guard) {
+    const now = this.host.now();
+    const address = ipGroup(att.ip);
+    if (!this.guards.incidentLookupAll.allows('all', now) || !this.guards[guard].allows(address, now)) {
+      this.diagnose('incident_lookup_limited');
+      fail('limit', 'too many lookups');
+    }
+    this.guards.incidentLookupAll.take('all', now);
+    this.guards[guard].take(address, now);
+  }
+
+  newTicket() {
+    let ticket;
+    do ticket = ticketCode(crypto.getRandomValues(new Uint8Array(6)));
+    while (this.incidents.taken(ticket));
+    return ticket;
+  }
+
+  incidentList() {
+    return this.incidents.list();
+  }
+
+  incidentForAdmin(ticket) {
+    const found = this.incidents.get(ticket);
+    return found ? { ...found, ...this.incidents.status(ticket) } : null;
+  }
+
+  setIncidentStatus(ticket, change) {
+    return this.incidents.setStatus(ticket, change, this.host.now());
+  }
+
   // Greeted sockets; the one whose message is being handled carries its live attachment, not a stored copy.
   sockets() {
     if (!this.index) {
@@ -479,6 +561,35 @@ export class Hub {
     return this.host.sql.all('SELECT friend FROM friends WHERE player = ? ORDER BY friend', player).map((r) => r.friend);
   }
 
+  // ---- public Lobby ----
+  // Visibility is part of a present socket's attachment: it ends with the socket and is never written to SQL.
+  lobbyListed(player) {
+    return this.presentSockets(player).some((s) => s.att.lobby === true);
+  }
+
+  touchLobby() {
+    this.lobbyRev += 1;
+  }
+
+  // Visible players other than the viewer, compatible ones first. The rows carry what a launcher shows and what
+  // friends.add needs, never an address, token, endpoint or match.
+  lobbyPlayers(viewer) {
+    const seen = new Set();
+    const candidates = [];
+    for (const { att } of this.sockets()) {
+      if (att.lobby !== true || !att.presence || att.player === viewer.player || seen.has(att.player)) continue;
+      seen.add(att.player);
+      candidates.push({ att, compatible: compatibleGuests(viewer, att) });
+    }
+    const key = (c) => c.att.name.toLowerCase();
+    candidates.sort((a, b) => (b.compatible - a.compatible) || (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0)
+      || (a.att.player < b.att.player ? -1 : 1));
+    return candidates.slice(0, LIMITS.lobbyPlayers).map(({ att, compatible }) => ({
+      player: att.player, name: att.name, state: this.stateOf(att.player), platform: att.platform, version: att.version,
+      guest: att.guest, compatible,
+    }));
+  }
+
   areFriends(a, b) {
     return Boolean(this.host.sql.get('SELECT 1 AS x FROM friends WHERE player = ? AND friend = ?', a, b));
   }
@@ -488,6 +599,7 @@ export class Hub {
   }
 
   notifyStatus(player) {
+    if (this.lobbyListed(player)) this.touchLobby();
     for (const friend of this.friendsOf(player)) {
       for (const s of this.presentSockets(friend)) {
         this.send(s.conn, { ev: 'friend.status', friend: this.friendView(player, s.att) });
@@ -543,6 +655,12 @@ export class Hub {
     if (this.exempt(att) || this.guards.joinAccount.take(att.player, this.host.now())) return;
     this.diagnose('pm_join_limited');
     fail('limit', 'joining too fast');
+  }
+
+  limitLobbyList(att) {
+    if (this.exempt(att) || this.guards.lobbyList.take(att.player, this.host.now())) return;
+    this.diagnose('lobby_list_limited');
+    fail('limit', 'reading the lobby too fast');
   }
 
   limitResume(att) {
@@ -602,9 +720,10 @@ export class Hub {
   createMatch(host, joiner) {
     const id = this.randomHex(8);
     const token = host.att.relay && joiner.att.relay ? relayToken() : 0;
-    this.host.sql.run(`INSERT INTO matches (id, host, joiner, guest, build, created, host_cid, join_cid, relay_token)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, host.att.player, joiner.att.player, joiner.att.guest, joiner.att.build,
-      this.host.now(), host.att.cid, joiner.att.cid, token);
+    this.host.sql.run(`INSERT INTO matches (id, host, joiner, guest, build, created, host_cid, join_cid, relay_token,
+      host_secret, join_secret) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, host.att.player, joiner.att.player,
+    joiner.att.guest, joiner.att.build, this.host.now(), host.att.cid, joiner.att.cid, token, secretMask(host.att.secret),
+    secretMask(joiner.att.secret));
     this.track(() => this.metrics.count('matches_started'));
     this.host.sql.run(`INSERT INTO match_telemetry (match, guest, host_platform, join_platform, reporting) VALUES (?, ?, ?, ?, ?)`,
       id, joiner.att.guest, platformCategory(host.att.platform), platformCategory(joiner.att.platform),
@@ -649,7 +768,8 @@ export class Hub {
   matchView(row, role) {
     const peer = this.playerRow(this.playerOfRole(row, this.otherRole(role)));
     return { match: row.id, role, guest: row.guest, build: row.build, peer: { player: peer?.player ?? '', name: peer?.name ?? '' },
-      peer_lost: row[`${this.otherRole(role)}_cid`] === null, ...(row.relay_token ? { relay_token: row.relay_token } : {}) };
+      peer_lost: row[`${this.otherRole(role)}_cid`] === null, ...(row.relay_token ? { relay_token: row.relay_token } : {}),
+      secret: secretView(row, role) };
   }
 
   attachMatch(cid, id) {
@@ -688,6 +808,27 @@ export class Hub {
     }));
     this.host.sql.run('DELETE FROM match_fights WHERE match = ?', row.id);
     this.host.sql.run('DELETE FROM match_telemetry WHERE match = ?', row.id);
+  }
+
+  // A secret character can start a fight only when both seats support and enabled it.
+  requireSecretCharacters(row, event) {
+    const effective = effectiveSecret(secretFromMask(row.host_secret), secretFromMask(row.join_secret));
+    for (const id of [event.p1, event.p2]) {
+      const key = SECRET_CHARACTER[id];
+      if (key && effective[key] !== true) {
+        this.diagnose('fight_secret_rejected');
+        fail('bad_request', 'character not available');
+      }
+    }
+  }
+
+  // Each secret character counts once per match, at the first fight that includes it.
+  countSecretMatch(tele, event) {
+    for (const key of SECRET_KEYS) {
+      if (tele[`secret_${key}`] || ![event.p1, event.p2].some((id) => SECRET_CHARACTER[id] === key)) continue;
+      this.host.sql.run(`UPDATE match_telemetry SET secret_${key} = 1 WHERE match = ?`, tele.match);
+      this.track(() => this.metrics.secretMatch(key));
+    }
   }
 
   // The match's transport counts once, whichever of the host's choice and its first fight names it first.
@@ -890,7 +1031,7 @@ const HANDLERS = {
     const wasOnline = hello.presence && this.presentSockets(hello.player).length > 0;
     Object.assign(att, { hello: true, player: hello.player, name: hello.name, presence: hello.presence, guest: hello.guest,
       build: hello.build, version: hello.version, platform: hello.platform, relay: hello.relay, telemetry: hello.telemetry,
-      match: null });
+      secret: hello.secret, match: null });
     if (newSession) this.track(() => this.metrics.session(att));
     else if (hello.presence) this.diagnose('hello_reconnect_deduped');
     this.diagnose('hello_accepted');
@@ -975,6 +1116,68 @@ const HANDLERS = {
       att.player, att.player, other);
     if (were) this.notifyPlayer(other, { ev: 'friend.removed', player: att.player });
     return {};
+  },
+
+  // Shows or hides this connection's player in the public Lobby. Nothing is stored; an unchanged request changes nothing.
+  'lobby.publish'(att, msg) {
+    if (!att.presence) fail('bad_request', 'presence required');
+    const visible = parseLobbyPublish(msg);
+    if ((att.lobby === true) !== visible) {
+      att.lobby = visible;
+      this.touchLobby();
+    }
+    return { visible };
+  },
+
+  // The visible players. A client that sends the revision it holds hears `unchanged` while the list is still the same.
+  'lobby.list'(att, msg) {
+    const held = parseLobbyRevision(msg);
+    this.limitLobbyList(att);
+    const visible = att.lobby === true;
+    if (held === this.lobbyRev) return { unchanged: true, rev: this.lobbyRev, visible };
+    return { players: this.lobbyPlayers(att), rev: this.lobbyRev, visible };
+  },
+
+  // A report from the launcher's Bug Report page; only the /admin dashboard reads it back (incidents.js).
+  'incident.file'(att, msg) {
+    this.limitIncidentAttempt(att);
+    const { incident, code, detail } = readIncident(msg);
+    if (!incident) fail(code, detail);
+    const now = this.host.now();
+    const address = ipGroup(att.ip);
+    const atomically = this.host.sql.transaction ?? ((work) => work());
+    const filed = atomically(() => {
+      const limited = this.incidents.refusal(att.player, address, now);
+      if (limited) return { limited };
+      const ticket = this.newTicket();
+      const receipt = this.randomHex(32);
+      this.incidents.file(incident, ticket, att.player, address, now);
+      this.incidents.track(ticket, receipt, now);
+      return { ticket, receipt };
+    });
+    if (filed.limited) {
+      this.diagnose(INCIDENT_LIMITED[filed.limited]);
+      fail(filed.limited, 'report limit');
+    }
+    this.diagnose('incident_filed');
+    return { ticket: filed.ticket, receipt: filed.receipt, submitted_at: now };
+  },
+
+  // The launcher's My reports: what became of the reports it holds receipts for.
+  'incident.status'(att, msg) {
+    this.limitIncidentLookup(att, 'incidentStatusAddress');
+    const claims = readClaims(msg);
+    if (!claims) fail('bad_request', 'reports');
+    return { reports: this.incidents.statuses(claims) };
+  },
+
+  'incident.read'(att, msg) {
+    this.limitIncidentLookup(att, 'incidentReadAddress');
+    const claim = readReadClaim(msg);
+    if (!claim) fail('bad_request', 'receipt');
+    const report = this.incidents.report(claim);
+    if (!report) fail('not_found');
+    return { report };
   },
 
   // Advertises (or keeps alive) the sender's Player Match to compatible online friends.
@@ -1117,9 +1320,11 @@ const HANDLERS = {
     const role = this.roleOf(row, att.player);
     if (row[`${role}_ready`] !== (msg.ready ? 1 : 0)) {
       this.host.sql.run(`UPDATE matches SET ${role}_ready = ? WHERE id = ?`, msg.ready ? 1 : 0, row.id);
-      if (msg.ready && row[`${this.otherRole(role)}_ready`]) {
+      if (msg.ready && row[`${this.otherRole(role)}_ready`] && this.telemetryOf(row.id)?.established === null) {
         this.host.sql.run('UPDATE match_telemetry SET established = COALESCE(established, ?) WHERE match = ?',
           this.host.now(), row.id);
+        this.track(() => this.metrics.secretEstablished(secretEstablishment(secretFromMask(row.host_secret),
+          secretFromMask(row.join_secret))));
       }
     }
     this.later(() => {
@@ -1162,6 +1367,7 @@ const HANDLERS = {
     if (event.kind === 'start') {
       if (fight) return { counted: false, reason: 'duplicate' };
       if (tele.fights_started >= LIMITS.fightsPerMatch) fail('limit', 'too many fights');
+      this.requireSecretCharacters(row, event);
       const known = transportOf(row);
       const transport = known === 'pending' ? event.transport : known;
       this.host.sql.run('INSERT INTO match_fights (match, fight, p1, p2) VALUES (?, ?, ?, ?)', row.id, event.fight, event.p1,
@@ -1170,6 +1376,7 @@ const HANDLERS = {
       this.countTransport(row, transport);
       this.track(() => this.metrics.fightStarted({ p1: event.p1, p2: event.p2, transport, guest: row.guest,
         platforms: [tele.host_platform, tele.join_platform] }));
+      this.countSecretMatch(tele, event);
       return { counted: true };
     }
     if (!fight) fail('bad_request', 'fight not started');
@@ -1179,6 +1386,28 @@ const HANDLERS = {
     this.host.sql.run('UPDATE match_telemetry SET fights_completed = fights_completed + 1 WHERE match = ?', row.id);
     this.track(() => this.metrics.fightCompleted({ p1: event.p1, p2: event.p2, result: event.result }));
     return { counted: true };
+  },
+
+  // The sender's secret character capabilities; a change inside a match reaches both seats.
+  'secret.update'(att, msg) {
+    const secret = normalizeSecret(msg.secret);
+    const mask = secretMask(secret);
+    const changed = mask !== secretMask(att.secret);
+    if (changed) att.secret = secret;
+    let row = att.match && this.matchRow(att.match);
+    const role = row && this.roleOf(row, att.player);
+    if (!role) return {};
+    if (changed) {
+      this.host.sql.run(`UPDATE matches SET ${role}_secret = ? WHERE id = ?`, mask, row.id);
+      row = this.matchRow(row.id);
+      const fresh = row;
+      this.later(() => {
+        for (const seat of ROLES) {
+          this.sendToRole(fresh, seat, { ev: 'match.secret', match: fresh.id, secret: secretView(fresh, seat) });
+        }
+      });
+    }
+    return { secret: secretView(row, role) };
   },
 
   'match.leave'(att, msg) {
@@ -1209,10 +1438,17 @@ const HANDLERS = {
     // A relay never outlives the socket it was set up on.
     this.endRelay(row, 'resumed', role);
     this.host.sql.run(`UPDATE matches SET ${role}_cid = ?, ${role}_grace = NULL WHERE id = ?`, att.cid, row.id);
+    const mask = secretMask(att.secret);
+    const secretChanged = row[`${role}_secret`] !== mask;
+    if (secretChanged) this.host.sql.run(`UPDATE matches SET ${role}_secret = ? WHERE id = ?`, mask, row.id);
     att.match = row.id;
     const fresh = this.matchRow(row.id);
     this.later(() => {
       this.sendToRole(fresh, this.otherRole(role), { ev: 'match.peer_back', match: fresh.id });
+      if (secretChanged) {
+        this.sendToRole(fresh, this.otherRole(role), { ev: 'match.secret', match: fresh.id,
+          secret: secretView(fresh, this.otherRole(role)) });
+      }
       this.introduce(this.matchRow(fresh.id));
       this.notifyStatus(att.player);
     });

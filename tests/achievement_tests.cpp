@@ -278,9 +278,9 @@ void TestHookTargetInRealImage() {
 
 void TestLauncherPageOrder() {
   const std::string launcher = ReadSource("launcher.cpp");
-  CHECK(Before(launcher, "{\"Gameplay\"", "{\"Achievements\""));
-  CHECK(Before(launcher, "{\"Achievements\"", "{\"Controls\""));
-  CHECK(Before(launcher, "{\"Graphics\"", "{\"Gameplay\""));
+  CHECK(Before(launcher, "MakePage(LauncherPage::kGameplay, ", "MakePage(LauncherPage::kAchievements, "));
+  CHECK(Before(launcher, "MakePage(LauncherPage::kAchievements, ", "MakePage(LauncherPage::kControls, "));
+  CHECK(Before(launcher, "MakePage(LauncherPage::kGraphics, ", "MakePage(LauncherPage::kGameplay, "));
   CHECK(Has(launcher, "achievements_.reset();"));
 }
 

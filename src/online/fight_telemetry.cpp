@@ -6,7 +6,7 @@ namespace {
 
 constexpr const char* kRoster[kCharacterCount] = {
     "Ryu",   "E. Honda", "Blanka", "Guile",  "Ken",      "Chun-Li", "Zangief", "Dhalsim", "M. Bison",
-    "Sagat", "Balrog",   "Vega",   "Cammy",  "T. Hawk",  "Fei Long", "Dee Jay", "Akuma",
+    "Sagat", "Balrog",   "Vega",   "Cammy",  "T. Hawk",  "Fei Long", "Dee Jay", "Akuma", "Evil Ryu", "Violent Ken",
 };
 
 }  // namespace

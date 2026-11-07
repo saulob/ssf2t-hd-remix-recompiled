@@ -576,8 +576,8 @@ void CheckSettings(const Context& context) {
     Expect(!*feature.settings || *feature.rows, f, "it has settings but no launcher row is listed for them");
     for (const std::string& row : Split(feature.rows)) {
       const bool constant = row[0] == 'k' && row.size() > 1 && std::isupper(uint8_t(row[1]));
-      const std::string first_argument = constant ? row : "\"" + row + "\"";
-      const std::regex control("ui\\s*\\.\\s*(Toggle|Combo|Choice|Row|Slider|Field|InputText|Section)\\(\\s*" + first_argument + "\\s*,");
+      const std::string first_argument = constant ? "(?:\\w+::)*" + row : "\"" + row + "\"";
+      const std::regex control("ui\\s*\\.\\s*(Toggle|Combo|Choice|Row|RowEmphasized|Slider|Field|InputText|Section)\\(\\s*" + first_argument + "\\s*,");
       Expect(std::regex_search(ui_text, control), f, "the launcher has no row \"" + row + "\" (hidden or removed)");
     }
     for (const std::string& token : Split(feature.settings)) {

@@ -43,6 +43,7 @@ ssf2t::StartupDiagnostics Sample() {
   diagnostics.launcher_display.presentation = "Letterbox";
   diagnostics.launcher_display.vsync = "Off";
   diagnostics.launcher_gameplay.language = "English";
+  diagnostics.launcher_gameplay.skip_intro = "Off";
   diagnostics.launcher_gameplay.frame_rate_in_title = "On";
   diagnostics.launcher_gameplay.render_resolution_in_title = "Off";
   diagnostics.launcher_gameplay.frame_counter = "Hidden";
@@ -123,7 +124,7 @@ void TestStartupBlock() {
   CHECK(Has(text, "Runtime configuration:"));
   CHECK(Has(text, "Launcher Display: Display mode=Borderless Fullscreen | Window size=1280x720 | "
                   "Monitor=Display 1 | Aspect Ratio=16:9 Original | Presentation=Letterbox | VSync=Off"));
-  CHECK(Has(text, "Launcher Gameplay: Language=English | Frame rate in title=On | "
+  CHECK(Has(text, "Launcher Gameplay: Language=English | Skip intro=Off | Frame rate in title=On | "
                   "Render resolution in title=Off | Frame counter=Hidden"));
   CHECK(Has(text, "Launcher Graphics: Graphics card=Automatic | Render resolution=2x (2560x1440) | "
                   "Internal render resolution=100% Native | Anti-aliasing=Off | Multisampling=2x MSAA | "

@@ -13,7 +13,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
 <body>
 <header class="top">
   <h1>Super Street Fighter II Turbo HD Remix · Online Metrics</h1>
-  <p class="muted">Anonymous aggregate statistics of the online service. Days are America/Sao_Paulo.</p>
+  <p class="muted">Dashboard: anonymous aggregate statistics of the online service, days in America/Sao_Paulo. Bugs: reports players sent from the launcher.</p>
 </header>
 <main>
   <form id="login" class="panel login" autocomplete="off">
@@ -24,6 +24,12 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     <p id="login-error" class="error" role="alert"></p>
   </form>
   <section id="dash" hidden>
+    <nav class="tabs" role="tablist" aria-label="Admin sections">
+      <button id="tab-dashboard" type="button" role="tab" aria-selected="true" aria-controls="view-dashboard">Dashboard</button>
+      <button id="tab-bugs" type="button" role="tab" aria-selected="false" aria-controls="view-bugs">Bugs</button>
+      <button id="signout" type="button" class="quiet">Sign out</button>
+    </nav>
+    <div id="view-dashboard" role="tabpanel" aria-labelledby="tab-dashboard">
     <div class="toolbar">
       <label for="range">Range</label>
       <select id="range">
@@ -34,7 +40,6 @@ export const ADMIN_HTML = String.raw`<!doctype html>
       </select>
       <button id="refresh" type="button">Refresh</button>
       <span id="status" class="muted" role="status"></span>
-      <button id="signout" type="button" class="quiet">Sign out</button>
     </div>
     <h2 class="section">Live now</h2>
     <p class="muted">Current state only: these change as players come and go and are not totals.</p>
@@ -138,6 +143,31 @@ export const ADMIN_HTML = String.raw`<!doctype html>
       <p id="chars-empty" class="empty"></p>
     </div>
     <div class="panel">
+      <h2>Secret characters</h2>
+      <p id="secret-line" class="muted"></p>
+      <div class="cards compact">
+        <div class="card"><span class="label">Rooms with Akuma available</span><span id="s-akuma-available" class="value">–</span></div>
+        <div class="card"><span class="label">Rooms with Evil Ryu available</span><span id="s-evil-ryu-available" class="value">–</span></div>
+        <div class="card"><span class="label">Rooms with Violent Ken available</span><span id="s-violent-ken-available" class="value">–</span></div>
+        <div class="card"><span class="label">Akuma option mismatch</span><span id="s-akuma-mismatch" class="value">–</span></div>
+        <div class="card"><span class="label">Evil Ryu option mismatch</span><span id="s-evil-ryu-mismatch" class="value">–</span></div>
+        <div class="card"><span class="label">Violent Ken option mismatch</span><span id="s-violent-ken-mismatch" class="value">–</span></div>
+        <div class="card"><span class="label">Unsupported-peer mismatch</span><span id="s-unsupported" class="value">–</span></div>
+        <div class="card"><span class="label">Fights with Akuma</span><span id="s-fights-akuma" class="value">–</span></div>
+        <div class="card"><span class="label">Fights with Evil Ryu</span><span id="s-fights-evil-ryu" class="value">–</span></div>
+        <div class="card"><span class="label">Fights with Violent Ken</span><span id="s-fights-violent-ken" class="value">–</span></div>
+        <div class="card"><span class="label">Akuma mirror fights</span><span id="s-fights-akuma-mirror" class="value">–</span></div>
+        <div class="card"><span class="label">Evil Ryu mirror fights</span><span id="s-fights-evil-ryu-mirror" class="value">–</span></div>
+        <div class="card"><span class="label">Violent Ken mirror fights</span><span id="s-fights-violent-ken-mirror" class="value">–</span></div>
+        <div class="card"><span class="label">Akuma vs Evil Ryu fights</span><span id="s-fights-akuma-vs-evil-ryu" class="value">–</span></div>
+        <div class="card"><span class="label">Akuma vs Violent Ken fights</span><span id="s-fights-akuma-vs-violent-ken" class="value">–</span></div>
+        <div class="card"><span class="label">Evil Ryu vs Violent Ken fights</span><span id="s-fights-evil-ryu-vs-violent-ken" class="value">–</span></div>
+        <div class="card"><span class="label">Matches with Akuma</span><span id="s-matches-akuma" class="value">–</span></div>
+        <div class="card"><span class="label">Matches with Evil Ryu</span><span id="s-matches-evil-ryu" class="value">–</span></div>
+        <div class="card"><span class="label">Matches with Violent Ken</span><span id="s-matches-violent-ken" class="value">–</span></div>
+      </div>
+    </div>
+    <div class="panel">
       <h2>Daily totals</h2>
       <div class="scroll"><table id="daily"></table></div>
     </div>
@@ -169,6 +199,10 @@ export const ADMIN_HTML = String.raw`<!doctype html>
           they are in use. Each fight counts two picks, one per side. Win and loss rates are over completed fights; a fight
           cut short by a disconnect counts as started only.</li>
         <li>Fights by platform count each fight once per side, so the two platforms of a fight both appear.</li>
+        <li>Secret characters: a room counts once, when both players are connected, as available (both support and enabled
+          the character), an option mismatch (both support it, only one enabled it) or an unsupported peer (one client
+          does not know it while the other has it enabled). Fights and matches count Akuma, Evil Ryu and Violent Ken from
+          the fights that started.</li>
         <li>Last matches keeps the latest 50 closed matches for 30 days, with no names, codes, addresses, countries or
           characters.</li>
         <li>Direct, Relay and Pending count the matches running now. A match is Pending until its host chooses a
@@ -177,6 +211,73 @@ export const ADMIN_HTML = String.raw`<!doctype html>
         <li>Country comes from Cloudflare and is stored only as a daily count. Unknown: Cloudflare did not say.</li>
         <li>Nothing here stores names, Friend Codes, addresses, relay tokens or gameplay.</li>
       </ul>
+    </div>
+    </div>
+    <div id="view-bugs" role="tabpanel" aria-labelledby="tab-bugs" hidden>
+    <div class="panel">
+      <p class="muted">Reports players sent from the launcher, newest first. The log of a report is stored as the player previewed it and is shown and downloaded exactly as stored. No account or address is kept with a report, and the newest 500 are kept.</p>
+      <div class="toolbar">
+        <label for="bug-version">Port version</label>
+        <select id="bug-version"></select>
+        <label for="bug-build">Game image</label>
+        <select id="bug-build"></select>
+        <label for="bug-status-filter">Status</label>
+        <select id="bug-status-filter">
+            <option value="">All statuses</option>
+            <option value="new">Open</option>
+            <option value="investigating">Investigating</option>
+            <option value="fixed">Fixed</option>
+            <option value="cannot_reproduce">Cannot reproduce</option>
+            <option value="duplicate">Duplicate</option>
+            <option value="not_a_bug">Not a bug</option>
+            <option value="closed">Closed</option>
+        </select>
+        <button id="bug-refresh" type="button">Refresh reports</button>
+        <span id="bug-count" class="muted" role="status"></span>
+      </div>
+      <p id="bug-empty" class="empty" hidden>No bug reports yet.</p>
+      <div id="bug-list-wrap" class="scroll bug-list"><table id="bug-list"></table></div>
+    </div>
+    <div id="bug-detail" class="panel bug-detail" hidden>
+      <div class="toolbar bug-header">
+        <h2 id="bug-title"></h2>
+        <button id="bug-download" type="button">Download log</button>
+        <button id="bug-copy" type="button" class="quiet">Copy log</button>
+        <span id="bug-note" class="muted" role="status"></span>
+        <button id="bug-close" type="button" class="quiet bug-close">Close report</button>
+      </div>
+      <p id="bug-text" class="bug-text"></p>
+      <dl id="bug-facts" class="bug-facts"></dl>
+      <h3>Report status</h3>
+      <div class="bug-status-form">
+        <label for="bug-status">Status</label>
+        <select id="bug-status">
+            <option value="new">Open</option>
+            <option value="investigating">Investigating</option>
+            <option value="fixed">Fixed</option>
+            <option value="cannot_reproduce">Cannot reproduce</option>
+            <option value="duplicate">Duplicate</option>
+            <option value="not_a_bug">Not a bug</option>
+            <option value="closed">Closed</option>
+        </select>
+        <p id="bug-status-meaning" class="muted"></p>
+        <div id="bug-fixed-field" class="bug-status-field" hidden>
+          <label for="bug-fixed">Fixed in version</label>
+          <input id="bug-fixed" type="text" maxlength="32" autocomplete="off" placeholder="0.4.1">
+        </div>
+        <div class="bug-status-field">
+          <label for="bug-message">Message to player</label>
+          <textarea id="bug-message" rows="3" maxlength="500"></textarea>
+        </div>
+        <div class="toolbar">
+          <button id="bug-status-save" type="button">Save status</button>
+          <span id="bug-status-note" class="muted" role="status"></span>
+        </div>
+      </div>
+      <h3 id="bug-log-name"></h3>
+      <p class="muted bug-snapshot">This is the sanitized log snapshot captured when the report was sent.</p>
+      <pre id="bug-log" class="bug-log" tabindex="0"></pre>
+    </div>
     </div>
   </section>
 </main>
@@ -345,6 +446,33 @@ th { color: var(--text-secondary); font-weight: 600; }
 details summary { cursor: pointer; font-weight: 600; }
 .notes ul { margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: 13px; }
 .notes li { margin: 4px 0; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 16px; border-bottom: 1px solid var(--border); }
+.tabs button[role="tab"] { background: transparent; color: var(--text-secondary); border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: 8px 14px; cursor: pointer; }
+.tabs button[role="tab"]:hover { color: var(--text-primary); }
+.tabs button[role="tab"][aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--accent); font-weight: 600; }
+.tabs .quiet { margin-left: auto; margin-bottom: 4px; }
+.bug-detail h2 { margin: 0; }
+.bug-list { max-height: 340px; overflow-y: auto; }
+#bug-list td.bug-summary { max-width: 340px; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+#bug-list tr.selected td { background: var(--surface-0); }
+#bug-list button.ticket { background: transparent; color: var(--text-primary); border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+.bug-detail { margin-top: 16px; }
+.bug-header { margin-bottom: 20px; }
+.bug-close { margin-left: auto; }
+.bug-detail h3 { font-size: 14px; margin: 0 0 4px; }
+.bug-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 24px; }
+.bug-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 24px; font-size: 13px; }
+.bug-facts dt { color: var(--text-secondary); }
+.bug-facts dd { margin: 0; overflow-wrap: anywhere; }
+.bug-snapshot { margin-bottom: 8px; }
+.bug-status-form { margin: 0 0 24px; }
+.bug-status-form > .muted { margin: 4px 0 12px; }
+.bug-status-form .toolbar { margin: 12px 0 0; }
+.bug-status-field { display: flex; flex-direction: column; gap: 4px; margin: 0 0 12px; }
+.bug-status-field[hidden] { display: none; }
+.bug-status-field input { max-width: 200px; }
+.bug-status-field textarea { max-width: 640px; font: inherit; }
+.bug-log { max-height: 480px; overflow: auto; margin: 0; padding: 10px; background: var(--surface-0); border: 1px solid var(--border); border-radius: 6px; font: 12px/1.45 ui-monospace, Consolas, monospace; white-space: pre; }
 .tip {
   position: fixed;
   pointer-events: none;
@@ -382,7 +510,8 @@ export const ADMIN_JS = String.raw`(function () {
     ws_upgrade_accepted: 'WebSocket upgrades accepted',
     hello_accepted: 'Sign-ins accepted',
     hello_reconnect_deduped: 'Reconnects not counted as new sessions',
-    pm_host_accepted: 'Player Matches advertised'
+    pm_host_accepted: 'Player Matches advertised',
+    incident_filed: 'Bug reports accepted'
   };
   var ABUSE = {
     ws_upgrade_limited: 'WebSocket upgrades refused at the edge',
@@ -392,7 +521,12 @@ export const ADMIN_JS = String.raw`(function () {
     pm_join_limited: 'Player Match joins refused',
     invite_limited: 'Invites refused',
     match_resume_limited: 'Match resumes refused',
-    relay_abuse_closed: 'Relay connections or relays closed for abuse'
+    relay_abuse_closed: 'Relay connections or relays closed for abuse',
+    fight_secret_rejected: 'Fights refused: secret character not available',
+    lobby_list_limited: 'Lobby reads refused',
+    incident_limited: 'Bug reports refused: too many',
+    incident_hourly_limited: 'Bug reports refused: hourly limit',
+    incident_daily_limited: 'Bug reports refused: daily limit'
   };
   var STATES = { in_game: 'In game', connecting: 'Connecting' };
   var BUILDS = { base013: 'Original · 0.0.1.3', tu023: 'Title Update #1 · 0.0.2.3' };
@@ -410,6 +544,22 @@ export const ADMIN_JS = String.raw`(function () {
     ]
   };
   var TRANSPORTS = { direct: 'Direct', relay: 'Relay', pending: 'Pending' };
+  var SECRET_CARDS = [
+    ['s-akuma-available', 'secret', 'akuma_available'], ['s-evil-ryu-available', 'secret', 'evil_ryu_available'],
+    ['s-violent-ken-available', 'secret', 'violent_ken_available'],
+    ['s-akuma-mismatch', 'secret', 'akuma_option_mismatch'], ['s-evil-ryu-mismatch', 'secret', 'evil_ryu_option_mismatch'],
+    ['s-violent-ken-mismatch', 'secret', 'violent_ken_option_mismatch'],
+    ['s-unsupported', 'secret', 'unsupported_peer'],
+    ['s-fights-akuma', 'secret_fight', 'akuma'], ['s-fights-evil-ryu', 'secret_fight', 'evil_ryu'],
+    ['s-fights-violent-ken', 'secret_fight', 'violent_ken'],
+    ['s-fights-akuma-mirror', 'secret_fight', 'akuma_mirror'], ['s-fights-evil-ryu-mirror', 'secret_fight', 'evil_ryu_mirror'],
+    ['s-fights-violent-ken-mirror', 'secret_fight', 'violent_ken_mirror'],
+    ['s-fights-akuma-vs-evil-ryu', 'secret_fight', 'akuma_vs_evil_ryu'],
+    ['s-fights-akuma-vs-violent-ken', 'secret_fight', 'akuma_vs_violent_ken'],
+    ['s-fights-evil-ryu-vs-violent-ken', 'secret_fight', 'evil_ryu_vs_violent_ken'],
+    ['s-matches-akuma', 'secret_match', 'akuma'], ['s-matches-evil-ryu', 'secret_match', 'evil_ryu'],
+    ['s-matches-violent-ken', 'secret_match', 'violent_ken']
+  ];
 
   function storedToken() {
     try { return sessionStorage.getItem(KEY) || ''; } catch (e) { return ''; }
@@ -700,6 +850,14 @@ export const ADMIN_JS = String.raw`(function () {
     table.appendChild(body);
   }
 
+  function secretPanel(history) {
+    $('secret-line').textContent = 'Last ' + history.days + ' days. Rooms are counted once, when both players are connected.';
+    SECRET_CARDS.forEach(function (card) {
+      var found = (history.dimensions[card[1]] || []).filter(function (item) { return item.value === card[2]; })[0];
+      $(card[0]).textContent = fmt(found ? found.count : 0);
+    });
+  }
+
   function durationText(ms) {
     var seconds = Math.round(ms / 1000);
     if (seconds < 60) return seconds + 's';
@@ -933,11 +1091,240 @@ export const ADMIN_JS = String.raw`(function () {
     characterPanels(history.characters);
     matchupPanel(history.matchups);
     characterTable(history.characters);
+    secretPanel(history);
     dailyTable(history.daily);
     rejects(history);
     protection(history);
     abuse(history);
     $('status').textContent = 'Updated ' + timeLabel.format(summary.generated) + ' (Sao Paulo)';
+  }
+
+  // Named by string: the page tests forbid any CSS-style address call in the script text.
+  var OBJECT_MAKE = 'createObjectURL';
+  var OBJECT_DROP = 'revokeObjectURL';
+  var bugReports = [];
+  var bugTicket = '';
+  var bugLoadingTicket = '';
+  var bugLogText = '';
+  var stampLabel = new Intl.DateTimeFormat('en-GB', { timeZone: ZONE, day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  var BUG_STATUSES = {
+    new: ['Open', 'The report has not been reviewed yet.'],
+    investigating: ['Investigating', 'The report is being investigated.'],
+    fixed: ['Fixed', 'The problem has been corrected.'],
+    cannot_reproduce: ['Cannot reproduce', 'The problem could not be reproduced with the available information.'],
+    duplicate: ['Duplicate', 'The same problem is already tracked by another report.'],
+    not_a_bug: ['Not a bug', 'The reported behavior is expected or is not a bug of this port.'],
+    closed: ['Closed', 'The report was intentionally finished without a specific fix or another more precise status. It does not mean Fixed.']
+  };
+
+  function bugStatusLabel(status) { return BUG_STATUSES[status] ? BUG_STATUSES[status][0] : status; }
+  function bugBuildLabel(guest) { return BUILDS[guest] || guest; }
+
+  function bugOptions(id, key, label) {
+    var select = $(id);
+    var chosen = select.value;
+    var seen = {};
+    bugReports.forEach(function (r) { seen[r[key]] = true; });
+    clear(select);
+    var all = el('option', '', 'All');
+    all.value = '';
+    select.appendChild(all);
+    Object.keys(seen).sort().forEach(function (value) {
+      var option = el('option', '', label ? label(value) : value);
+      option.value = value;
+      select.appendChild(option);
+    });
+    select.value = seen[chosen] ? chosen : '';
+  }
+
+  function bugShown() {
+    var version = $('bug-version').value;
+    var build = $('bug-build').value;
+    var status = $('bug-status-filter').value;
+    return bugReports.filter(function (r) {
+      return (!version || r.launcher_version === version) && (!build || r.guest === build) && (!status || r.status === status);
+    });
+  }
+
+  function bugFact(list, name, value) {
+    list.appendChild(el('dt', '', name));
+    list.appendChild(el('dd', '', value || '–'));
+  }
+
+  function showBugStatusMeaning() {
+    var status = $('bug-status').value;
+    $('bug-status-meaning').textContent = BUG_STATUSES[status] ? BUG_STATUSES[status][1] : '';
+    $('bug-fixed-field').hidden = status !== 'fixed';
+  }
+
+  function bugStatusForm(r) {
+    $('bug-status').value = r.status;
+    $('bug-fixed').value = r.fixed_version || '';
+    $('bug-message').value = r.player_message || '';
+    $('bug-status-note').textContent = '';
+    showBugStatusMeaning();
+  }
+
+  function bugDetail(r) {
+    bugTicket = r.ticket;
+    bugLoadingTicket = '';
+    bugLogText = r.log_text;
+    $('bug-title').textContent = r.ticket;
+    $('bug-text').textContent = r.description;
+    var facts = $('bug-facts');
+    clear(facts);
+    bugFact(facts, 'Report ID', r.ticket);
+    bugFact(facts, 'Submitted', stampLabel.format(r.ms) + ' (Sao Paulo)');
+    bugFact(facts, 'Port version', r.launcher_version);
+    bugFact(facts, 'Game image', bugBuildLabel(r.guest));
+    bugFact(facts, 'Platform', r.platform);
+    bugFact(facts, 'Operating system', r.operating_system);
+    bugFact(facts, 'Runtime', r.runtime);
+    bugFact(facts, 'Original log file', r.log_file);
+    bugFact(facts, 'Log clipped', r.log_clipped === 'yes' ? 'Yes, only its end was sent' : 'No');
+    $('bug-log-name').textContent = 'Sanitized log';
+    $('bug-log').textContent = bugLogText;
+    $('bug-note').textContent = '';
+    bugStatusForm(r);
+    $('bug-detail').hidden = false;
+    renderBugList();
+  }
+
+  function openBugReport(ticket) {
+    bugLoadingTicket = ticket;
+    return api('/admin/api/incidents/' + encodeURIComponent(ticket)).then(function (report) {
+      if (report.ticket === bugLoadingTicket) bugDetail(report);
+    }).catch(function (error) {
+      if (error instanceof AuthError) { signOut('The token was not accepted.'); return; }
+      if (ticket !== bugLoadingTicket) return;
+      bugLoadingTicket = '';
+      $('bug-count').textContent = 'Could not open ' + ticket + '.';
+    });
+  }
+
+  function closeBugReport() {
+    bugTicket = '';
+    bugLoadingTicket = '';
+    bugLogText = '';
+    $('bug-detail').hidden = true;
+    renderBugList();
+  }
+
+  function toggleBugReport(ticket) {
+    if (ticket === bugTicket) closeBugReport();
+    else openBugReport(ticket);
+  }
+
+  function downloadBugLog() {
+    var ticket = bugTicket;
+    if (!ticket) return Promise.resolve();
+    return fetch('/admin/api/incidents/' + encodeURIComponent(ticket) + '/log', { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store', credentials: 'omit' }).then(function (r) {
+      if (r.status === 401) throw new AuthError();
+      if (!r.ok) throw new Error('log');
+      var named = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '');
+      return r.blob().then(function (blob) {
+        var object = URL[OBJECT_MAKE](blob);
+        var link = el('a');
+        link.href = object;
+        link.download = named ? named[1] : ticket + '.log';
+        link.click();
+        setTimeout(function () { URL[OBJECT_DROP](object); }, 1000);
+      });
+    }).catch(function (error) {
+      if (error instanceof AuthError) { signOut('The token was not accepted.'); return; }
+      $('bug-note').textContent = 'Could not download the log.';
+    });
+  }
+
+  function copyBugLog() {
+    if (!bugLogText) return Promise.resolve();
+    var say = function (text) { $('bug-note').textContent = text; };
+    if (!navigator.clipboard || !navigator.clipboard.writeText) { say('Copying is not possible in this browser.'); return Promise.resolve(); }
+    return navigator.clipboard.writeText(bugLogText).then(function () { say('Log copied.'); }, function () { say('Could not copy the log.'); });
+  }
+
+  function saveBugStatus() {
+    var ticket = bugTicket;
+    if (!ticket) return Promise.resolve();
+    var status = $('bug-status').value;
+    var change = { status: status, fixed_version: status === 'fixed' ? $('bug-fixed').value.trim() : '', player_message: $('bug-message').value };
+    return fetch('/admin/api/incidents/' + encodeURIComponent(ticket) + '/status', { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(change), cache: 'no-store', credentials: 'omit' }).then(function (r) {
+      if (r.status === 401) throw new AuthError();
+      if (!r.ok) throw new Error('status');
+      return r.json();
+    }).then(function (saved) {
+      bugReports.forEach(function (r) {
+        if (r.ticket === ticket) { r.status = saved.status; r.status_updated_at = saved.status_updated_at; }
+      });
+      renderBugList();
+      if (ticket !== bugTicket) return;
+      bugStatusForm(saved);
+      $('bug-status-note').textContent = 'Saved.';
+    }).catch(function (error) {
+      if (error instanceof AuthError) { signOut('The token was not accepted.'); return; }
+      if (ticket === bugTicket) $('bug-status-note').textContent = 'Could not save the status. Check the version and the message.';
+    });
+  }
+
+  function bugTicketCell(r) {
+    var td = el('td');
+    var button = el('button', 'ticket', r.ticket);
+    button.type = 'button';
+    button.addEventListener('click', function () { toggleBugReport(r.ticket); });
+    td.appendChild(button);
+    return td;
+  }
+
+  function renderBugList() {
+    var shown = bugShown();
+    var node = $('bug-list');
+    clear(node);
+    var head = el('tr');
+    ['Report ID', 'Submitted', 'Port', 'Game image', 'Platform', 'Operating system', 'Description', 'Status'].forEach(function (c) { head.appendChild(el('th', '', c)); });
+    node.appendChild(head);
+    shown.forEach(function (r) {
+      var tr = el('tr', r.ticket === bugTicket ? 'selected' : '');
+      tr.appendChild(bugTicketCell(r));
+      tr.appendChild(el('td', '', stampLabel.format(r.ms)));
+      tr.appendChild(el('td', '', r.launcher_version));
+      tr.appendChild(el('td', '', bugBuildLabel(r.guest)));
+      tr.appendChild(el('td', '', r.platform));
+      tr.appendChild(el('td', '', r.operating_system));
+      tr.appendChild(el('td', 'bug-summary', r.preview));
+      tr.appendChild(el('td', '', bugStatusLabel(r.status)));
+      node.appendChild(tr);
+    });
+    $('bug-empty').textContent = 'No bug reports yet.';
+    $('bug-empty').hidden = bugReports.length > 0;
+    $('bug-list-wrap').hidden = bugReports.length === 0;
+    $('bug-count').textContent = !bugReports.length ? ''
+      : shown.length === bugReports.length ? fmt(shown.length) + ' reports' : fmt(shown.length) + ' of ' + fmt(bugReports.length) + ' reports';
+  }
+
+  function loadBugReports() {
+    $('bug-count').textContent = 'Loading…';
+    return api('/admin/api/incidents').then(function (r) {
+      bugReports = Array.isArray(r.incidents) ? r.incidents : [];
+      bugOptions('bug-version', 'launcher_version');
+      bugOptions('bug-build', 'guest', bugBuildLabel);
+      renderBugList();
+    }).catch(function (error) {
+      if (error instanceof AuthError) { signOut('The token was not accepted.'); return; }
+      $('bug-count').textContent = error && error.message ? error.message : 'Could not load the reports.';
+    });
+  }
+
+  var TAB_KEY = 'ssf2t-dashboard-tab';
+  var view = 'dashboard';
+  try { if (sessionStorage.getItem(TAB_KEY) === 'bugs') view = 'bugs'; } catch (e) { /* storage blocked */ }
+
+  function showView(name) {
+    view = name;
+    try { sessionStorage.setItem(TAB_KEY, name); } catch (e) { /* storage blocked */ }
+    $('view-dashboard').hidden = name !== 'dashboard';
+    $('view-bugs').hidden = name !== 'bugs';
+    $('tab-dashboard').setAttribute('aria-selected', String(name === 'dashboard'));
+    $('tab-bugs').setAttribute('aria-selected', String(name === 'bugs'));
   }
 
   function load() {
@@ -954,9 +1341,11 @@ export const ADMIN_JS = String.raw`(function () {
   function showDashboard() {
     $('login').hidden = true;
     $('dash').hidden = false;
-    load();
+    showView(view);
+    if (view === 'bugs') loadBugReports();
+    else load();
     if (timer) clearInterval(timer);
-    timer = setInterval(function () { if (!document.hidden) load(); }, 60000);
+    timer = setInterval(function () { if (!document.hidden && view === 'dashboard') load(); }, 60000);
   }
 
   function signOut(message) {
@@ -964,6 +1353,10 @@ export const ADMIN_JS = String.raw`(function () {
     storeToken('');
     if (timer) clearInterval(timer);
     timer = null;
+    bugReports = [];
+    bugTicket = '';
+    bugLogText = '';
+    $('bug-detail').hidden = true;
     $('dash').hidden = true;
     $('login').hidden = false;
     $('token').value = '';
@@ -984,6 +1377,17 @@ export const ADMIN_JS = String.raw`(function () {
   $('range').addEventListener('change', load);
   $('recent-limit').addEventListener('change', load);
   $('signout').addEventListener('click', function () { signOut(''); });
+  $('tab-dashboard').addEventListener('click', function () { showView('dashboard'); load(); });
+  $('tab-bugs').addEventListener('click', function () { showView('bugs'); loadBugReports(); });
+  $('bug-refresh').addEventListener('click', loadBugReports);
+  $('bug-version').addEventListener('change', renderBugList);
+  $('bug-build').addEventListener('change', renderBugList);
+  $('bug-status-filter').addEventListener('change', renderBugList);
+  $('bug-status').addEventListener('change', showBugStatusMeaning);
+  $('bug-status-save').addEventListener('click', saveBugStatus);
+  $('bug-download').addEventListener('click', downloadBugLog);
+  $('bug-copy').addEventListener('click', copyBugLog);
+  $('bug-close').addEventListener('click', closeBugReport);
 
   token = storedToken();
   if (token) { $('remember').checked = true; showDashboard(); }

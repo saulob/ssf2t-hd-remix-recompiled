@@ -41,6 +41,6 @@ The package's file table lists 27 files. The complete content lives in `game:\fl
 ## Open items
 
 - Guest resolution is assumed 1280x720; confirm from `VdSetDisplayMode`.
-- Not ported: cheats, skip intro, Live services. Saves, profile and achievements: [save-and-achievements.md](save-and-achievements.md).
+- Not ported: cheats, Live services. Skip intro is implemented (launcher Gameplay option `ssf2t_skip_intro`, off by default). Saves, profile and achievements: [save-and-achievements.md](save-and-achievements.md).
 - `third_party	rg-launcher` is a copy of TRG Launcher 1.1.0 (revision b384a28), not a git submodule.
 - Release packaging: [release.md](release.md).

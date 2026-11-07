@@ -1,0 +1,42 @@
+diff --git a/src/launcher.cpp b/src/launcher.cpp
+index 66de52e..5bc8dc7 100644
+--- a/src/launcher.cpp
++++ b/src/launcher.cpp
+@@ -1347,14 +1347,18 @@ void Launcher::DrawFooter(ImVec2 origin, float w, float h) {
+   const float right = origin.x + w;
+   const float quit_x = right - play_w - bw * 2 - gap * 2;
+   float left_end = quit_x;
++  bool show_note = true;
+   const SponsorLink& sponsor = config_.sponsor;
+   if (!sponsor.url.empty()) {
+     ImFont* font = config_.fonts.semibold;
+     const float font_size = ImGui::GetFontSize();
+     const ImVec2 size(SponsorButtonWidth(sponsor, font, font_size, s_), bh);
+     const float x = quit_x - gap - size.x;
+-    if (x >= help_x + note_w + gap) {
++    // The sponsor button outranks the helper text, which gives way when the window is narrow.
++    const bool fits_note = x >= help_x + note_w + gap;
++    if (fits_note || x >= origin.x + hints_w + gap) {
+       left_end = x;
++      show_note = fits_note;
+       if (SponsorButton("##sponsor_footer", sponsor, ImVec2(x, cy - size.y * 0.5f), size, font, font_size, s_)) {
+         OpenUrl(sponsor.url);
+       }
+@@ -1367,7 +1371,7 @@ void Launcher::DrawFooter(ImVec2 origin, float w, float h) {
+   const bool status_only = show_status && help_x + status_w + gap > left_end;
+   if (!status_only) {
+     DrawKeyHints(dl, hints, fonts, t, ImVec2(origin.x, cy), s_);
+-    if (!hints.empty()) {
++    if (!hints.empty() && (show_note || show_status)) {
+       const float x = std::floor(origin.x + hints_w + separator_gap), half = layout::kFooterSeparator * s_ * 0.5f;
+       dl->AddLine(ImVec2(x, cy - half), ImVec2(x, cy + half), Col(t.border_row), layout::PassiveLineThickness(s_));
+     }
+@@ -1376,7 +1380,7 @@ void Launcher::DrawFooter(ImVec2 origin, float w, float h) {
+     dl->AddText(fonts.semibold, help_size,
+                 ImVec2(status_only ? origin.x : help_x, layout::CenteredTop(cy, CapCenter(fonts.semibold, help_size))),
+                 Col(t.accent), status_.c_str());
+-  } else {
++  } else if (show_note) {
+     const float cap_center = CapCenter(fonts.regular, help_size);
+     const float step = layout::kFooterHelpLine * s_;
+     float line_y = cy - step * 0.5f * float(note.size() - 1);

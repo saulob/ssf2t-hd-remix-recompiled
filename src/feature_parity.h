@@ -51,6 +51,81 @@ struct Feature {
 };
 
 inline constexpr Feature kFeatures[] = {
+    {"Akuma",
+     "Move::kHdStyle,Move::kLive,Move::kMode,Move::kPad,Move::kSelected,Move::kSpecial,Select::kConfirmResult,"
+     "Select::kHdStyle,Select::kLive,Select::kOnlineAkumaGate,Select::kSpecial,UltraHooks::kUnlockAkuma1,"
+     "UltraHooks::kDrawRoster1,"
+     "UltraHooks::kNavigateSelect1",
+     "UltraHooks::kUnlockAkuma1,UltraHooks::kNavigateSelect1,UltraHooks::kDrawRoster1",
+     "kEnableAkumaSetting", "", "", "", "",
+     "src/character/akuma.cpp,src/character/akuma_navigation.cpp,src/character/select_activity.cpp,"
+     "src/character/akuma_portrait.cpp,src/character/akuma_select.cpp",
+     "", "", "", "", "tests/secret_select_tests.cpp", "kEnableAkumaLabel"},
+    {"Akuma bug fixes",
+     "AkumaFixes::kFighterBlock,AkumaFixes::kHdStyle,AkumaFixes::kInitFighter1,AkumaFixes::kRemixFighterData,"
+     "AkumaFixes::kThrowAttempt1",
+     "AkumaFixes::kInitFighter1,AkumaFixes::kThrowAttempt1",
+     "kAkumaBugFixesSetting", "", "", "", "",
+     "src/character/akuma_bug_fixes.cpp",
+     "", "", "", "", "tests/akuma_bug_fixes_tests.cpp", "kAkumaBugFixesLabel"},
+    {"Ultra fighters (Evil Ryu and Violent Ken)",
+     "Audio::kSoundFlags,Audio::kSoundQueue,Audio::kSoundQueueHead,Audio::kSoundQueueTail,"
+     "Audio::kSoundSlots,Confirm::kOldVersionPrompt,Cursor::kHdPositions,Cursor::kLive,"
+     "Cursor::kVersusPositions,"
+     "Ending::kEndingCharacter,Hd::kBeatenSide,Hd::kColourP1,Hd::kColourP2,Hd::kContinuePortraits,"
+     "Hd::kLoserPortraitSlot,Hd::kLosingPortraits,Hd::kMysteryLargePortrait,Hd::kPortraitPaletteRows,"
+     "Hd::kRyuPaletteSlot10,Hud::kFightHudActive,Hud::kWidgets,Moves::kActionTables,"
+     "Palette::kPaletteRamPointer,Quote::kTaunts,Results::kLocalRecords,Results::kMatchWinner,"
+     "Roster::kLayout,Roster::kLive,Roster::kMode,Select::kMode,UltraHooks::kPlayerCharacterIndex1,"
+     "UltraHooks::kAnnounceWinnerName1,UltraHooks::kLoadSounds1,UltraHooks::kRequestSound1,"
+     "UltraHooks::kRoundEndScream1,UltraHooks::kObserveLock1,UltraHooks::kAskLockedSide1,"
+     "UltraHooks::kEnterSelect1,UltraHooks::kPlaceCursor1,"
+     "UltraHooks::kPlayEnding1,UltraHooks::kGateSuper1,UltraHooks::kDrawPortraits1,"
+     "UltraHooks::kDrawSprite1,UltraHooks::kUpdateHud1,UltraHooks::kEmitSprites1,"
+     "UltraHooks::kEmitSprites2,UltraHooks::kEmitSprites3,UltraHooks::kEmitSprites4,"
+     "UltraHooks::kEmitSprites5,UltraHooks::kHeavyPunch1,UltraHooks::kTrackHalfCircle1,UltraHooks::kLoadGrabRange1,"
+     "UltraHooks::kLookupAction1,UltraHooks::kRunKenSpecialClass1,UltraHooks::kRunSpecialClass1,"
+     "UltraHooks::kSelectCpuMove1,UltraHooks::kStartJump1,UltraHooks::kStartJump2,"
+     "UltraHooks::kTrackKenKickCommand1,UltraHooks::kTrackKenKickCommand2,"
+     "UltraHooks::kTrackKenKickCommand3,UltraHooks::kTrackKenSpecials1,UltraHooks::kTrackSpecials1,"
+     "UltraHooks::kApplyEvilRyuPalette1,UltraHooks::kPlayerResults1,"
+     "UltraHooks::kPlayerResultsCharacter1,UltraHooks::kRecordMatch1,UltraHooks::kResetPlayerResults1,"
+     "UltraHooks::kShowQuote1,UltraHooks::kShowWinText1",
+     "UltraHooks::kPlayerCharacterIndex1,UltraHooks::kAnnounceWinnerName1,UltraHooks::kLoadSounds1,"
+     "UltraHooks::kRequestSound1,UltraHooks::kRoundEndScream1,UltraHooks::kObserveLock1,UltraHooks::kAskLockedSide1,"
+     "UltraHooks::kEnterSelect1,UltraHooks::kPlaceCursor1,UltraHooks::kPlayEnding1,UltraHooks::kGateSuper1,"
+     "UltraHooks::kDrawPortraits1,UltraHooks::kDrawSprite1,UltraHooks::kUpdateHud1,"
+     "UltraHooks::kEmitSprites1,UltraHooks::kEmitSprites2,UltraHooks::kEmitSprites3,"
+     "UltraHooks::kEmitSprites4,UltraHooks::kEmitSprites5,UltraHooks::kHeavyPunch1,UltraHooks::kTrackHalfCircle1,"
+     "UltraHooks::kLoadGrabRange1,UltraHooks::kLookupAction1,UltraHooks::kRunKenSpecialClass1,"
+     "UltraHooks::kRunSpecialClass1,UltraHooks::kSelectCpuMove1,UltraHooks::kStartJump1,"
+     "UltraHooks::kStartJump2,UltraHooks::kTrackKenKickCommand1,UltraHooks::kTrackKenKickCommand2,"
+     "UltraHooks::kTrackKenKickCommand3,UltraHooks::kTrackKenSpecials1,UltraHooks::kTrackSpecials1,"
+     "UltraHooks::kApplyEvilRyuPalette1,UltraHooks::kPlayerResults1,"
+     "UltraHooks::kPlayerResultsCharacter1,UltraHooks::kRecordMatch1,UltraHooks::kResetPlayerResults1,"
+     "UltraHooks::kShowQuote1,UltraHooks::kShowWinText1",
+     "kEnableUltraFightersSetting", "", "", "", "",
+     "src/character/character_moves.cpp,src/character/character_moves_hook.cpp,"
+     "src/character/character_packages.cpp,"
+     "src/character/evil_ryu_actions.cpp,src/character/evil_ryu_assets.cpp,"
+     "src/character/evil_ryu_audio.cpp,src/character/evil_ryu_moves.cpp,"
+     "src/character/evil_ryu_palette.cpp,src/character/evil_ryu_results.cpp,"
+     "src/character/evil_ryu_sprites.cpp,src/character/fighter_identity.cpp,"
+     "src/character/host_rollback.cpp,src/character/ultra_audio_hook.cpp,"
+     "src/character/ultra_confirm_hook.cpp,src/character/ultra_cursor_hook.cpp,"
+     "src/character/ultra_ending.cpp,src/character/ultra_ending_hook.cpp,"
+     "src/character/ultra_fighters.cpp,src/character/ultra_gameplay_hook.cpp,"
+     "src/character/ultra_hd_palette_hook.cpp,src/character/ultra_hud_hook.cpp,"
+     "src/character/ultra_moves_hook.cpp,src/character/ultra_navigation.cpp,"
+     "src/character/ultra_palette_hook.cpp,src/character/roster_cells_hook.cpp,"
+     "src/character/ultra_portraits.cpp,src/character/ultra_results_hook.cpp,"
+     "src/character/ultra_winner_hook.cpp,src/character/violent_ken_actions.cpp,"
+     "src/character/violent_ken_audio.cpp,src/character/violent_ken_data.cpp,"
+     "src/character/violent_ken_moves.cpp",
+     "", "", "", "", "tests/violent_ken_tests.cpp,tests/violent_ken_audio_tests.cpp,tests/secret_select_tests.cpp,"
+     "tests/ultra_ending_tests.cpp,tests/evil_ryu_moves_tests.cpp,tests/debug_hotkeys_removed_tests.cpp,"
+     "tests/local_join_select_tests.cpp",
+     "kEnableUltraFightersLabel"},
     {"Game files and Title Update", "", "", "", "", "", "", "",
      "src/game_files.cpp,src/stfs.cpp,src/guest_image.cpp,src/title_update_image.h", "", "", "", "",
      "tests/game_files_tests.cpp,tests/game_files_base_only_tests.cpp,tests/guest_build_tests.cpp"},
@@ -93,6 +168,8 @@ inline constexpr Feature kFeatures[] = {
     {"Graphics card", "", "", "ssf2t_graphics_adapter", "", "d3d12_adapter", "vulkan_device", "",
      "src/graphics_adapters.h,src/graphics_adapters.cpp", "", "", "src/graphics_adapters.cpp:ListGraphicsAdapters",
      "src/graphics_adapters.cpp:ListGraphicsAdapters", "tests/graphics_adapter_tests.cpp", "Graphics card"},
+    {"GPU wait CPU usage", "GpuFence::kPoll", "GpuFence::kPoll", "", "", "", "", "",
+     "src/gpu_fence_wait.cpp,src/gpu_fence_wait.h", "", "", "", "", "tests/gpu_fence_wait_tests.cpp"},
     {"Language", "", "", "kLanguageSetting", "", "", "", "", "src/language_setting.h", "", "", "", "",
      "tests/launcher_settings_tests.cpp", "kLanguageLabel"},
     {"Language: Português Brasil (game text, launcher and overlays)", "GameText::kTextTableRead,GameText::kTextTableReadReturn,GameText::kTextureParse,GameText::kPromptText,GameText::kLeaderboardError,GameText::kArcadeQuoteInit,GameText::kArcadeQuotePool",
@@ -105,16 +182,37 @@ inline constexpr Feature kFeatures[] = {
     {"Title bar and frame counter", "", "", "ssf2t_show_fps,ssf2t_show_render_resolution,ssf2t_show_frame_counter", "",
      "", "", "F2=src/frame_counter.cpp", "src/frame_counter.cpp,src/window_title.h", "", "", "", "",
      "tests/window_host_tests.cpp", "Frame rate in title,Render resolution in title,Frame counter"},
+    {"Skip intro",
+     "SkipIntro::kXmlDocumentParse,SkipIntro::kBootLogoStep,SkipIntro::kBootLogoState,SkipIntro::kBootLogoFinished,"
+     "SkipIntro::kCapcomLogo,SkipIntro::kBackboneLogo,SkipIntro::kTextureRefCount,SkipIntro::kTextureRelease",
+     "SkipIntro::kXmlDocumentParse,SkipIntro::kBootLogoStep", "ssf2t_skip_intro", "", "", "", "",
+     "src/skip_intro.h,src/skip_intro_hook.cpp", "", "", "", "", "tests/skip_intro_tests.cpp", "Skip intro"},
+    {"CPU opponent in Local Match",
+     "VersusCpu::kUpdateLocalLobby,VersusCpu::kInitLocalLobby,VersusCpu::kIsSlotOccupied,"
+     "VersusCpu::kIsSlotOccupiedResults,VersusCpu::kGetPlayerName,VersusCpu::kTextPlayerName,"
+     "VersusCpu::kTextHudPlayerName,VersusCpu::kSetGameDifficulty,VersusCpu::kSelectInput,"
+     "VersusCpu::kEnterSelect,VersusCpu::kSelectMask,"
+     "VersusCpu::kLoadMatch,VersusCpu::kGameMode,VersusCpu::kLobbySlots,VersusCpu::kSelectDone,VersusCpu::kSideHuman,"
+     "VersusCpu::kSideState,VersusCpu::kGameState,"
+     "VersusCpu::kFighterBlock,VersusCpu::kColourPrompt,Confirm::kGameMode",
+     "VersusCpu::kUpdateLocalLobby,VersusCpu::kInitLocalLobby,VersusCpu::kIsSlotOccupied,"
+     "VersusCpu::kIsSlotOccupiedResults,VersusCpu::kGetPlayerName,VersusCpu::kTextPlayerName,"
+     "VersusCpu::kTextHudPlayerName,VersusCpu::kSetGameDifficulty,VersusCpu::kSelectInput,"
+     "VersusCpu::kEnterSelect,VersusCpu::kLoadMatch",
+     "", "", "", "", "", "src/character/versus_cpu.h,src/character/versus_cpu_hook.cpp,src/character/cpu_marker.h,"
+     "src/character/cpu_marker.cpp",
+     "", "", "", "", "tests/versus_cpu_tests.cpp"},
     {"Launcher", "", "", "",
      "ssf2t_launcher,ssf2t_skip_launcher,ssf2t_launcher_x,ssf2t_launcher_y,ssf2t_launcher_width,ssf2t_launcher_height,"
      "ssf2t_launcher_maximized,ssf2t_launcher_fullscreen",
-     "", "", "", "src/launcher.cpp,src/launcher.h,src/launcher_quit.h", "", "", "", "",
-     "tests/launcher_quit_tests.cpp,tests/launcher_settings_tests.cpp"},
+     "", "", "", "src/launcher.cpp,src/launcher.h,src/launcher_quit.h,src/launcher_pages.h,src/launcher_page_icons.cpp,"
+     "src/launcher_page_icons.h,src/page_margin.h", "", "", "", "",
+     "tests/launcher_quit_tests.cpp,tests/launcher_settings_tests.cpp,tests/launcher_visual_tests.cpp"},
     {"Launcher controller navigation", "", "", "", "", "", "", "", "src/imgui_gamepad.cpp,src/imgui_gamepad.h", "", "",
      "src/imgui_gamepad.cpp:ImGuiGamepad::Read", "src/imgui_gamepad.cpp:ImGuiGamepad::Read",
      "tests/launcher_gamepad_tests.cpp"},
     {"Keyboard controls", "", "", "mnk_mode", "", "", "", "", "src/keybinds.h,src/cursor_input.h,src/input_summary.cpp", "", "", "", "",
-     "tests/keyboard_tests.cpp", "Keyboard,Keyboard controls"},
+     "tests/keyboard_tests.cpp,tests/console_removed_tests.cpp", "Keyboard,Keyboard controls"},
     {"Local multiplayer", "", "", "ssf2t_player_1_name,ssf2t_player_2_name", "", "", "", "",
      "src/local_player_name.h,src/player_name_setting.h,src/match_input.h,src/input_owner.h,src/pad_slot_scan.h", "", "",
      "", "", "tests/player_name_tests.cpp,tests/keyboard_tests.cpp", "kPlayerNamesTitle"},
@@ -132,10 +230,11 @@ inline constexpr Feature kFeatures[] = {
      "src/updater/third_party/miniz/miniz.c",
      "src/updater/helper_main.cpp,src/updater/install_transaction.cpp", "", "src/updater/update_platform.cpp:LaunchUpdateHelper",
      "src/updater/update_platform.cpp:ApplyAppImageUpdate", "tests/update_tests.cpp,tests/linux_appimage_tests.cpp"},
-    {"Online service, identity and friends", "", "", "kOnlineEnabledSetting,kOnlineNameSetting", "", "", "", "",
+    {"Online service, identity and friends", "", "", "kOnlineEnabledSetting,kOnlineNameSetting,kOnlineLobbySetting", "", "", "", "",
      "src/online/online_service.cpp,src/online/identity.cpp,src/online/lobby_link.cpp,src/online/friend_view.cpp,"
      "src/online/instance.cpp,src/online/protocol.cpp,src/online_page.cpp,src/online_runtime.cpp,"
-     "src/friend_code_field.cpp,src/online/websocket.cpp,src/online/websocket_frame.cpp",
+     "src/friend_code_field.cpp,src/online/websocket.cpp,src/online/websocket_frame.cpp,"
+     "src/online/secret_characters.cpp,src/online/secret_view.cpp",
      "src/online/websocket_win.cpp,src/clipboard_win32.cpp", "src/online/websocket_posix.cpp,src/clipboard_sdl.cpp",
      "src/online/websocket_win.cpp:connect,src/online/websocket_win.cpp:send_text,src/online/websocket_win.cpp:receive,"
      "src/online/websocket_win.cpp:http_get,src/clipboard_win32.cpp:ReadClipboardText,"
@@ -145,7 +244,10 @@ inline constexpr Feature kFeatures[] = {
      "src/clipboard_sdl.cpp:ReadClipboardText,src/clipboard_sdl.cpp:WriteClipboardText",
      "tests/online_service_tests.cpp,tests/online_protocol_tests.cpp,tests/online_identity_tests.cpp,"
      "tests/online_setting_tests.cpp,tests/friend_field_tests.cpp,tests/wire_parity_tests.cpp,"
-     "tests/online_websocket_tls_tests.cpp,tests/clipboard_sdl_tests.cpp", "kOnlineNameLabel,kOnlineEnabledLabel,Your friend code,Add a friend"},
+     "tests/online_websocket_tls_tests.cpp,tests/clipboard_sdl_tests.cpp", "kOnlineNameLabel,kOnlineEnabledLabel,kOnlineLobbyLabel,Your friend code,Add a friend"},
+    {"Bug reports", "", "", "", "", "", "", "",
+     "src/bug_report.cpp,src/bug_report_page.cpp,src/log_scrubber.cpp,src/report_history.cpp,src/online/incident_client.cpp",
+     "", "", "", "", "tests/bug_report_tests.cpp,tests/log_scrubber_tests.cpp"},
     {"Ping display", "", "", "kOnlinePingSetting", "", "", "", "F3=src/ping_display.cpp", "src/ping_display.cpp", "", "",
      "", "", "tests/online_setting_tests.cpp", "kOnlinePingLabel"},
     {"Connection Test", "", "", "", "kConnectionTestSetting", "", "", "",
@@ -318,6 +420,7 @@ inline constexpr GateReview kAvailabilityMessages[] = {
     {"src/game_files.cpp", "the installed game files are missing or of another version"},
     {"src/launcher.cpp", "the installed game files are missing or of another version"},
     {"src/crash_report.cpp", "the stack of a crash could not be captured"},
+    {"src/character/character_packages.cpp", "the installed character files are missing or damaged"},
     {"src/netplay/determinism.cpp", "a state dump has the wrong size"},
     {"src/online/websocket_posix.cpp", "the system has no OpenSSL library, which Windows has in WinHTTP"},
     {"src/player_match.h", "the online service cannot be reached"},
@@ -327,8 +430,13 @@ inline constexpr GateReview kAvailabilityMessages[] = {
     {"src/updater/update_job.cpp", "the update job file is from another program version"},
     {"src/user_data.cpp", "the portable user data folder cannot be written"},
     {"src/online_page.cpp", "the online service cannot be reached"},
+    {"src/character/ultra_audio_hook.cpp", "the local Ultra fighter audio package is missing"},
+    {"src/character/ultra_ending_hook.cpp", "the local Ultra fighter ending package is missing"},
+    {"src/character/ultra_hd_palette_hook.cpp", "the local Ultra fighter art package is missing"},
+    {"src/character/ultra_hud_hook.cpp", "the local Ultra fighter HUD icon package is missing"},
     {"src/online/connection_test.cpp", "the router offers no automatic port setup"},
     {"src/online/online_service.cpp", "the online service lacks a capability"},
+    {"src/online/secret_view.cpp", "the online service or the opponent lacks a capability"},
     {"src/online/protocol.cpp", "the online service refuses relay"},
     {"src/update_config.cpp", "the program was not started from the release package that can update itself"},
     {"src/updater/update_controller.cpp", "the update helper of the release package is missing"},

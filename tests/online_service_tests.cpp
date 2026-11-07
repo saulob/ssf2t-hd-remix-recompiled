@@ -18,6 +18,7 @@
 #include "netplay/relay_frame.h"
 #include "online/friend_view.h"
 #include "online/online_service.h"
+#include "online/secret_view.h"
 
 using namespace ssf2t::online;
 
@@ -151,6 +152,7 @@ struct Rig {
   std::unique_ptr<OnlineService> service;
   std::string me;
   double now = 100;
+  SecretCapabilities secret_caps;
 
   // Without `udp` the service runs signaling only; `socket` stands in for udp's own gameplay socket.
   explicit Rig(const std::string& guest = kGuestBase013, bool ephemeral = false, const std::string& token = kToken,
@@ -170,6 +172,7 @@ struct Rig {
       return id;
     };
     config.log = [this](const std::string& line) { logs.push_back(line); };
+    config.secret = [this] { return secret_caps; };
     config.open_channel = [this](const std::string& url) {
       auto state = std::make_shared<ChannelState>();
       state->url = url;
@@ -2499,8 +2502,613 @@ void TestCapabilityCheckSparesSameNetworkAndCurrentServices() {
   CHECK(current.CountLogs("reason=peer_endpoint_timeout peer_signaled=true service_forwards_public=true") == 1);
 }
 
+// ---- secret characters ----
+
+std::string FlagsJson(const SecretSet& set) {
+  return std::string("{\"akuma\":") + (set.akuma ? "true" : "false") + ",\"evil_ryu\":" + (set.evil_ryu ? "true" : "false") + "}";
+}
+
+std::string SecretJson(const SecretCapabilities& peer, const SecretSet& effective) {
+  return "\"secret\":{\"peer\":{\"supports\":" + FlagsJson(peer.supports) + ",\"enabled\":" + FlagsJson(peer.enabled) +
+         "},\"effective\":" + FlagsJson(effective) + "}";
+}
+
+SecretCapabilities Caps(bool akuma, bool evil, bool supports = true) {
+  SecretCapabilities caps;
+  caps.supports = {supports, supports};
+  caps.enabled = {akuma, evil};
+  return caps;
+}
+
+void SignInToSecretService(Rig& rig, bool secret_service = true) {
+  rig.Enable();
+  rig.Tick();
+  rig.Event(ChannelEvent::Kind::kOpen);
+  rig.Reply("hello", "\"player\":\"" + rig.me + "\",\"name\":\"Saulo\",\"friend_code\":\"" + rig.me +
+                         "\",\"capabilities\":{\"protocol_version\":3,\"worker_build\":\"test\",\"secret_characters\":" +
+                         (secret_service ? "true" : "false") + "}");
+}
+
+void StartSecretMatch(Rig& rig, const char* id, const char* role, const std::string& secret) {
+  rig.Feed(std::string("{\"ev\":\"match.created\",\"session\":\"") + kSession + "\"," +
+           MatchBody(id, role, "base013", kFriendA, "SauloB") + (secret.empty() ? "" : "," + secret) + "}");
+}
+
+// What the Worker answers: both clients' AND, which the client then checks against its own.
+SecretSet WorkerAnd(const SecretCapabilities& a, const SecretCapabilities& b) { return EffectiveSecrets(a, b); }
+
+void TestHelloAdvertisesWhatThisBuildSupportsAndWhatIsOn() {
+  Rig rig;
+  rig.secret_caps = Caps(true, false);
+  SignInToSecretService(rig);
+  const std::string hello = rig.LastRequest("hello");
+  CHECK(Contains(hello, "\"secret\":{\"supports\":{\"akuma\":true,\"evil_ryu\":true,\"violent_ken\":false},\"enabled\":{\"akuma\":true,"
+                        "\"evil_ryu\":false,\"violent_ken\":false}}"));
+  CHECK(rig.CountLogs("online secret-cap local akuma=1 evil=0") == 1);
+  CHECK(rig.CountLogs("online secret-cap service supported=true") == 1);
+
+  Rig bare;
+  SignInToSecretService(bare);
+  CHECK(Contains(bare.LastRequest("hello"),
+                 "\"secret\":{\"supports\":{\"akuma\":false,\"evil_ryu\":false,\"violent_ken\":false},\"enabled\":{\"akuma\":false,"
+                 "\"evil_ryu\":false,\"violent_ken\":false}}"));
+}
+
+void TestEveryOnOffCombinationIsDeterministic() {
+  for (int mine = 0; mine < 4; ++mine) {
+    for (int theirs = 0; theirs < 4; ++theirs) {
+      const SecretCapabilities local = Caps((mine & 1) != 0, (mine & 2) != 0);
+      const SecretCapabilities peer = Caps((theirs & 1) != 0, (theirs & 2) != 0);
+      Rig rig;
+      rig.secret_caps = local;
+      SignInToSecretService(rig);
+      StartSecretMatch(rig, "m1", "host", SecretJson(peer, WorkerAnd(local, peer)));
+      const SecretSet effective = rig.service->SecretEffective();
+      CHECK(effective.akuma == (((mine & 1) != 0) && ((theirs & 1) != 0)));
+      CHECK(effective.evil_ryu == (((mine & 2) != 0) && ((theirs & 2) != 0)));
+      CHECK(rig.service->snapshot().secret.effective == effective);
+    }
+  }
+}
+
+void TestSecretStatusTextsExplainWhyACharacterIsOrIsNotAvailable() {
+  const auto row = [](const Snapshot& state, const SecretCapabilities& edited, SecretCharacter which) {
+    for (const SecretRowView& view : DescribeSecretCharacters(state, edited)) {
+      if (view.character == which) return view;
+    }
+    return SecretRowView{};
+  };
+  Rig rig;
+  rig.secret_caps = Caps(true, false);
+  SignInToSecretService(rig);
+  const Snapshot alone = rig.service->snapshot();
+  CHECK(row(alone, Caps(true, false), SecretCharacter::kAkuma).status == "Enabled locally");
+  CHECK(row(alone, Caps(true, false), SecretCharacter::kEvilRyu).status == "Off");
+
+  StartSecretMatch(rig, "m1", "host", SecretJson(Caps(true, true), WorkerAnd(Caps(true, false), Caps(true, true))));
+  const Snapshot together = rig.service->snapshot();
+  CHECK(row(together, Caps(true, false), SecretCharacter::kAkuma).status == "Available");
+  CHECK(row(together, Caps(true, false), SecretCharacter::kAkuma).available);
+  CHECK(row(together, Caps(true, false), SecretCharacter::kEvilRyu).status == "Disabled locally");
+  CHECK(!row(together, Caps(true, false), SecretCharacter::kEvilRyu).available);
+
+  rig.Feed(std::string("{\"ev\":\"match.secret\",\"match\":\"m1\",") + SecretJson(Caps(false, true), {}) + "}");
+  CHECK(row(rig.service->snapshot(), Caps(true, false), SecretCharacter::kAkuma).status == "Disabled by opponent");
+  rig.Feed(std::string("{\"ev\":\"match.secret\",\"match\":\"m1\",") + SecretJson(Caps(true, true, false), {}) + "}");
+  CHECK(row(rig.service->snapshot(), Caps(true, false), SecretCharacter::kAkuma).status == "Unsupported by opponent");
+  rig.Feed(std::string("{\"ev\":\"match.peer_lost\",\"match\":\"m1\"}"));
+  CHECK(row(rig.service->snapshot(), Caps(true, false), SecretCharacter::kAkuma).status == "Waiting for opponent");
+
+  Rig old;
+  old.secret_caps = Caps(true, true);
+  SignInToSecretService(old, false);
+  StartSecretMatch(old, "m1", "host", "");
+  CHECK(row(old.service->snapshot(), Caps(true, true), SecretCharacter::kAkuma).status == "Unsupported by the service");
+  CHECK(row(old.service->snapshot(), Caps(true, true), SecretCharacter::kEvilRyu).status == "Unsupported by the service");
+}
+
+void TestAnOldPeerOrAnOldServiceNeverOffersASecretCharacter() {
+  Rig old_peer;
+  old_peer.secret_caps = Caps(true, true);
+  SignInToSecretService(old_peer);
+  StartSecretMatch(old_peer, "m1", "host", SecretJson(Caps(false, false, false), {}));
+  CHECK(!old_peer.service->SecretEffective().Any());
+
+  Rig old_service;
+  old_service.secret_caps = Caps(true, true);
+  SignInToSecretService(old_service, false);
+  StartSecretMatch(old_service, "m1", "host", "");
+  CHECK(!old_service.service->SecretEffective().Any());
+  CHECK(!old_service.service->snapshot().secret.service_supported);
+  CHECK(old_service.Count("secret.update") == 0);
+
+  Rig missing_fields;
+  missing_fields.secret_caps = Caps(true, true);
+  SignInToSecretService(missing_fields);
+  StartSecretMatch(missing_fields, "m1", "host", "\"secret\":{\"effective\":{\"akuma\":true,\"evil_ryu\":true}}");
+  CHECK(!missing_fields.service->SecretEffective().Any());
+  CHECK(missing_fields.CountLogs("service answer overridden") == 1);
+}
+
+void TestTheClientChecksTheServicesAnswerAgainstItsOwnOptions() {
+  Rig rig;
+  rig.secret_caps = Caps(false, true);
+  SignInToSecretService(rig);
+  StartSecretMatch(rig, "m1", "join", SecretJson(Caps(true, true), {true, true}));
+  const SecretSet effective = rig.service->SecretEffective();
+  CHECK(!effective.akuma && effective.evil_ryu);
+  CHECK(rig.CountLogs("online secret-cap service answer overridden service=3 verified=2") == 1);
+  CHECK(rig.CountLogs("online secret-cap effective akuma=0 evil=1") == 1);
+}
+
+void TestAnOptionChangeIsSentOnceAndRecomputesTheRoom() {
+  Rig rig;
+  rig.secret_caps = Caps(false, false);
+  SignInToSecretService(rig);
+  for (int i = 0; i < 5; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("secret.update") == 0);
+
+  StartSecretMatch(rig, "m1", "host", SecretJson(Caps(true, true), {}));
+  rig.secret_caps = Caps(true, true);
+  rig.Tick();
+  CHECK(rig.Count("secret.update") == 1);
+  CHECK(Contains(rig.LastRequest("secret.update"), "\"enabled\":{\"akuma\":true,\"evil_ryu\":true,\"violent_ken\":false}"));
+  CHECK(!rig.service->SecretEffective().Any());
+  for (int i = 0; i < 5; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("secret.update") == 1);
+  rig.Reply("secret.update", SecretJson(Caps(true, true), {true, true}));
+  CHECK(rig.service->SecretEffective().akuma && rig.service->SecretEffective().evil_ryu);
+  for (int i = 0; i < 5; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("secret.update") == 1);
+
+  rig.secret_caps = Caps(true, false);
+  rig.Tick();
+  CHECK(rig.Count("secret.update") == 2);
+  CHECK(rig.service->SecretEffective().akuma && !rig.service->SecretEffective().evil_ryu);
+}
+
+void TestARefusedOptionChangeIsRetriedLater() {
+  Rig rig;
+  rig.secret_caps = Caps(false, false);
+  SignInToSecretService(rig);
+  rig.secret_caps = Caps(true, false);
+  rig.Tick();
+  CHECK(rig.Count("secret.update") == 1);
+  rig.Reply("secret.update", "", "limit");
+  for (int i = 0; i < 3; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("secret.update") == 1);
+  for (int i = 0; i < 4; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("secret.update") == 2);
+}
+
+void TestARoomEventForAnotherMatchIsIgnored() {
+  Rig rig;
+  rig.secret_caps = Caps(true, true);
+  SignInToSecretService(rig);
+  StartSecretMatch(rig, "m1", "host", SecretJson(Caps(true, true), {true, true}));
+  rig.Feed(std::string("{\"ev\":\"match.secret\",\"match\":\"other\",") + SecretJson(Caps(false, false), {}) + "}");
+  CHECK(rig.service->SecretEffective().akuma && rig.service->SecretEffective().evil_ryu);
+}
+
+void TestDisconnectReconnectAndLeaveClearTheNegotiatedState() {
+  Rig rig;
+  rig.secret_caps = Caps(true, true);
+  SignInToSecretService(rig);
+  StartSecretMatch(rig, "m1", "host", SecretJson(Caps(true, true), {true, true}));
+  CHECK(rig.service->SecretEffective().Any());
+
+  rig.Feed("{\"ev\":\"match.peer_lost\",\"match\":\"m1\"}");
+  CHECK(!rig.service->SecretEffective().Any());
+  rig.Feed("{\"ev\":\"match.peer_back\",\"match\":\"m1\"}");
+  CHECK(rig.service->SecretEffective().akuma && rig.service->SecretEffective().evil_ryu);
+
+  rig.Feed("{\"ev\":\"match.ended\",\"match\":\"m1\",\"reason\":\"left\"}");
+  CHECK(!rig.service->SecretEffective().Any());
+
+  StartSecretMatch(rig, "m2", "join", SecretJson(Caps(true, false), {true, false}));
+  CHECK(rig.service->SecretEffective().akuma && !rig.service->SecretEffective().evil_ryu);
+  rig.service->LeaveMatch();
+  CHECK(!rig.service->SecretEffective().Any());
+  CHECK(!rig.service->snapshot().secret.peer);
+
+  StartSecretMatch(rig, "m3", "host", SecretJson(Caps(false, true), {false, true}));
+  CHECK(!rig.service->SecretEffective().akuma && rig.service->SecretEffective().evil_ryu);
+
+  rig.service->Apply({false, "Saulo"});
+  CHECK(!rig.service->SecretEffective().Any());
+}
+
+void TestAMalformedRoomAnswerOffersNothing() {
+  Rig rig;
+  rig.secret_caps = Caps(true, true);
+  SignInToSecretService(rig);
+  StartSecretMatch(rig, "m1", "host", "\"secret\":{\"peer\":5,\"effective\":\"yes\"}");
+  CHECK(!rig.service->SecretEffective().Any());
+  StartSecretMatch(rig, "m2", "host", "\"secret\":{\"peer\":{\"supports\":{\"akuma\":\"true\"},\"enabled\":{\"akuma\":1}},"
+                                      "\"effective\":{\"akuma\":\"true\",\"evil_ryu\":1}}");
+  CHECK(!rig.service->SecretEffective().Any());
+}
+
+// ---- public Lobby ----
+const char kLobbyCaps[] = "\"capabilities\":{\"protocol_version\":3,\"worker_build\":\"test\",\"public_lobby\":true}";
+
+std::string LobbyRow(const char* player, const char* name, const char* guest = "base013", bool compatible = true,
+                     const char* state = "online") {
+  return std::string("{\"player\":\"") + player + "\",\"name\":\"" + name + "\",\"state\":\"" + state +
+         "\",\"platform\":\"Windows\",\"version\":\"0.4.0\",\"guest\":\"" + guest + "\",\"compatible\":" +
+         (compatible ? "true" : "false") + "}";
+}
+
+std::string LobbyAnswer(long long rev, const std::string& rows) {
+  return "\"players\":[" + rows + "],\"rev\":" + std::to_string(rev) + ",\"visible\":false";
+}
+
+void SignInToLobbyService(Rig& rig, bool visible = false, bool lobby = true) {
+  rig.service->Apply({true, "Saulo", visible});
+  rig.Tick();
+  rig.Event(ChannelEvent::Kind::kOpen);
+  rig.Reply("hello", "\"player\":\"" + rig.me + "\",\"name\":\"Saulo\",\"friend_code\":\"" + rig.me + "\"" +
+                         (lobby ? std::string(",") + kLobbyCaps : std::string()));
+}
+
+// Keeps the Lobby page "open" for `seconds`, as the launcher does by drawing it every frame.
+void ViewLobby(Rig& rig, double seconds) {
+  for (double spent = 0; spent < seconds; spent += 1.0) {
+    rig.service->NoteLobbyViewed();
+    rig.Tick(1.0);
+  }
+}
+
+void TestLobbyVisibilityDefaultsToOffAndSendsNothing() {
+  CHECK(!UserSettings{}.lobby_visible);
+  Rig rig;
+  SignInToLobbyService(rig);
+  for (int i = 0; i < 30; ++i) rig.Tick(5.0);
+  CHECK(rig.Count("lobby.publish") == 0 && rig.Count("lobby.list") == 0);
+  CHECK(rig.service->snapshot().lobby.supported && !rig.service->snapshot().lobby.visible);
+  CHECK(rig.CountLogs("online lobby service supported=true") == 1);
+}
+
+void TestLobbyVisibilityIsPublishedOnceAndOnChange() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  CHECK(rig.Count("lobby.publish") == 1 && Contains(rig.LastRequest("lobby.publish"), "\"visible\":true"));
+  for (int i = 0; i < 10; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("lobby.publish") == 1);
+  CHECK(!rig.service->snapshot().lobby.visible);
+  rig.Reply("lobby.publish", "\"visible\":true");
+  CHECK(rig.service->snapshot().lobby.visible && rig.CountLogs("online lobby visible=true") == 1);
+  for (int i = 0; i < 10; ++i) rig.Tick(5.0);
+  CHECK(rig.Count("lobby.publish") == 1);
+
+  rig.service->Apply({true, "Saulo", false});
+  rig.Tick();
+  CHECK(rig.Count("lobby.publish") == 2 && Contains(rig.LastRequest("lobby.publish"), "\"visible\":false"));
+  rig.Reply("lobby.publish", "\"visible\":false");
+  CHECK(!rig.service->snapshot().lobby.visible);
+  for (int i = 0; i < 10; ++i) rig.Tick(5.0);
+  CHECK(rig.Count("lobby.publish") == 2);
+}
+
+void TestLobbyVisibilityChangedWhileSendingFollowsTheLastChoice() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  rig.service->Apply({true, "Saulo", false});
+  for (int i = 0; i < 5; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("lobby.publish") == 1);
+  rig.Reply("lobby.publish", "\"visible\":true");
+  rig.Tick();
+  CHECK(rig.Count("lobby.publish") == 2 && Contains(rig.LastRequest("lobby.publish"), "\"visible\":false"));
+  rig.Reply("lobby.publish", "\"visible\":false");
+  CHECK(!rig.service->snapshot().lobby.visible);
+}
+
+void TestRefusedLobbyPublishIsRetriedLaterNotInALoop() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  rig.Reply("lobby.publish", "", "limit");
+  CHECK(!rig.service->snapshot().lobby.visible && rig.CountLogs("online lobby publish refused code=limit") == 1);
+  for (int i = 0; i < 12; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("lobby.publish") == 1);
+  for (int i = 0; i < 6; ++i) rig.Tick(1.0);
+  CHECK(rig.Count("lobby.publish") == 2);
+  CHECK(rig.service->snapshot().connection == Connection::kOnline);
+}
+
+void TestLobbyIsReadOnlyWhileItsPageIsShownAndRefreshesBySelf() {
+  Rig rig;
+  SignInToLobbyService(rig);
+  for (int i = 0; i < 20; ++i) rig.Tick(5.0);
+  CHECK(rig.Count("lobby.list") == 0);
+
+  rig.service->NoteLobbyViewed();
+  rig.Tick();
+  CHECK(rig.Count("lobby.list") == 1 && !Contains(rig.LastRequest("lobby.list"), "\"rev\""));
+  CHECK(!rig.service->snapshot().lobby.fetched);
+  rig.Reply("lobby.list", LobbyAnswer(1700000000123, LobbyRow("JKLM-3456", "Kim") + "," + LobbyRow("NPQR-7892", "Zoe", "tu023", false)));
+  const Snapshot first = rig.service->snapshot();
+  CHECK(first.lobby.fetched && !first.lobby.failed && first.lobby.players.size() == 2);
+  CHECK(first.lobby.players[0].name == "Kim" && first.lobby.players[1].guest == "tu023" && !first.lobby.players[1].compatible);
+  CHECK(rig.CountLogs("online lobby players=2") == 1);
+
+  int ticks = 0;
+  while (rig.Count("lobby.list") == 1 && ticks < 60) {
+    rig.service->NoteLobbyViewed();
+    rig.Tick(1.0);
+    ++ticks;
+  }
+  CHECK(ticks >= 28 && ticks <= 32);
+  CHECK(rig.Count("lobby.list") == 2 && Contains(rig.LastRequest("lobby.list"), "\"rev\":1700000000123"));
+  rig.Reply("lobby.list", "\"unchanged\":true,\"rev\":1700000000123,\"visible\":false");
+  CHECK(rig.service->snapshot().lobby.players.size() == 2 && !rig.service->snapshot().lobby.failed);
+  CHECK(rig.CountLogs("online lobby players=") == 1);
+
+  for (int i = 0; i < 60; ++i) rig.Tick(5.0);
+  CHECK(rig.Count("lobby.list") == 2);
+}
+
+void TestReopeningTheLobbyPageReadsAtOnce() {
+  Rig rig;
+  SignInToLobbyService(rig);
+  ViewLobby(rig, 3);
+  CHECK(rig.Count("lobby.list") == 1);
+  rig.Reply("lobby.list", LobbyAnswer(10, LobbyRow("JKLM-3456", "Kim")));
+  for (int i = 0; i < 4; ++i) rig.Tick(1.0);
+  rig.service->NoteLobbyViewed();
+  rig.Tick();
+  CHECK(rig.Count("lobby.list") == 2 && Contains(rig.LastRequest("lobby.list"), "\"rev\":10"));
+}
+
+void TestLobbyAnswerReplacesThePlayers() {
+  Rig rig;
+  SignInToLobbyService(rig);
+  ViewLobby(rig, 1);
+  rig.Reply("lobby.list", LobbyAnswer(10, LobbyRow("JKLM-3456", "Kim")));
+  CHECK(rig.service->snapshot().lobby.players.size() == 1);
+  ViewLobby(rig, 31);
+  rig.Reply("lobby.list", LobbyAnswer(11, LobbyRow("NPQR-7892", "Zoe") + "," + LobbyRow("STUV-2345", "Ann")));
+  const Snapshot s = rig.service->snapshot();
+  CHECK(s.lobby.players.size() == 2 && s.lobby.players[0].name == "Zoe");
+  ViewLobby(rig, 31);
+  CHECK(Contains(rig.LastRequest("lobby.list"), "\"rev\":11"));
+  rig.Reply("lobby.list", LobbyAnswer(12, ""));
+  CHECK(rig.service->snapshot().lobby.fetched && rig.service->snapshot().lobby.players.empty());
+}
+
+void TestLobbyFailureNeverTakesTheServiceOffline() {
+  Rig rig;
+  SignInToLobbyService(rig);
+  rig.Reply("friends.list", "\"friends\":[" + FriendJson(kFriendA, "SauloB", true) + "]");
+  rig.Reply("friends.requests", "\"incoming\":[],\"outgoing\":[]");
+  ViewLobby(rig, 1);
+  rig.Reply("lobby.list", "", "internal");
+  Snapshot s = rig.service->snapshot();
+  CHECK(s.connection == Connection::kOnline && s.lobby.failed && !s.lobby.fetched && s.friends.size() == 1);
+  CHECK(LobbyMessage(s.lobby) == "Cannot read the Lobby right now.");
+  CHECK(rig.CountLogs("online lobby read failed code=internal") == 1);
+  CHECK(rig.service->AddFriend("JKLM-3456") == FriendRequestResult::kSent);
+  rig.Reply("friends.add", "\"player\":\"JKLM-3456\",\"name\":\"Kim\",\"state\":\"pending\"");
+
+  ViewLobby(rig, 20);
+  CHECK(rig.Count("lobby.list") == 1);
+  ViewLobby(rig, 12);
+  CHECK(rig.Count("lobby.list") == 2);
+  rig.Reply("lobby.list", LobbyAnswer(3, LobbyRow("JKLM-3456", "Kim")));
+  s = rig.service->snapshot();
+  CHECK(!s.lobby.failed && s.lobby.fetched && s.connection == Connection::kOnline);
+
+  ViewLobby(rig, 31);
+  rig.Reply("lobby.list", "", "limit");
+  s = rig.service->snapshot();
+  CHECK(s.lobby.failed && s.lobby.fetched && s.lobby.players.size() == 1 && LobbyMessage(s.lobby).empty());
+  CHECK(s.connection == Connection::kOnline);
+}
+
+void TestMalformedLobbyAnswerIsAFailedRead() {
+  Rig rig;
+  SignInToLobbyService(rig);
+  ViewLobby(rig, 1);
+  rig.Reply("lobby.list", "\"players\":[{\"name\":\"NoPlayer\"}],\"rev\":4");
+  const Snapshot s = rig.service->snapshot();
+  CHECK(s.lobby.failed && !s.lobby.fetched && s.connection == Connection::kOnline);
+  CHECK(rig.CountLogs("online lobby read failed code=malformed") == 1);
+}
+
+void TestAnOlderServiceGetsNoLobbyRequests() {
+  for (const bool announces_nothing : {true, false}) {
+    Rig rig;
+    if (announces_nothing) {
+      SignInToLobbyService(rig, true, false);
+    } else {
+      rig.service->Apply({true, "Saulo", true});
+      rig.Tick();
+      rig.Event(ChannelEvent::Kind::kOpen);
+      rig.Reply("hello", "\"player\":\"" + rig.me + "\",\"name\":\"Saulo\",\"friend_code\":\"" + rig.me +
+                             "\",\"capabilities\":{\"protocol_version\":3,\"public_lobby\":false}");
+    }
+    ViewLobby(rig, 120);
+    CHECK(rig.Count("lobby.publish") == 0 && rig.Count("lobby.list") == 0);
+    const Snapshot s = rig.service->snapshot();
+    CHECK(!s.lobby.supported && !s.lobby.visible && !s.lobby.fetched);
+    CHECK(Contains(LobbyMessage(s.lobby), "does not have the public Lobby"));
+    CHECK(s.connection == Connection::kOnline && rig.CountLogs("online lobby service supported=false") == 1);
+    rig.Reply("friends.list", "\"friends\":[]");
+    CHECK(rig.service->snapshot().fetched);
+  }
+}
+
+void TestAServiceThatDoesNotKnowTheOperationIsLeftAlone() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  rig.Reply("lobby.publish", "", "bad_request");
+  ViewLobby(rig, 120);
+  CHECK(rig.Count("lobby.publish") == 1 && rig.Count("lobby.list") == 0);
+  CHECK(!rig.service->snapshot().lobby.supported && rig.service->snapshot().connection == Connection::kOnline);
+
+  Rig reads;
+  SignInToLobbyService(reads);
+  ViewLobby(reads, 1);
+  reads.Reply("lobby.list", "", "bad_request");
+  ViewLobby(reads, 120);
+  CHECK(reads.Count("lobby.list") == 1 && !reads.service->snapshot().lobby.supported);
+}
+
+void TestLobbyStartsOverOnEveryNewConnection() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  rig.Reply("lobby.publish", "\"visible\":true");
+  ViewLobby(rig, 1);
+  rig.Reply("lobby.list", LobbyAnswer(7, LobbyRow("JKLM-3456", "Kim")));
+  CHECK(rig.service->snapshot().lobby.visible && rig.service->snapshot().lobby.players.size() == 1);
+
+  rig.Event(ChannelEvent::Kind::kClosed, "link_lost");
+  Snapshot s = rig.service->snapshot();
+  CHECK(!s.lobby.visible && !s.lobby.fetched && s.lobby.players.empty());
+  rig.Tick(2.0);
+  CHECK(rig.channels.size() == 2);
+  rig.Event(ChannelEvent::Kind::kOpen);
+  rig.Reply("hello", "\"player\":\"" + rig.me + "\",\"name\":\"Saulo\",\"friend_code\":\"" + rig.me + "\"," + kLobbyCaps);
+  CHECK(rig.Count("lobby.publish") == 1 && Contains(rig.LastRequest("lobby.publish"), "\"visible\":true"));
+  rig.service->NoteLobbyViewed();
+  rig.Tick();
+  CHECK(rig.Count("lobby.list") == 1 && !Contains(rig.LastRequest("lobby.list"), "\"rev\""));
+}
+
+void TestRenamingSignsInAgainAndListsAgain() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  rig.Reply("lobby.publish", "\"visible\":true");
+  rig.service->Apply({true, "Renamed", true});
+  for (int i = 0; i < 4; ++i) rig.Tick(1.0);
+  CHECK(rig.channels.size() == 2);
+  CHECK(!rig.service->snapshot().lobby.visible);
+  rig.Event(ChannelEvent::Kind::kOpen);
+  rig.Reply("hello", "\"player\":\"" + rig.me + "\",\"name\":\"Renamed\",\"friend_code\":\"" + rig.me + "\"," + kLobbyCaps);
+  CHECK(rig.Count("lobby.publish") == 1);
+}
+
+void TestOnlinePlayOffLeavesTheLobbyAndTurningItOnPublishesAgain() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  rig.Reply("lobby.publish", "\"visible\":true");
+  rig.service->Apply({false, "Saulo", true});
+  const Snapshot off = rig.service->snapshot();
+  CHECK(!off.lobby.visible && !off.lobby.fetched && off.lobby.players.empty());
+  rig.Tick(3.0);
+  CHECK(rig.Last().closed);
+  const size_t opened = rig.channels.size();
+  for (int i = 0; i < 10; ++i) rig.Tick(5.0);
+  CHECK(rig.channels.size() == opened);
+
+  rig.service->Apply({true, "Saulo", true});
+  rig.Tick();
+  rig.Event(ChannelEvent::Kind::kOpen);
+  rig.Reply("hello", "\"player\":\"" + rig.me + "\",\"name\":\"Saulo\",\"friend_code\":\"" + rig.me + "\"," + kLobbyCaps);
+  CHECK(rig.channels.size() == opened + 1 && rig.Count("lobby.publish") == 1);
+}
+
+void TestLobbyRowsFollowTheFriendsTab() {
+  Rig rig;
+  rig.SignIn();
+  rig.Reply("friends.list", "\"friends\":[" + FriendJson(kFriendA, "SauloB", true) + "]");
+  rig.Reply("friends.requests", "\"incoming\":[{\"player\":\"NPQR-7892\",\"name\":\"Zoe\"}],"
+                                "\"outgoing\":[{\"player\":\"JKLM-3456\",\"name\":\"Kim\"}]");
+  const Snapshot s = rig.service->snapshot();
+  const auto row = [](const char* player, const char* guest = "base013", bool compatible = true) {
+    LobbyPlayer p;
+    p.player = player;
+    p.name = "Someone";
+    p.platform = "Windows";
+    p.version = "0.4.0";
+    p.guest = guest;
+    p.compatible = compatible;
+    return p;
+  };
+
+  const LobbyRowView friend_row = DescribeLobbyPlayer(s, row(kFriendA));
+  CHECK(friend_row.relation == LobbyRelation::kFriend && !friend_row.can_add);
+  const LobbyRowView sent = DescribeLobbyPlayer(s, row("JKLM-3456"));
+  CHECK(sent.relation == LobbyRelation::kOutgoing && !sent.can_add);
+  const LobbyRowView waiting = DescribeLobbyPlayer(s, row("NPQR-7892"));
+  CHECK(waiting.relation == LobbyRelation::kIncoming && !waiting.can_add);
+  const LobbyRowView own = DescribeLobbyPlayer(s, row(rig.me.c_str()));
+  CHECK(own.relation == LobbyRelation::kNone && !own.can_add);
+  const LobbyRowView stranger = DescribeLobbyPlayer(s, row("STUV-2345"));
+  CHECK(stranger.relation == LobbyRelation::kNone && stranger.can_add && !stranger.incompatible);
+  CHECK(stranger.status == "Online \xC2\xB7 Windows \xC2\xB7 v0.4.0 \xC2\xB7 Base013");
+
+  const LobbyRowView other = DescribeLobbyPlayer(s, row("STUV-2345", "tu023", false));
+  CHECK(other.incompatible && other.can_add && Contains(other.status, "TU023"));
+
+  Snapshot offline = s;
+  offline.connection = Connection::kOffline;
+  CHECK(!DescribeLobbyPlayer(offline, row("STUV-2345")).can_add);
+  for (const Connection state : {Connection::kChecking, Connection::kError, Connection::kOff}) {
+    offline.connection = state;
+    CHECK(!DescribeLobbyPlayer(offline, row("STUV-2345")).can_add);
+  }
+}
+
+void TestLobbyMessagesSayWhyThereIsNoList() {
+  LobbySnapshot lobby;
+  CHECK(Contains(LobbyMessage(lobby), "does not have the public Lobby"));
+  lobby.supported = true;
+  CHECK(LobbyMessage(lobby) == "Looking for players...");
+  lobby.failed = true;
+  CHECK(LobbyMessage(lobby) == "Cannot read the Lobby right now.");
+  lobby.failed = false;
+  lobby.fetched = true;
+  CHECK(LobbyMessage(lobby) == "No players are in the Lobby right now.");
+  lobby.players.push_back(LobbyPlayer{});
+  CHECK(LobbyMessage(lobby).empty());
+  lobby.failed = true;
+  CHECK(LobbyMessage(lobby).empty());
+}
+
+void TestAddFriendFromTheLobbyIsTheFriendRequest() {
+  Rig rig;
+  SignInToLobbyService(rig);
+  rig.Reply("friends.list", "\"friends\":[" + FriendJson(kFriendA, "SauloB", true) + "]");
+  rig.Reply("friends.requests", "\"incoming\":[],\"outgoing\":[]");
+  CHECK(rig.service->AddFriend("JKLM-3456") == FriendRequestResult::kSent);
+  CHECK(Contains(rig.LastRequest("friends.add"), "\"code\":\"JKLM-3456\""));
+  rig.Reply("friends.add", "\"player\":\"JKLM-3456\",\"name\":\"Kim\",\"state\":\"pending\"");
+  rig.Reply("friends.requests", "\"incoming\":[],\"outgoing\":[{\"player\":\"JKLM-3456\",\"name\":\"Kim\"}]");
+  CHECK(rig.service->AddFriend("JKLM-3456") == FriendRequestResult::kAlreadyPending);
+  CHECK(rig.service->AddFriend(kFriendA) == FriendRequestResult::kAlreadyFriends);
+  CHECK(rig.service->AddFriend(rig.me) == FriendRequestResult::kOwnCode);
+  CHECK(rig.Count("friends.add") == 1);
+  const Snapshot s = rig.service->snapshot();
+  LobbyPlayer p;
+  p.player = "JKLM-3456";
+  p.name = "Kim";
+  CHECK(DescribeLobbyPlayer(s, p).relation == LobbyRelation::kOutgoing);
+}
+
+void TestLobbyRequestsNeverCarryPrivateData() {
+  Rig rig;
+  SignInToLobbyService(rig, true);
+  ViewLobby(rig, 1);
+  for (const std::string& request : rig.Last().sent) {
+    if (!Contains(request, "\"op\":\"lobby.")) continue;
+    CHECK(!Contains(request, kToken) && !Contains(request, "token") && !Contains(request, "lan") && !Contains(request, "ip"));
+    CHECK(!Contains(request, rig.me));
+  }
+  for (const std::string& line : rig.logs) CHECK(!Contains(line, kToken));
+}
+
 int main() {
   std::printf("online service tests\n");
+  TestHelloAdvertisesWhatThisBuildSupportsAndWhatIsOn();
+  TestEveryOnOffCombinationIsDeterministic();
+  TestSecretStatusTextsExplainWhyACharacterIsOrIsNotAvailable();
+  TestAnOldPeerOrAnOldServiceNeverOffersASecretCharacter();
+  TestTheClientChecksTheServicesAnswerAgainstItsOwnOptions();
+  TestAnOptionChangeIsSentOnceAndRecomputesTheRoom();
+  TestARefusedOptionChangeIsRetriedLater();
+  TestARoomEventForAnotherMatchIsIgnored();
+  TestDisconnectReconnectAndLeaveClearTheNegotiatedState();
+  TestAMalformedRoomAnswerOffersNothing();
   TestOnlineOffHasNoNetworkBehaviour();
   TestSignInSendsPresenceDetailsAndNeverTheTokenInLogs();
   TestFriendsAndPresenceAreShown();
@@ -2598,6 +3206,24 @@ int main() {
   TestEveryMatchAfterARelayMatchStartsClean();
   TestRefusedRelayChoiceFailsTheMatch();
   TestHostThenJoinWithoutRestartReversesRoles();
+  TestLobbyVisibilityDefaultsToOffAndSendsNothing();
+  TestLobbyVisibilityIsPublishedOnceAndOnChange();
+  TestLobbyVisibilityChangedWhileSendingFollowsTheLastChoice();
+  TestRefusedLobbyPublishIsRetriedLaterNotInALoop();
+  TestLobbyIsReadOnlyWhileItsPageIsShownAndRefreshesBySelf();
+  TestReopeningTheLobbyPageReadsAtOnce();
+  TestLobbyAnswerReplacesThePlayers();
+  TestLobbyFailureNeverTakesTheServiceOffline();
+  TestMalformedLobbyAnswerIsAFailedRead();
+  TestAnOlderServiceGetsNoLobbyRequests();
+  TestAServiceThatDoesNotKnowTheOperationIsLeftAlone();
+  TestLobbyStartsOverOnEveryNewConnection();
+  TestRenamingSignsInAgainAndListsAgain();
+  TestOnlinePlayOffLeavesTheLobbyAndTurningItOnPublishesAgain();
+  TestLobbyRowsFollowTheFriendsTab();
+  TestLobbyMessagesSayWhyThereIsNoList();
+  TestAddFriendFromTheLobbyIsTheFriendRequest();
+  TestLobbyRequestsNeverCarryPrivateData();
   std::printf("%d checks, %d failures\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;
 }

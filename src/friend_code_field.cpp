@@ -73,12 +73,12 @@ int FriendCodeField::ApplyPaste(ImGuiInputTextCallbackData* data) {
   return 0;
 }
 
-void FriendCodeField::Draw(char* buffer, size_t size, const FieldLog& log) {
+void FriendCodeField::Draw(char* buffer, size_t size, const FieldLog& log, float width) {
   const FieldLog quiet = [](const std::string&) {};
   const FieldLog& out = log ? log : quiet;
   if (was_active_ && CtrlDown() && ImGui::IsKeyPressed(ImGuiKey_V, false)) ReadPaste(out);
 
-  ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+  ImGui::SetNextItemWidth(width > 0.0f ? width : ImGui::GetContentRegionAvail().x * 0.6f);
   const bool changed = ImGui::InputTextWithHint("##add_code", "XXXX-XXXX", buffer, size,
                                                 ImGuiInputTextFlags_CharsUppercase | ImGuiInputTextFlags_CallbackAlways,
                                                 ApplyPaste, this);

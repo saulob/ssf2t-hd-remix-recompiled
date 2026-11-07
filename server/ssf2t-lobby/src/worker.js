@@ -4,9 +4,10 @@
 // binary frames are relay frames of the sender's match.
 import { DurableObject } from 'cloudflare:workers';
 
-import { COUNTRY_HEADER, handleAdmin, internalMetricsRoute, isAdminPath, limitedCount } from './admin.js';
+import { COUNTRY_HEADER, handleAdmin, internalIncidentRoute, internalMetricsRoute, isAdminPath, limitedCount } from './admin.js';
 import { handleUpgrade } from './edge.js';
 import { Hub } from './hub.js';
+import { INCIDENT } from './incidents.js';
 import { LIMITS, PROTOCOL, RELAY, SERVICE, WORKER_BUILD } from './protocol.js';
 
 class WorkerConn {
@@ -57,6 +58,7 @@ export class SSF2TLobby extends DurableObject {
           run: (query, ...args) => {
             sql.exec(query, ...args);
           },
+          transaction: (work) => ctx.storage.transactionSync(work),
         },
         sockets: () => ctx.getWebSockets().map((ws) => new WorkerConn(ws)),
         now: () => Date.now(),
@@ -67,6 +69,16 @@ export class SSF2TLobby extends DurableObject {
   }
 
   async fetch(request) {
+    const incident = internalIncidentRoute(request);
+    if (incident?.kind === 'list') return Response.json(this.hub.incidentList());
+    if (incident?.kind === 'one') {
+      const found = this.hub.incidentForAdmin(incident.ticket);
+      return found ? Response.json(found) : new Response('Not found', { status: 404 });
+    }
+    if (incident?.kind === 'status') {
+      const saved = this.hub.setIncidentStatus(incident.ticket, await request.json());
+      return saved ? Response.json(saved) : new Response('Not found', { status: 404 });
+    }
     const metrics = internalMetricsRoute(request);
     if (metrics?.kind === 'summary') return Response.json(this.hub.metricsSummary());
     if (metrics?.kind === 'history') return Response.json(this.hub.metricsHistory(metrics.days, metrics.recent));
@@ -85,7 +97,7 @@ export class SSF2TLobby extends DurableObject {
       this.hub.relay(new WorkerConn(ws), new Uint8Array(message));
       return;
     }
-    if (typeof message !== 'string' || message.length > LIMITS.frameBytes) {
+    if (typeof message !== 'string' || message.length > INCIDENT.frameChars) {
       ws.close(1009, 'text frames up to the size limit only');
       return;
     }
@@ -122,9 +134,17 @@ export default {
         if (!r.ok) throw new Error(`lobby answered ${r.status}`);
         return r.json();
       });
+      const report = (path, init) => lobby().fetch(`https://lobby.internal${path}`, init).then((r) => {
+        if (r.status === 404) return null;
+        if (!r.ok) throw new Error(`lobby answered ${r.status}`);
+        return r.json();
+      });
       return handleAdmin(request, env, {
         summary: () => internal('/metrics/summary'),
         history: (days, recent) => internal(`/metrics/history?days=${days}&recent=${recent}`),
+        incidents: () => internal('/incidents'),
+        incident: (ticket) => report(`/incidents/${ticket}`),
+        setIncidentStatus: (ticket, change) => report(`/incidents/${ticket}/status`, { method: 'POST', body: JSON.stringify(change) }),
       }, (text) => console.log(text));
     }
     if (request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {

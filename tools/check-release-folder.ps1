@@ -7,11 +7,16 @@
   .\tools\check-release-folder.ps1 dist\SSF2THDRemix-v0.3.0-windows-x64
 #>
 param(
-    [Parameter(Mandatory)][string]$Folder
+    [Parameter(Mandatory)][string]$Folder,
+    [string]$PackageTable  # default: src\character\character_packages.h
 )
 $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path $PSScriptRoot -Parent
+. (Join-Path $PSScriptRoot 'character-packages.ps1')
+if (-not $PackageTable) { $PackageTable = Join-Path $Root 'src\character\character_packages.h' }
+$CharacterPackages = Get-CharacterPackages $PackageTable
+$CharacterFolder = 'assets\characters'
 $RequiredFiles = @('ssf2t_hd_remix.exe', 'trg-updater.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'ssf2t_hd_remix.toml', 'README.txt', 'LICENSE')
 $LicenseFiles = @('ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt')
 $AssetFiles = @('assets\launcher\header-art.png', 'assets\launcher\sponsor-heart.png')
@@ -79,8 +84,9 @@ function Test-ReleaseFolder([string]$Dir) {
             if ($parts.Count -gt 2 -or $item.PSIsContainer -or $LicenseFiles -notcontains $item.Name) { $problems.Add("unexpected item: $relative") }
         } elseif ($parts[0] -eq 'assets') {
             if ($item.PSIsContainer) {
-                if ($relative -ne 'assets\launcher') { $problems.Add("unexpected folder: $relative") }
-            } elseif ($AssetFiles -notcontains $relative) {
+                if ($relative -notin 'assets\launcher', $CharacterFolder) { $problems.Add("unexpected folder: $relative") }
+            } elseif ($AssetFiles -notcontains $relative -and
+                ($parts.Count -ne 3 -or $parts[1] -ne 'characters' -or $CharacterPackages.File -notcontains $item.Name)) {
                 $problems.Add("unexpected item: $relative")
             }
         } else {
@@ -96,6 +102,7 @@ function Test-ReleaseFolder([string]$Dir) {
     foreach ($asset in $AssetFiles) {
         if (-not (Test-Path -LiteralPath (Join-Path $base $asset) -PathType Leaf)) { $problems.Add("missing: $asset") }
     }
+    foreach ($problem in Test-CharacterPackages (Join-Path $base $CharacterFolder) $CharacterPackages) { $problems.Add($problem) }
     return $problems
 }
 

@@ -97,7 +97,11 @@ PLAYING
   request, then press PLAY and choose Multiplayer > Online Match in the game
   (Find Match, Create Match or Invite Player). Matches use a direct UDP
   connection and fall back to a relay automatically. Both players must run the
-  same game version (0.0.1.3 or 0.0.2.3). F3 shows the Ping display.
+  same game version (0.0.1.3 or 0.0.2.3). F3 shows the Ping display. The
+  Online page's Lobby tab lists players who chose to be shown there, so you can
+  send them a friend request.
+- Local Match against the CPU: in the Local Match lobby press X to add a CPU
+  opponent and cycle its difficulty from 1 to 8, and Y to remove it.
 - To open the launcher again after turning it off, hold Shift while starting.
 
 Launcher options:
@@ -106,9 +110,12 @@ Launcher options:
   Stretch fills the window).
 - Graphics: graphics card, render resolution, internal render resolution,
   anti-aliasing, multisampling and texture filtering.
-- Gameplay: language (English, French, German, Italian, Spanish or Portugues Brasil), and what
-  the window title and the corner counter show.
+- Gameplay: language (English, French, German, Italian, Spanish or Portugues Brasil), what
+  the window title and the corner counter show, Skip intro, Enable Akuma,
+  Akuma bug fixes (experimental) and Enable Evil Ryu and Violent Ken.
 - Achievements: unlocked achievements and gamerscore.
+- Bug Report: send a report with a log; the log is previewed with personal
+  details removed first, and My reports shows its status and any reply.
 
 The game always runs at its original speed of 60 updates per second.
 

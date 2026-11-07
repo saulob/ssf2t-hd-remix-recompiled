@@ -45,7 +45,7 @@ One JSON object per text frame; the literal `ping` is answered `pong`. Requests 
 
 | op | fields | answer |
 |---|---|---|
-| `hello` | `proto`, `game`, `guest` (`base013`/`tu023`), `build`, `player`, `token`, `name`, `version`, `platform`, `presence`, `relay` | `player`, `name`, `friend_code`, `capabilities` |
+| `hello` | `proto`, `game`, `guest` (`base013`/`tu023`), `build`, `player`, `token`, `name`, `version`, `platform`, `presence`, `relay`, optional `secret` | `player`, `name`, `friend_code`, `capabilities` |
 | `ping` | | `time` |
 | `friends.list` / `friends.requests` | | `friends[]` / `incoming[]`, `outgoing[]` |
 | `friends.add` | `code` | `player`, `name`, `state` (`pending`/`friends`) |
@@ -58,17 +58,20 @@ One JSON object per text frame; the literal `ping` is answered `pong`. Requests 
 | `match.ready` | `match`, `ready` | |
 | `match.transport` | `match`, `transport` (`direct`/`relay`); host only | |
 | `match.leave` / `match.resume` | `match` | `.resume` answers with the match |
+| `secret.update` | `secret` (as in `hello`) | `secret` (the match's view) when in a match |
+| `lobby.publish` | `visible` (boolean) | `visible` |
+| `lobby.list` | optional `rev` (the revision the client holds) | `players[]`, `rev`, `visible`; or `unchanged`, `rev`, `visible` |
 
 A friend row is `{player, name, online, state, platform, version, guest, build, compatible}`; `state` is `offline`,
 `online`, `player_match`, `connecting` or `in_game`.
 
-`capabilities` is `{protocol_version, worker_build, public_endpoints, relay_supported, relay_max_payload, fight_telemetry}`; an older
-service sends none, which clients read as no relay and no fight telemetry. `match.created` and the `pm.join` answer carry `relay_token` when
+`capabilities` is `{protocol_version, worker_build, public_endpoints, relay_supported, relay_max_payload, fight_telemetry,
+secret_characters, public_lobby, bug_reports}`; an older service sends none, which clients read as no relay, no fight telemetry, no secret characters and no reports. `match.created` and the `pm.join` answer carry `relay_token` when
 the match has a relay.
 
 Events: `friend.request`, `friend.added`, `friend.removed`, `friend.status`, `friend.offline`, `match.created`
 (with `session`), `match.peer`, `match.ready`,
-`match.peer_lost`, `match.peer_back`, `match.ended` (`left`, `disconnect`, `expired`), `match.transport` (to the joiner),
+`match.peer_lost`, `match.peer_back`, `match.secret`, `match.ended` (`left`, `disconnect`, `expired`), `match.transport` (to the joiner),
 `relay.closed` (`peer_disconnected`, `rate_limit`, `peer_backpressure`, `peer_unavailable`, `unavailable`).
 
 Errors: `bad_request`, `too_large`, `no_session`, `proto`, `bad_game`, `bad_guest`, `unauthorized`, `not_found`,
@@ -86,16 +89,111 @@ connection; only the port comes from the client, and LAN candidates reach only a
 dropped socket keeps its match seat for 30 s (`match.resume` retakes it); after that the peer hears `match.ended`.
 
 Limits: 4 KB frames, 16-character names, 60 messages burst then 20/s per socket (`friends.add`, `pm.host`, `pm.join`,
-`invite.send`, `match.resume` 10 burst then 1/s), 16 sockets and 20 new players per day per address, 200 friends, 50 pending requests each way.
+`invite.send`, `match.resume`, `secret.update` 10 burst then 1/s), 16 sockets and 20 new players per day per address, 200 friends, 50 pending requests each way.
 Relay: 400 frames/s (burst 800) and 128 KB/s (burst 256 KB) per socket, twice that per match; 256 dropped frames in a
 match end its relay. All matches share the one Durable Object, so relayed traffic counts against its CPU and request
 budget.
+
+### Secret characters (optional, protocol 3 unchanged)
+
+Three characters outside the original roster, Akuma (id 16), Evil Ryu (id 17) and Violent Ken (id 18), are playable
+online only when both players have them, each on its own. Each connection advertises, in `hello` and later with
+`secret.update`:
+
+```
+"secret": {"supports": {"akuma": bool, "evil_ryu": bool, "violent_ken": bool},
+           "enabled": {"akuma": bool, "evil_ryu": bool, "violent_ken": bool}}
+```
+
+`supports` is what the client's build can play, `enabled` what the player turned on. Parsing is strict: anything that is
+not exactly `true` is `false`; a missing or malformed field, a malformed section and unknown keys never fail the request
+and read as `false`; `enabled` counts only where `supports` is true. A client that sends nothing (every client before
+this field) supports and enables nothing, so a match with it never has a secret character. The value is kept on the
+connection and copied into the match row when a match is created (`host_secret`, `join_secret`: bit 0 supports Akuma,
+bit 1 supports Evil Ryu, bit 2 enabled Akuma, bit 3 enabled Evil Ryu, bit 4 supports Violent Ken, bit 5 enabled Violent
+Ken); nothing carries from one match to the next, and
+`match.resume` refreshes the resuming seat's mask from its new connection.
+
+The match answers (`pm.join`, `match.created`, `match.resume`) carry, for the receiving seat:
+
+```
+"secret": {"peer": {"supports": {...}, "enabled": {...}}, "effective": {"akuma": bool, "evil_ryu": bool, "violent_ken": bool}}
+```
+
+`peer` is the other seat's stored capabilities; `effective.k` is true only when both seats support and enabled `k`, the
+same for both seats. `secret.update` answers `{}`, plus the same `secret` view when the sender is in a match. When it
+changes the sender's capabilities (an identical update does nothing: no write, no event) and the sender is in a match,
+the stored mask is updated and both seats receive `{"ev":"match.secret","match":id,"secret":<their view>}`; a
+`match.resume` that changes the mask sends it to the peer. No player id is in any of it. `secret.update` shares the
+10 burst / 1 per second bucket of the other social operations.
+
+### Public Lobby (optional, protocol 3 unchanged)
+
+A player who wants to be found sends `lobby.publish` with `visible: true`; anyone can then read the visible players with
+`lobby.list` and send one a friend request with the ordinary `friends.add`. The Lobby never creates a match or a
+friendship. Service `capabilities.public_lobby` is `true` (worker build `2026-11-06-lobby`); a client that does not
+see it sends no Lobby request, and a Worker that does not know the operations answers `bad_request`, which the client
+reads as "no Lobby" and stops asking. The protocol number stays 3 and no other operation changed.
+
+- **Storage**: none. Visibility is a boolean in the socket's attachment (`lobby`), like the secret capabilities, so it
+  survives hibernation, ends with the socket and cannot outlive its player: closing the socket (or the player turning it
+  Off) removes the listing, with no table, no alarm and no cleanup. A player with several connections is listed once;
+  `presence: false` connections (the Connection test) cannot be listed.
+- **`lobby.publish`** needs `presence` and `visible` to be a boolean (`bad_request` otherwise). An unchanged value
+  changes nothing. It counts toward the per-socket social limit (burst 10, then one per second).
+- **`lobby.list`** returns up to 50 players other than the sender, compatible ones first, then by name. A row is
+  `{player, name, state, platform, version, guest, compatible}`: `player` is the public id that is also the friend code,
+  the target of `friends.add`, which a launcher uses and never shows; `state` is `online`, `player_match`,
+  `connecting` or `in_game`; `compatible` is the same rule as friends and Player Matches (same `guest` and `build`).
+  Never in a row, an answer or a log: token or its hash, address (public or LAN), endpoint, relay token, match, session,
+  QoS, rules, country or the sender's relationship to anyone. Incompatible players are listed, marked.
+- **Revision**: `rev` changes whenever the visible set or a visible player's `state` does (a counter in memory that
+  starts at the time the object wakes, so a restart never repeats a number a client holds). A request that sends the
+  current `rev` is answered `unchanged`, without the list.
+- **Limits**: reads are limited to 6 per player in a burst, then one per 5 s (`limit`, counted as `lobby_list_limited` in
+  the dashboard's abuse table); malformed requests spend nothing. Neither operation writes to SQL, rewrites a presence or
+  player row, or broadcasts to anyone: the clients poll, only while their Lobby page is open, every 30 s.
+- **Local**: `local/server.js` runs the same hub, so two local instances can test visibility, listing,
+  compatibility (start one with `SSF2T_LOBBY=ws://127.0.0.1:8791/` on each), adding a friend from the Lobby and
+  disappearance after Off or a closed connection.
+
+### Bug reports (optional, protocol 3 unchanged)
+
+The launcher's Bug Report page files a problem report with three operations. Service `capabilities.bug_reports` is
+`true` (worker build `2026-11-07-bug-reports`); a client that sees no such capability sends no report, and a Worker that
+does not know the operations answers `bad_request`, which the client reads as "no reports" and stops asking.
+The protocol number stays 3 and no other operation changed.
+
+- `incident.file` (after `hello`; the client signs in with `presence: false`) takes the report's fields, all strings:
+  `description` (10 to 500 characters, no control characters other than line feed and tab), `launcher_version`,
+  `guest` (`base013` or `tu023`), `platform`, `operating_system`, `runtime` (each up to 64 characters),
+  `log_file` (`ssf2t_hd_remix_<3 to 10 digits>.log`), `log_clipped` (`yes` or `no`) and `log_text` (up to 64 KiB of UTF-8, never
+  empty). Any other field, any missing field or any value out of range is refused (`bad_request`, or `too_large` for a
+  size) and nothing is stored. The answer is `{ticket, receipt, submitted_at}`: a ticket `SSF2-XXXXXX` and a 256-bit random
+  receipt, shown once.
+- `incident.status` takes `{reports: [{ticket, receipt}]}` (at most 30) and answers
+  `{reports: [{ticket, status, status_updated_at, fixed_version?, player_message?}]}` for the claims whose receipt matches.
+  A wrong receipt and an unknown ticket give the same answer: the claim is left out.
+- `incident.read` takes `{ticket, receipt}` and answers the stored report (the same fields plus `submitted_at`) or
+  `not_found`.
+
+`incident.status` and `incident.read` need no `hello`: the receipt is the proof. Only `incident.file` may exceed the
+usual 4096-character frame, up to 160 Ki characters; the frame must begin `{"op":"incident.file"`, which lets the object
+refuse every other large frame without parsing it. Statuses are `new` (shown as Open), `investigating`, `fixed`,
+`cannot_reproduce`, `duplicate`, `not_a_bug` and `closed`.
+
+**Storage** (the Durable Object's SQLite, apart from every gameplay and metrics table): `incidents` (the report, newest 500
+kept), `incident_tracking` (ticket, a salted SHA-256 of the receipt, status, fixed version and message; newest 5000 kept) and
+`incident_quota` (two salted 128-bit hashes, one of the account and one of the address group, and the time; rows older than
+a day are deleted). A report row holds no account, address, token, hash of a token or Friend Code.
 
 ### Fight telemetry (optional, protocol 3 unchanged)
 
 A client that sets `telemetry: true` in `hello` reports its online fights with `telemetry.fight`:
 `{match, kind: start|complete, fight, p1, p2, build, transport: direct|relay, platform, result: p1|p2|draw}`. Characters
-are the game's internal ids 0 to 16 (`src/characters.js`). Only the match's host sends it; the service takes either
+are the game's internal ids 0 to 16 plus this port's secret ids 17 (Evil Ryu) and 18 (Violent Ken)
+(`src/characters.js`). A start that names a secret character the match's `effective` view does not allow is refused with
+`bad_request` and records nothing; the diagnostic `fight_secret_rejected` counts it. Only the match's host sends it; the service takes either
 seat's copy and counts each `(match, fight, kind)` once. It answers `ok` with `counted` (`false`, `reason: duplicate`
 for a repeat) or refuses an unknown match, an invalid character, build, platform, transport or fight index (0 to 199), a
 build other than the match's, a completion without a start or with other characters, and anything after the match
@@ -103,7 +201,16 @@ ended. The Worker's own knowledge of the transport wins over the report. A v0.3.
 signs in and matches exactly as before; its matches add no fight numbers and show dashes under Last matches.
 
 Stored per day: fights started and completed, draws, fights per transport, build and platform (each fight counts once for
-each side's platform), and per character picks, wins, losses and draws. Per open match: its start, platforms, transport
+each side's platform), and per character picks, wins, losses and draws (Evil Ryu and Violent Ken have their own rows,
+apart from Ryu and Ken).
+Secret characters add three dimensions in `metrics_daily_dimensions`, counts only: `secret`, once per match when both
+seats are first ready (`<key>_available` when both seats support and enabled it, `<key>_option_mismatch` when both
+support it and exactly one enabled it, for `akuma`, `evil_ryu` and `violent_ken`, and `unsupported_peer` once when
+exactly one side supports a character and that side enabled it); `secret_fight`, per started fight (`<key>`,
+`<key>_mirror`, `akuma_vs_evil_ryu`, `akuma_vs_violent_ken`, `evil_ryu_vs_violent_ken`); and `secret_match`, once per
+match at the first fight that includes the character (`<key>`, tracked by a flag per character on the open match's
+telemetry row).
+Nothing is written by `secret.update` itself beyond the match's mask. Per open match: its start, platforms, transport
 and fight counts, and one row per fight for the dedupe; both go when the match closes. A closed match leaves one row in
 `recent_matches` (end time, duration, fight counts, transport, build, platform pair, final state: Completed,
 Abandoned, Disconnected, Timeout, Failed or Ended), kept for the latest 50 matches or 30 days, whichever drops it first.
@@ -126,6 +233,16 @@ None of this changes the protocol, the wire format or what a released client see
   An unchanged advertisement refreshed within 30 s is not rewritten (the client refreshes every 60 s; the advertisement
   lasts 180 s). Limits apply after validation, so a failed join or host spends nothing, and `match.leave` is never limited.
 - **Invites**: 20 per player burst, one per 3 s, and 60 per address burst, one per 2 s.
+- **Public Lobby**: `lobby.list` 6 per player burst, one per 5 s, and `lobby.publish` shares the social message limit;
+  neither writes to SQL (see Public Lobby above). Loopback is exempt from the read limit in `local/server.js`.
+- **Bug reports**: an `incident.file` attempt spends from three in-memory buckets before anything is validated or
+  written: everyone (40 burst, one per 3 s), the player (8 burst, one per 60 s) and the address group (16 burst, one per 30 s).
+  An accepted report then needs the SQL quota: 2 per hour and 10 per day per player, 30 per day per address group and 300
+  per day in all (answers `incident_hourly_limit`, `incident_daily_limit` and `limit`). Lookups have their own buckets:
+  everyone (200 burst, 2 per s), `incident.status` per address (20 burst, one per 15 s) and `incident.read` per address
+  (10 burst, one per 30 s) (`limit`). A refused or invalid request writes nothing. Report text is never logged and never
+  reaches a metric; the diagnostics only count `incident_filed`, `incident_limited`, `incident_hourly_limited`,
+  `incident_daily_limited` and `incident_lookup_limited`.
 - **Relay**: budgets are unchanged. A sender that keeps producing frames no client sends (malformed, bad token, not in
   a match, a seat that was taken, a relay that closed while both players are seated, before `hello`) is allowed 200
   of them, then 5 per second, and is then closed with code 1008. A peer that is away (grace, resuming) is not a fault.
@@ -144,9 +261,20 @@ None of this changes the protocol, the wire format or what a released client see
 (a Worker secret of 16 or more characters; without it the API answers 503). The page is read-only. It shows players
 online, players in matches, advertised matches, the running matches as Direct, Relay or Pending (the "now" cards),
 the accumulated numbers for today and for the selected range (matches, fights, Direct and Relay, character picks, wins and
-losses), the last matches, and daily counters and 15-minute samples kept in the object's `metrics_*` and `recent_matches` tables. No row names a player, an address or a match. The
+losses), a Secret characters section (rooms with Akuma, Evil Ryu or Violent Ken available, option and unsupported-peer
+mismatches, fights and matches with each, mirrors and the cross pairings), the last matches, and daily counters and 15-minute samples kept in the object's `metrics_*` and `recent_matches` tables. No row names a player, an address or a match. The
 match list is read live and shows a short id only; relay tokens, connection ids, friend codes and addresses never
 leave the hub.
+
+After signing in, two tabs sit at the top, **Dashboard** (selected by default, the metrics above) and **Bugs**, and the same token
+authorizes both. Only the selected tab is shown, the choice survives a reload in the same browser tab, and Bugs is there even
+with no reports (it says "No bug reports yet."). Bugs lists the stored reports newest first (ticket, time,
+port version, game image, platform, operating system and the start of the description) with filters, then one report with
+its description, facts and sanitized log. **Download log** and **Copy log** give the log exactly as stored, and **Save status**
+sets the status, the fixed version and the message the player sees in My reports. The routes are
+`GET /admin/api/incidents`, `GET /admin/api/incidents/<ticket>`, `GET /admin/api/incidents/<ticket>/log` and
+`POST /admin/api/incidents/<ticket>/status` (body `{status, fixed_version?, player_message?}`), all answering 401 without the
+token and 400 for a malformed ticket. They reach the Durable Object only through the Worker, after the token matched.
 
 ```
 npx wrangler secret put SSF2T_DASHBOARD_TOKEN
@@ -163,6 +291,10 @@ node local/server.js                # ws://127.0.0.1:8791/ (add --db <file> to k
 ```
 
 To point game instances at it, set `SSF2T_LOBBY=ws://127.0.0.1:8791/` in the environment of each.
+
+The local server files, reads and answers bug reports like the Worker (`test/incidents.test.js` covers the protocol, the storage,
+the limits and the admin routes, including a full-size report over a real WebSocket), so the launcher's Bug Report page can be
+tried against it without Cloudflare. The dashboard is not served by the local server; the admin routes are tested in-process.
 
 ## Deploy (manual; nothing in this repository deploys)
 

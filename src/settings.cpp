@@ -23,6 +23,9 @@
 #include "trg/settings.h"
 
 #include "aspect_ratio.h"
+#include "character/akuma.h"
+#include "character/akuma_bug_fixes.h"
+#include "character/ultra_fighters.h"
 #include "crash_report.h"
 #include "diagnostics.h"
 #include "fight_area.h"
@@ -47,6 +50,7 @@ REXCVAR_DEFINE_BOOL(ssf2t_launcher, true, "SSF2T",
                     "Show the launcher before the game starts (hold Shift at start to force it)");
 REXCVAR_DEFINE_BOOL(ssf2t_skip_launcher, false, "SSF2T",
                     "Skip the launcher once (set when the launcher restarts the game)");
+REXCVAR_DEFINE_BOOL(ssf2t_skip_intro, false, "SSF2T", "Start directly at the title screen");
 REXCVAR_DEFINE_BOOL(ssf2t_show_fps, true, "SSF2T", "Show the frame rate in the window title");
 REXCVAR_DEFINE_BOOL(ssf2t_show_render_resolution, false, "SSF2T",
                     "Show the render resolution in the window title");
@@ -95,11 +99,15 @@ std::vector<std::string> GameSettingKeys() {
       kLetterboxSetting,
       kFightAreaSetting,
       kInfiniteTimeSetting,
+      ssf2t::character::kEnableAkumaSetting,
+      ssf2t::character::kAkumaBugFixesSetting,
+      ssf2t::character::kEnableUltraFightersSetting,
       kNetplayDeterminismSetting,
       kNetplayRoleSetting,
       kNetplayPeerAddressSetting,
       kOnlineEnabledSetting,
       kOnlineNameSetting,
+      kOnlineLobbySetting,
       kOnlinePingSetting,
       kConnectionTestSetting,
       "resolution_scale",
@@ -108,6 +116,7 @@ std::vector<std::string> GameSettingKeys() {
       "ssf2t_msaa_compatibility",
       "anisotropic_override",
       kLanguageSetting,
+      "ssf2t_skip_intro",
       "ssf2t_player_1_name",
       "ssf2t_player_2_name",
       "ssf2t_show_fps",
@@ -533,6 +542,7 @@ void LogStartupDiagnostics(const GameSettings& settings, const MonitorInfo& disp
   diagnostics.launcher_display.vsync = selected_tearing ? "Off" : "On";
 
   diagnostics.launcher_gameplay.language = LanguageFor(settings.Get(kLanguageSetting, kDefaultLanguage)).label;
+  diagnostics.launcher_gameplay.skip_intro = OnOff(settings.GetBool("ssf2t_skip_intro", false));
   diagnostics.launcher_gameplay.frame_rate_in_title = OnOff(settings.GetBool("ssf2t_show_fps", true));
   diagnostics.launcher_gameplay.render_resolution_in_title =
       OnOff(settings.GetBool("ssf2t_show_render_resolution", false));

@@ -8,7 +8,8 @@ import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
 import { Hub } from '../src/hub.js';
-import { LIMITS, PROTOCOL, RELAY, SERVICE, WORKER_BUILD } from '../src/protocol.js';
+import { INCIDENT } from '../src/incidents.js';
+import { PROTOCOL, RELAY, SERVICE, WORKER_BUILD } from '../src/protocol.js';
 import { LocalConn, LocalHost, sqliteStore } from './host.js';
 import { upgrade } from './ws.js';
 
@@ -36,7 +37,7 @@ export function startLobbyServer({ host: address = '127.0.0.1', port = 8791, db 
     if (!first) return socket.end('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');
     let conn = null;
     const transport = upgrade(req, socket, {
-      maxMessage: LIMITS.frameBytes * 2,
+      maxMessage: INCIDENT.frameChars * 3,
       onText(text) {
         if (stopped) return;
         if (text === 'ping') return transport.send('pong');

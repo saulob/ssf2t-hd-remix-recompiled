@@ -2,7 +2,7 @@
 // per platform, version and country, daily counts of the transport each match chose, daily fight and character counts,
 // 15-minute usage samples and a bounded list of recently closed matches. No row names a player, an address or a match,
 // and nothing here keeps per-session state: live numbers come from the hub's sockets and tables.
-import { characterName } from './characters.js';
+import { SECRET_CHARACTER, SECRET_KEYS, characterName } from './characters.js';
 
 
 export const METRICS_TIME_ZONE = 'America/Sao_Paulo';
@@ -10,10 +10,11 @@ export const SAMPLE_MS = 15 * 60 * 1000;
 export const SAMPLE_DAYS = 90;
 export const HISTORY_MAX_DAYS = 365;
 export const DIMENSIONS = ['platform', 'version', 'country', 'reject', 'transport', 'fight_transport', 'fight_guest',
-  'fight_platform', 'abuse'];
+  'fight_platform', 'abuse', 'secret', 'secret_fight', 'secret_match'];
 export const DIAGNOSTICS = new Set(['ws_upgrade_accepted', 'ws_upgrade_limited', 'ws_upgrade_ip_cap', 'hello_accepted',
   'hello_reconnect_deduped', 'hello_limited', 'pm_host_accepted', 'pm_host_limited', 'pm_join_limited', 'invite_limited',
-  'match_resume_limited', 'relay_abuse_closed']);
+  'match_resume_limited', 'relay_abuse_closed', 'fight_secret_rejected', 'lobby_list_limited',
+  'incident_filed', 'incident_limited', 'incident_hourly_limited', 'incident_daily_limited', 'incident_lookup_limited']);
 export const PLATFORMS = ['Windows', 'Linux', 'Steam Deck'];
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -151,6 +152,18 @@ export class Metrics {
     for (const platform of platforms) this.addDimension(day, 'fight_platform', platformCategory(platform));
     for (const character of [p1, p2]) this.character(day, character, 'picks');
     this.matchup(day, p1, p2, 'fights');
+    for (const value of secretFightValues(p1, p2)) this.addDimension(day, 'secret_fight', value);
+  }
+
+  // `values`: secretEstablishment of the match's two seats, counted when the match is first established.
+  secretEstablished(values) {
+    const day = metricsDay(this.now());
+    for (const value of values) this.addDimension(day, 'secret', value);
+  }
+
+  // `key`: a secret character that appeared in a fight of the match for the first time.
+  secretMatch(key) {
+    this.addDimension(metricsDay(this.now()), 'secret_match', key);
   }
 
   // `result`: p1, p2 or draw.
@@ -311,6 +324,18 @@ export class Metrics {
     return { generated: now, time_zone: METRICS_TIME_ZONE, days, first, last, sample_ms: SAMPLE_MS, daily, dimensions,
       samples, totals: totalsOf(daily, characters), characters, matchups, recent: this.recent(first, recentLimit) };
   }
+}
+
+// Per fight start: the fight includes the character, and the mirror and cross pairings of the secret characters.
+function secretFightValues(p1, p2) {
+  const [a, b] = [SECRET_CHARACTER[p1], SECRET_CHARACTER[p2]];
+  const values = [];
+  for (const key of SECRET_KEYS) {
+    if (a === key || b === key) values.push(key);
+    if (a === key && b === key) values.push(`${key}_mirror`);
+  }
+  if (a && b && a !== b) values.push(SECRET_KEYS.filter((key) => key === a || key === b).join('_vs_'));
+  return values;
 }
 
 const emptyDay = () => ({ sessions: 0, advertised: 0, matches_started: 0, incompatible_rejects: 0, peak_online: 0,

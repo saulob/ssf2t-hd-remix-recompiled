@@ -172,7 +172,7 @@ void TestRejection() {
   }
   // Reserved: the port and the SDK already use these while playing.
   for (ImGuiKey key : {ImGuiKey_F2, ImGuiKey_F3, ImGuiKey_F4, ImGuiKey_F7, ImGuiKey_F9, ImGuiKey_F10, ImGuiKey_F11,
-                       ImGuiKey_F12, ImGuiKey_Escape, ImGuiKey_GraveAccent}) {
+                       ImGuiKey_F12, ImGuiKey_Escape}) {
     CHECK(ssf2t::KeyboardBindingIsReserved(key));
     CHECK(ssf2t::KeyboardBindingFor(key, false, false, false).empty());
     // A reserved key is refused with a modifier too.
@@ -187,7 +187,10 @@ void TestRejection() {
   // Esc cancels the capture, so it is never stored; F12 stays unbound.
   CHECK(!ssf2t::KeyboardBindingIsValid("Escape"));
   CHECK(!ssf2t::KeyboardBindingIsValid("F12"));
-  CHECK(!ssf2t::KeyboardBindingIsValid("Backtick"));
+  CHECK(ssf2t::KeyboardBindingIsValid("Backtick"));
+  CHECK(!ssf2t::KeyboardBindingIsReserved(ImGuiKey_GraveAccent));
+  CHECK(ssf2t::KeyboardBindingFor(ImGuiKey_GraveAccent, false, false, false) == "Backtick");
+  CHECK(ssf2t::KeyboardBindingFor(ImGuiKey_GraveAccent, true, false, false) == "Shift+Backtick");
   CHECK(!ssf2t::KeyboardBindingIsValid("F10"));
 }
 
@@ -375,8 +378,9 @@ void TestHotkeySeparation() {
   CHECK(Has(ReadSource("frame_counter.h"), "inline constexpr char kFrameCounterKey[] = \"F2\";"));
   CHECK(Has(ReadSource("ping_display.cpp"), "rex::ui::RegisterBind(\"bind_ssf2t_ping_display\", kPingDisplayKey"));
   CHECK(Has(ReadSource("ping_display.h"), "inline constexpr char kPingDisplayKey[] = \"F3\";"));
-  // F3 and F4 no longer open ReXGlue's debug and settings overlays; nothing binds F4 or F9.
-  CHECK(Has(ReadSource("frame_counter.h"), "kRemovedSdkBinds[] = {\"bind_debug_overlay\", \"bind_settings\"}"));
+  // F3, Backtick and F4 no longer open ReXGlue's debug, console and settings overlays; nothing binds F4 or F9.
+  CHECK(Has(ReadSource("frame_counter.h"),
+            "kRemovedSdkBinds[] = {\"bind_debug_overlay\", \"bind_console\", \"bind_settings\"}"));
   CHECK(Has(ReadSource("ssf2t_hd_remix_app.h"), "for (const char* bind : kRemovedSdkBinds) rex::ui::UnregisterBind(bind);"));
   CHECK(Has(ReadSource("ssf2t_hd_remix_app.h"), "void OnCreateDialogs(rex::ui::ImGuiDrawer*) override {"));
   for (const char* file : {"frame_counter.cpp", "ping_display.cpp", "ping_display.h", "ssf2t_hd_remix_app.h",

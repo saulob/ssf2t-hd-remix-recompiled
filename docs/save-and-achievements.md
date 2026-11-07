@@ -45,7 +45,7 @@ the same calls. Nothing is pre-created or pre-unlocked. Restarting loads what th
 - **In game**: F7 opens and closes the Achievements overlay; the game's own Achievements menu item opens it too. Xbox B, Escape
   and F7 close it. While it is open the game reads neither the keyboard nor the controller, and keeps reading neutral input until
   the closing press is released, so B never also backs out of the game's menu.
-- Host keys in use: F2 frame counter, F3 ping display, Backtick console, F7 achievements, F11 window mode.
+- Host keys in use: F2 frame counter, F3 ping display, F7 achievements, F11 window mode.
 
 ## Tests
 

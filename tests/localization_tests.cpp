@@ -15,6 +15,7 @@
 #include <iterator>
 #include <map>
 #include <optional>
+#include <regex>
 #include <set>
 #include <sstream>
 #include <string>
@@ -23,6 +24,7 @@
 #include <vector>
 
 #include "language_setting.h"
+#include "launcher_pages.h"
 #include "localization/active_language.h"
 #include "localization/arcade_quotes.h"
 #include "localization/baked_texture.h"
@@ -574,6 +576,212 @@ void TestTrCallsHaveRows() {
     }
   }
   Check(calls > 20, "the program translates its own text through Tr() (" + std::to_string(calls) + " literal calls)");
+}
+
+// The TRG Launcher translates the text it draws, so the label, help and button text a page hands to ui.<widget>() carries
+// no Tr(). Every such literal, and every constant such a call names, still has to be a pt-BR row.
+struct WidgetText {
+  const char* function;
+  std::vector<size_t> text_arguments;
+};
+
+const WidgetText kWidgetTexts[] = {
+    {"Row", {0, 1}},       {"RowLeft", {0, 1}},    {"RowEmphasized", {0, 1}}, {"Toggle", {0, 1, 4, 5}},
+    {"Choice", {0, 1}},    {"Combo", {0, 1}},      {"InputText", {0, 1, 3}},  {"Info", {0, 1}},
+    {"ButtonRow", {0, 1, 2}}, {"ConfirmRow", {0, 1, 2, 3, 4, 5}}, {"FolderRow", {0, 1, 2}}, {"Heading", {0}},
+    {"Paragraph", {0}},    {"Help", {0}},          {"Section", {0}},          {"StatusCard", {1, 2}},
+    {"SetStatus", {0}},    {"AccentButton", {0}},  {"SponsorCard", {0, 1}},
+};
+
+// The arguments of the call whose '(' is just before `at`; `at` ends on the closing ')'.
+std::vector<std::string> SplitArguments(const std::string& text, size_t& at) {
+  std::vector<std::string> arguments;
+  std::string current;
+  int depth = 0;
+  while (at < text.size()) {
+    const char c = text[at];
+    if (c == '"' || c == '\'') {
+      size_t end = at + 1;
+      while (end < text.size() && text[end] != c) end += text[end] == '\\' ? 2 : 1;
+      current += text.substr(at, end + 1 - at);
+      at = end + 1;
+      continue;
+    }
+    if (c == '(' || c == '[' || c == '{') {
+      ++depth;
+    } else if (c == ')' || c == ']' || c == '}') {
+      if (depth == 0) {
+        arguments.push_back(current);
+        return arguments;
+      }
+      --depth;
+    } else if (c == ',' && depth == 0) {
+      arguments.push_back(current);
+      current.clear();
+      ++at;
+      continue;
+    }
+    current += c;
+    ++at;
+  }
+  return arguments;
+}
+
+std::map<std::string, std::string> ConstantTexts() {
+  std::map<std::string, std::string> constants;
+  const std::regex declaration(R"((?:constexpr|const)\s+char\s*(?:\*\s*)?(\w+)\s*(?:\[\])?\s*=\s*)");
+  for (const fs::directory_entry& entry : fs::recursive_directory_iterator(kRoot / "src")) {
+    const std::string extension = entry.path().extension().string();
+    if (!entry.is_regular_file() || (extension != ".cpp" && extension != ".h")) continue;
+    const std::string relative = fs::relative(entry.path(), kRoot).generic_string();
+    if (relative.starts_with("src/localization/") || relative.find("third_party") != std::string::npos) continue;
+    std::ifstream in(entry.path(), std::ios::binary);
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    const std::string text = buffer.str();
+    for (std::sregex_iterator it(text.begin(), text.end(), declaration), end; it != end; ++it) {
+      size_t cursor = size_t(it->position()) + size_t(it->length());
+      if (const auto literal = DecodeCLiterals(text, cursor)) constants[(*it)[1]] = *literal;
+    }
+  }
+  return constants;
+}
+
+std::optional<std::string> ArgumentText(const std::string& argument, const std::map<std::string, std::string>& constants) {
+  size_t start = argument.find_first_not_of(" \t\r\n");
+  if (start == std::string::npos) return std::nullopt;
+  const std::string trimmed = argument.substr(start, argument.find_last_not_of(" \t\r\n") + 1 - start);
+  if (trimmed.front() == '"') {
+    size_t cursor = 0;
+    const auto literal = DecodeCLiterals(trimmed, cursor);
+    if (literal && trimmed.find_first_not_of(" \t\r\n", cursor) == std::string::npos) return literal;
+    return std::nullopt;
+  }
+  std::smatch name;
+  if (std::regex_match(trimmed, name, std::regex(R"((?:\w+::)*(k[A-Z]\w*))"))) {
+    const auto found = constants.find(name[1]);
+    if (found != constants.end()) return found->second;
+  }
+  return std::nullopt;
+}
+
+void TestWidgetTextHasRows() {
+  std::set<std::string> keys;
+  for (const auto& row : ssf2t::localization::PortugueseBrazilUiText().rows) keys.insert(row.english);
+  const auto constants = ConstantTexts();
+  Check(constants.count("kLanguageLabel") != 0 && constants.count("kEnableAkumaLabel") != 0,
+        "the constants of the settings headers are found");
+  int texts = 0;
+  for (const char* file : {"src/launcher.cpp", "src/online_page.cpp", "src/bug_report_page.cpp"}) {
+    const std::string source = ReadText(file);
+    const std::regex call(R"(\b(?:ui|launcher_)\s*(?:\.|->)\s*(\w+)\s*\()");
+    for (std::sregex_iterator it(source.begin(), source.end(), call), end; it != end; ++it) {
+      const std::string function = (*it)[1];
+      const auto known = std::find_if(std::begin(kWidgetTexts), std::end(kWidgetTexts),
+                                      [&](const WidgetText& entry) { return function == entry.function; });
+      if (known == std::end(kWidgetTexts)) continue;
+      size_t cursor = size_t(it->position()) + size_t(it->length());
+      const std::vector<std::string> arguments = SplitArguments(source, cursor);
+      const int line = 1 + int(std::count(source.begin(), source.begin() + std::ptrdiff_t(it->position()), '\n'));
+      std::vector<std::string> shown;
+      for (const size_t index : known->text_arguments) {
+        if (index >= arguments.size()) continue;
+        if (const auto text = ArgumentText(arguments[index], constants)) shown.push_back(*text);
+      }
+      if ((function == "Choice" || function == "Combo") && arguments.size() > 4) {
+        const std::string& options = arguments[4];
+        const std::regex option_pair(R"re(\{\s*"(?:[^"\\]|\\.)*"\s*,\s*("(?:[^"\\]|\\.)*")\s*\})re");
+        for (std::sregex_iterator pair(options.begin(), options.end(), option_pair), none; pair != none; ++pair) {
+          size_t at = 0;
+          const std::string label = (*pair)[1];
+          if (const auto text = DecodeCLiterals(label, at)) shown.push_back(*text);
+        }
+      }
+      for (const std::string& text : shown) {
+        ++texts;
+        if (!HasLetters(text)) continue;
+        Check(keys.count(text) != 0, std::string(file) + ":" + std::to_string(line) + ": ui." + function + " shows \"" +
+                                         text.substr(0, 60) + "\" with no pt-BR row");
+      }
+    }
+  }
+  Check(texts > 120, "the page widgets' own text is checked (" + std::to_string(texts) + " literals)");
+}
+
+size_t Characters(const std::string& utf8) {
+  size_t count = 0;
+  for (const char c : utf8) count += (uint8_t(c) & 0xC0) != 0x80;
+  return count;
+}
+
+// The sidebar gives a page name about 13 characters of room at its narrowest; a longer translation is cut off.
+void TestSidebarNamesFit() {
+  ssf2t::localization::SetActiveLanguage("pt-BR");
+  for (const ssf2t::LauncherPageInfo& page : ssf2t::kLauncherPages) {
+    const std::string english = page.name;
+    const std::string portuguese = ssf2t::Tr(english);
+    Check(Characters(english) <= 13, "sidebar name '" + english + "' fits");
+    Check(Characters(portuguese) <= 13, "sidebar name '" + portuguese + "' (pt-BR) fits");
+  }
+  ssf2t::localization::SetActiveLanguage("en-US");
+}
+
+void TestBugReportPageName() {
+  ssf2t::localization::SetActiveLanguage("pt-BR");
+  Check(std::string_view(ssf2t::Tr("Bug Report")) == "Relatar bug", "the Bug Report page is Relatar bug in pt-BR");
+  for (const char* english : {"Size", "Last written", "View selected log", "Selected log", "My reports", "Refresh",
+                              "View details", "Hide details", "What was sent", "Hide report", "Remove from this PC",
+                              "Remove this report from this PC?", "Message from developer", "New reply",
+                              "A report has a new reply", "The developer replied to one of your reports."}) {
+    Check(std::string_view(ssf2t::Tr(english)) != english, std::string("'") + english + "' is translated");
+  }
+  Check(std::string_view(ssf2t::Tr("Message from developer")) == "Mensagem do desenvolvedor", "developer message label in pt-BR");
+  Check(std::string_view(ssf2t::Tr("New reply")) == "Nova resposta", "new reply badge in pt-BR");
+  ssf2t::localization::SetActiveLanguage("en-US");
+  for (const auto& row : ssf2t::localization::PortugueseBrazilUiText().rows) {
+    Check(row.text.find("Relatar Erro") == std::string::npos && row.text.find("Relatar Problema") == std::string::npos,
+          "no pt-BR row names the Bug Report page 'Relatar Erro' or 'Relatar Problema'");
+  }
+}
+
+// The footer parses its shortcuts from the translated text: two spaces inside one, three or more between them.
+void TestFooterHintsKeepTheirShape() {
+  const auto items = [](const std::string& text) {
+    std::vector<std::pair<std::string, std::string>> out;
+    size_t at = 0;
+    while (at < text.size()) {
+      at = text.find_first_not_of(' ', at);
+      if (at == std::string::npos) break;
+      size_t end = text.find("   ", at);
+      const std::string item = text.substr(at, end == std::string::npos ? std::string::npos : end - at);
+      const size_t gap = item.find("  ");
+      if (gap == std::string::npos) {
+        out.push_back({"", item});
+      } else {
+        out.push_back({item.substr(0, gap), item.substr(item.find_first_not_of(' ', gap))});
+      }
+      if (end == std::string::npos) break;
+      at = end;
+    }
+    return out;
+  };
+  const std::string english = "Enter  Play     Alt+F4  Quit     Ctrl+S  Save";
+  ssf2t::localization::SetActiveLanguage("pt-BR");
+  const std::string portuguese = ssf2t::Tr(english);
+  ssf2t::localization::SetActiveLanguage("en-US");
+  const auto before = items(english);
+  const auto after = items(portuguese);
+  Check(before.size() == 3 && after.size() == 3, "the footer shortcuts stay three in pt-BR");
+  for (size_t i = 0; i < before.size() && i < after.size(); ++i) {
+    Check(before[i].first == after[i].first && !after[i].second.empty(),
+          "the footer shortcut key '" + before[i].first + "' is the same in pt-BR");
+  }
+  const std::string note = "Play applies the changes. Save keeps them without starting.";
+  ssf2t::localization::SetActiveLanguage("pt-BR");
+  const std::string translated_note = ssf2t::Tr(note);
+  ssf2t::localization::SetActiveLanguage("en-US");
+  Check(translated_note != note && translated_note.find(". ") != std::string::npos,
+        "the footer note stays two sentences in pt-BR, one per line");
 }
 
 
@@ -1323,6 +1531,10 @@ int main(int argc, char** argv) {
     TestGameTableShape();
     TestUiTableShape();
     TestTrCallsHaveRows();
+    TestWidgetTextHasRows();
+    TestSidebarNamesFit();
+    TestBugReportPageName();
+    TestFooterHintsKeepTheirShape();
     TestBakedTextureRows();
   } else if (mode == "game") {
     code = TestRealGameFiles();
